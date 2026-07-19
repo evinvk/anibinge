@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { ScheduleGrid } from "@/components/schedule-grid";
-
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Airing Schedule" };
 
 export default async function SchedulePage() {
