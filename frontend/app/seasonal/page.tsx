@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { SeasonTabs } from "@/components/season-tabs";
-
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Seasonal Anime" };
 
 const SEASONS = ["winter", "spring", "summer", "fall"] as const;
