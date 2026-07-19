@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
 import { CarouselRow } from "@/components/carousel-row";
-
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Discover" };
 
 export default async function DiscoverPage() {
