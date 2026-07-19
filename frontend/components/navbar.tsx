@@ -1,0 +1,74 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { Search, Menu, X, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { SearchModal } from "@/components/search-modal";
+
+const LINKS = [
+  { href: "/browse", label: "Browse" },
+  { href: "/seasonal", label: "Seasonal" },
+  { href: "/schedule", label: "Schedule" },
+  { href: "/discover", label: "Discover" },
+  { href: "/news", label: "News" },
+];
+
+export function Navbar() {
+  const [open, setOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-50 glass border-b border-white/10">
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
+        <Link href="/" className="flex items-center gap-2 font-display text-lg font-bold">
+          <Sparkles className="h-5 w-5 text-primary-400" />
+          <span className="text-gradient">Anibinge</span>
+        </Link>
+
+        <div className="hidden items-center gap-6 md:flex">
+          {LINKS.map((l) => (
+            <Link key={l.href} href={l.href} className="text-sm text-mist transition-colors hover:text-paper">
+              {l.label}
+            </Link>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            aria-label="Search"
+            onClick={() => setSearchOpen(true)}
+            className="rounded-full p-2 text-mist transition-colors hover:bg-white/5 hover:text-paper"
+          >
+            <Search className="h-5 w-5" />
+          </button>
+          <Link
+            href="/watchlist"
+            className="hidden rounded-full bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:block"
+          >
+            My Watchlist
+          </Link>
+          <button
+            aria-label="Toggle menu"
+            className="p-2 md:hidden"
+            onClick={() => setOpen((v) => !v)}
+          >
+            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </button>
+        </div>
+      </nav>
+
+      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-64" : "max-h-0")}>
+        <div className="flex flex-col gap-1 px-4 pb-4">
+          {LINKS.map((l) => (
+            <Link key={l.href} href={l.href} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
+              {l.label}
+            </Link>
+          ))}
+        </div>
+      </div>
+
+      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
+    </header>
+  );
+}

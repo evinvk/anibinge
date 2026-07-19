@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-void text-paper font-body antialiased;
+  }
+
+  ::selection {
+    @apply bg-primary-600/40 text-white;
+  }
+
+  /* visible keyboard focus, per accessibility floor */
+  :focus-visible {
+    outline: 2px solid #A78BFA;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-surface/60 backdrop-blur-xl border border-white/10;
+  }
+
+  .glass-card {
+    @apply glass rounded-xl2 relative overflow-hidden transition-all duration-300;
+  }
+
+  .glass-card:hover {
+    @apply border-primary-400/40 shadow-glow-sm -translate-y-1;
+  }
+
+  .aura-border {
+    position: relative;
+  }
+  .aura-border::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, #7C3AED, transparent 40%, transparent 60%, #A78BFA);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-primary-600;
+  }
+
+  .live-dot {
+    @apply relative inline-flex h-2 w-2 rounded-full bg-primary-400;
+  }
+  .live-dot::before {
+    content: "";
+    @apply absolute inset-0 rounded-full bg-primary-400 animate-pulse-glow;
+  }
+}
