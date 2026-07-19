@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { BrowseFilters } from "@/components/browse-filters";
-
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Browse Anime" };
 
 interface BrowsePageProps {
