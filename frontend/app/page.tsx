@@ -2,31 +2,48 @@ import { Suspense } from "react";
 import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
-export const dynamic = "force-dynamic";
+
 export const revalidate = 300; // ISR: page regenerates at most every 5 min
 
+// Jikan is a free, publicly rate-limited API and occasionally times out.
+// Each row fetches independently and swallows its own failure so a single
+// slow/unavailable upstream call never crashes the whole homepage.
+async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.error("Home page row fetch failed:", err);
+    return null;
+  }
+}
+
 async function TrendingRow() {
-  const { data } = await api.trending();
-  return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
+  const res = await safeFetch(() => api.trending());
+  if (!res) return null;
+  return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={res.data} />;
 }
 
 async function AiringRow() {
-  const res = await api.airing();
+  const res = await safeFetch(() => api.airing());
+  if (!res) return null;
   return <CarouselRow title="Currently Airing" href="/browse?status=airing" items={res.data?.map(normalizeJikan)} />;
 }
 
 async function UpcomingRow() {
-  const res = await api.upcoming();
+  const res = await safeFetch(() => api.upcoming());
+  if (!res) return null;
   return <CarouselRow title="Upcoming Anime" href="/browse?status=upcoming" items={res.data?.map(normalizeJikan)} />;
 }
 
 async function TopRatedRow() {
-  const res = await api.topRated();
+  const res = await safeFetch(() => api.topRated());
+  if (!res) return null;
   return <CarouselRow title="Top Rated" href="/browse?sort=score" items={res.data?.map(normalizeJikan)} />;
 }
 
 async function SeasonalRow() {
-  const res = await api.currentSeason();
+  const res = await safeFetch(() => api.currentSeason());
+  if (!res) return null;
   return <CarouselRow title="This Season" href="/seasonal" items={res.data?.map(normalizeJikan)} />;
 }
 
@@ -54,8 +71,8 @@ function normalizeJikan(item: any) {
 }
 
 export default async function HomePage() {
-  const { data: trending } = await api.trending();
-  const heroAnime = trending?.[0];
+  const heroRes = await safeFetch(() => api.trending());
+  const heroAnime = heroRes?.data?.[0];
 
   return (
     <>
