@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
-
+export const dynamic = "force-dynamic";
 export const revalidate = 300; // ISR: page regenerates at most every 5 min
 
 async function TrendingRow() {
