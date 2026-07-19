@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp } from "lucide-react";
 import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
-
+export const dynamic = "force-dynamic";
 interface PageProps {
   params: Promise<{ id: string }>;
 }
