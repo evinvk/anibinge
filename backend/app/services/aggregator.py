@@ -71,3 +71,38 @@ async def search(query: str, page: int = 1, **filters) -> list[dict]:
         logger.warning("Jikan search failed (%s), falling back to AniList", e)
         data = await anilist_client.search_anime(query, page=page)
         return [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+
+
+def _denormalize_anilist_detail(m: dict) -> dict:
+    """Reshape an AniList Media object into the same field names the
+    frontend detail page already expects from Jikan's /anime/{id}/full."""
+    title = m.get("title") or {}
+    score = m.get("averageScore")
+    return {
+        "mal_id": m.get("id"),
+        "title": title.get("romaji") or title.get("english"),
+        "title_english": title.get("english"),
+        "title_japanese": title.get("native"),
+        "images": {"jpg": {"large_image_url": (m.get("coverImage") or {}).get("large")}},
+        "trailer": {"images": {"maximum_image_url": m.get("bannerImage")}},
+        "score": (score / 10) if score is not None else None,
+        "popularity": m.get("popularity"),
+        "members": m.get("favourites"),
+        "genres": [{"mal_id": None, "name": g} for g in m.get("genres", [])],
+        "synopsis": m.get("description"),
+        "studios": [{"name": s["name"]} for s in ((m.get("studios") or {}).get("nodes") or [])],
+        "status": m.get("status"),
+        "episodes": m.get("episodes"),
+        "rating": None,
+    }
+
+
+async def get_detail(id_: int, source: str = "jikan") -> dict:
+    """source-aware detail lookup: AniList ids and MAL ids are different
+    number spaces, so a card that came from the AniList fallback must be
+    looked up on AniList, not Jikan."""
+    if source == "anilist":
+        media = await anilist_client.get_anime_detail(id_)
+        return _denormalize_anilist_detail(media)
+    data = await jikan_client.get_anime_full(id_)
+    return data.get("data", data)
