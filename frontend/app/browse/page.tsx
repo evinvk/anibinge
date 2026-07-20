@@ -1,6 +1,6 @@
 import { api } from "@/lib/api";
-import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { BrowseFilters } from "@/components/browse-filters";
+import { InfiniteAnimeGrid } from "@/components/infinite-anime-grid";
 
 export const metadata = { title: "Browse Anime" };
 
@@ -12,16 +12,18 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const params = await searchParams;
   const query = params.q || "anime";
 
+  const filters: Record<string, string> = {
+    ...(params.genres ? { genres: params.genres } : {}),
+    ...(params.status ? { status: params.status } : {}),
+    ...(params.type ? { type: params.type } : {}),
+    ...(params.order_by ? { order_by: params.order_by } : {}),
+    ...(params.sort ? { sort: params.sort } : {}),
+  };
+
   let data: Awaited<ReturnType<typeof api.search>>["data"] = [];
   let fetchFailed = false;
   try {
-    const res = await api.search(query, {
-      ...(params.genres ? { genres: params.genres } : {}),
-      ...(params.status ? { status: params.status } : {}),
-      ...(params.type ? { type: params.type } : {}),
-      ...(params.order_by ? { order_by: params.order_by } : {}),
-      ...(params.sort ? { sort: params.sort } : {}),
-    });
+    const res = await api.search(query, filters);
     data = res.data;
   } catch (err) {
     console.error("Browse search failed:", err);
@@ -35,11 +37,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
       <BrowseFilters />
 
-      <AnimeGrid className="mt-8">
-        {data.map((anime) => (
-          <AnimeCard key={anime.id} anime={anime} />
-        ))}
-      </AnimeGrid>
+      <InfiniteAnimeGrid initialItems={data} query={query} filters={filters} />
 
       {data.length === 0 && (
         <div className="mt-16 text-center text-mist">
