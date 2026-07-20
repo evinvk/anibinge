@@ -1,88 +1,23 @@
-"use client";
-
-import { useEffect, useRef, useState, useCallback } from "react";
-import { AnimeCard, AnimeCardSkeleton, AnimeGrid } from "@/components/anime-card";
-import type { AnimeSummary } from "@/lib/api";
-
-interface InfiniteAnimeGridProps {
-  initialItems: AnimeSummary[];
-  query: string;
-  filters: Record<string, string>;
-}
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
-export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnimeGridProps) {
-  const [items, setItems] = useState<AnimeSummary[]>(initialItems);
-  const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(initialItems.length > 0);
-  const sentinelRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setItems(initialItems);
-    setPage(1);
-    setHasMore(initialItems.length > 0);
-  }, [initialItems, query, JSON.stringify(filters)]);
-
-  const loadMore = useCallback(async () => {
-    if (loading || !hasMore) return;
-    setLoading(true);
-    try {
-      const nextPage = page + 1;
-      const qs = new URLSearchParams({ q: query, page: String(nextPage), ...filters });
-      const res = await fetch(`${API_BASE}/api/v1/search?${qs.toString()}`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const json = await res.json();
-      const newItems: AnimeSummary[] = json.data ?? [];
-
-      if (newItems.length === 0) {
-        setHasMore(false);
-      } else {
-        setItems((prev) => [...prev, ...newItems]);
-        setPage(nextPage);
-      }
-    } catch (err) {
-      console.error("Failed to load more anime:", err);
-    } finally {
-      setLoading(false);
+let detail;
+  try {
+    const res = await api.detail(malId);
+    detail = res.data;
+  } catch (err) {
+    // Only show "not found" when the backend genuinely reports the anime
+    // doesn't exist (404). Anything else — a Jikan timeout, a 5xx, a cold
+    // Render backend waking up — is temporary, so show a retry message
+    // instead of incorrectly telling the user this anime doesn't exist.
+    if (err instanceof ApiError && err.status === 404) {
+      notFound();
     }
-  }, [loading, hasMore, page, query, filters]);
-
-  useEffect(() => {
-    const sentinel = sentinelRef.current;
-    if (!sentinel) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          loadMore();
-        }
-      },
-      { rootMargin: "600px" }
-    );
-
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [loadMore]);
-
-  return (
-    <>
-      <AnimeGrid className="mt-8">
-        {items.map((anime, i) => (
-          <AnimeCard key={`${anime.id}-${i}`} anime={anime} />
-        ))}
-        {loading &&
-          Array.from({ length: 6 }).map((_, i) => <AnimeCardSkeleton key={`skeleton-${i}`} />)}
-      </AnimeGrid>
-
-      <div ref={sentinelRef} className="h-1" />
-
-      {!hasMore && items.length > 0 && (
-        <p className="mt-10 text-center text-sm text-mist">
-          You've reached the end — {items.length} titles loaded.
+    return (
+      <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-4 text-center">
+        <AlertTriangle className="h-10 w-10 text-primary-400" />
+        <h1 className="mt-4 font-display text-xl font-bold">Temporarily unavailable</h1>
+        <p className="mt-2 text-sm text-mist">
+          We couldn't load this anime right now — this is usually a brief hiccup with the
+          upstream data source. Please refresh the page in a moment.
         </p>
-      )}
-    </>
-  );
-}
+      </div>
+    );
+  }
