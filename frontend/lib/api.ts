@@ -37,7 +37,8 @@ export const api = {
   topRated: (page = 1) => request<any>(`/api/v1/anime/top-rated?page=${page}`, 3600),
   airing: (page = 1) => request<any>(`/api/v1/anime/airing?page=${page}`, 300),
   upcoming: (page = 1) => request<any>(`/api/v1/anime/upcoming?page=${page}`, 3600),
-  detail: (id: number) => request<any>(`/api/v1/anime/${id}`, 3600),
+  detail: (id: number, source: string = "jikan") =>
+    request<any>(`/api/v1/anime/${id}${source === "anilist" ? "?source=anilist" : ""}`, 3600),
   characters: (id: number) => request<any>(`/api/v1/anime/${id}/characters`, 86400),
   staff: (id: number) => request<any>(`/api/v1/anime/${id}/staff`, 86400),
   episodes: (id: number, page = 1) => request<any>(`/api/v1/anime/${id}/episodes?page=${page}`, 3600),
