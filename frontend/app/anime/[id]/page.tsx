@@ -4,7 +4,9 @@ import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
+
 export const dynamic = "force-dynamic";
+
 interface PageProps {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ source?: string }>;
@@ -32,7 +34,8 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
   const { source } = await searchParams;
   const malId = Number(id);
   const resolvedSource = source || "jikan";
-let detail;
+
+  let detail;
   try {
     const res = await api.detail(malId, resolvedSource);
     detail = res.data;
@@ -55,7 +58,6 @@ let detail;
       </div>
     );
   }
-  
 
   // Characters & recommendations only exist on the Jikan (MAL) side — an
   // AniList id has no matching MAL entry to look those up by.
@@ -128,6 +130,7 @@ let detail;
 
             <div className="mt-4">
               <AddToWatchlistButton animeId={malId} source={resolvedSource} />
+            </div>
 
             <p className="mt-4 max-w-3xl text-sm leading-relaxed text-mist">{detail.synopsis}</p>
 
