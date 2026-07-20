@@ -32,6 +32,36 @@ async function request<T>(path: string, revalidateSeconds = 60): Promise<T> {
   return res.json();
 }
 
+async function authedRequest<T>(
+  path: string,
+  token: string,
+  init: RequestInit = {}
+): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${token}`,
+      ...init.headers,
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, body.detail || `Request to ${path} failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface WatchlistEntryData {
+  anime_id: number;
+  source: "jikan" | "anilist";
+  status: "planning" | "watching" | "completed" | "dropped" | "favorites";
+  progress: number;
+  rating: number | null;
+  updated_at: string | null;
+}
+
 export const api = {
   trending: (page = 1) => request<{ data: AnimeSummary[] }>(`/api/v1/anime/trending?page=${page}`, 300),
   topRated: (page = 1) => request<any>(`/api/v1/anime/top-rated?page=${page}`, 3600),
@@ -54,6 +84,45 @@ export const api = {
   },
   genres: () => request<any>(`/api/v1/search/genres`, 86400),
   news: (limit = 24) => request<{ data: NewsItem[] }>(`/api/v1/news?limit=${limit}`, 900),
+
+  register: (email: string, username: string, password: string) =>
+    fetch(`${API_BASE}/api/v1/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, username, password }),
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, json.detail || "Registration failed");
+      return json as { access_token: string; token_type: string };
+    }),
+
+  login: (email: string, password: string) =>
+    fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, json.detail || "Login failed");
+      return json as { access_token: string; token_type: string };
+    }),
+
+  getWatchlist: (token: string) =>
+    authedRequest<{ user_id: string; entries: WatchlistEntryData[] }>("/api/v1/watchlist", token),
+
+  upsertWatchlistEntry: (
+    token: string,
+    entry: { anime_id: number; source?: string; status: string; progress?: number; rating?: number | null }
+  ) =>
+    authedRequest<{ user_id: string; entry: WatchlistEntryData }>("/api/v1/watchlist", token, {
+      method: "PUT",
+      body: JSON.stringify(entry),
+    }),
+
+  removeWatchlistEntry: (token: string, animeId: number) =>
+    authedRequest<{ removed: number }>(`/api/v1/watchlist/${animeId}`, token, {
+      method: "DELETE",
+    }),
 };
 
 export interface NewsItem {
