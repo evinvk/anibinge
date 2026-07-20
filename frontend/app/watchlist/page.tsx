@@ -5,9 +5,23 @@ import Link from "next/link";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { api, ApiError, WatchlistEntryData, AnimeSummary } from "@/lib/api";
+import { api, ApiError, WatchlistEntryData } from "@/lib/api";
 
 const TABS = ["watching", "planning", "completed", "dropped", "favorites"] as const;
+
+// api.detail() returns the raw per-anime detail shape (Jikan-style nested
+// images object), not the flattened AnimeSummary used by trending/search.
+// Typing this separately avoids masking real mismatches with `any`.
+interface AnimeDetailSummary {
+  title: string;
+  title_english: string | null;
+  images?: {
+    jpg?: {
+      image_url?: string;
+      large_image_url?: string;
+    };
+  };
+}
 
 export default function WatchlistPage() {
   const { token, loading: authLoading, login, register, logout } = useAuth();
@@ -154,7 +168,7 @@ function AuthForms({
 
 function WatchlistTab({ token, status }: { token: string; status: string }) {
   const [entries, setEntries] = useState<WatchlistEntryData[] | null>(null);
-  const [animeById, setAnimeById] = useState<Record<string, AnimeSummary | null>>({});
+  const [animeById, setAnimeById] = useState<Record<string, AnimeDetailSummary | null>>({});
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -224,9 +238,9 @@ function WatchlistTab({ token, status }: { token: string; status: string }) {
           <div key={key} className="group relative overflow-hidden rounded-xl bg-surface-hi">
             <Link href={href}>
               <div className="relative aspect-[2/3] w-full bg-surface">
-                {anime?.image && (
+                {anime?.images?.jpg?.large_image_url && (
                   <Image
-                    src={anime.image}
+                    src={anime.images.jpg.large_image_url}
                     alt={anime.title ?? "Anime poster"}
                     fill
                     className="object-cover"
