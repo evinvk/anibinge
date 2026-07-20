@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
+import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 export const dynamic = "force-dynamic";
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -119,11 +120,14 @@ let detail;
 
             <div className="mt-4 flex flex-wrap gap-2">
               {detail.genres?.map((g: any) => (
-                <span key={g.mal_id} className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400">
+                <span key={g.mal_id ?? g.name} className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400">
                   {g.name}
                 </span>
               ))}
             </div>
+
+            <div className="mt-4">
+              <AddToWatchlistButton animeId={malId} source={resolvedSource} />
 
             <p className="mt-4 max-w-3xl text-sm leading-relaxed text-mist">{detail.synopsis}</p>
 
