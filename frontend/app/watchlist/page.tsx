@@ -224,9 +224,9 @@ function WatchlistTab({ token, status }: { token: string; status: string }) {
           <div key={key} className="group relative overflow-hidden rounded-xl bg-surface-hi">
             <Link href={href}>
               <div className="relative aspect-[2/3] w-full bg-surface">
-                {anime?.images?.jpg?.large_image_url && (
+                {anime?.image && (
                   <Image
-                    src={anime.images.jpg.large_image_url}
+                    src={anime.image}
                     alt={anime.title ?? "Anime poster"}
                     fill
                     className="object-cover"
