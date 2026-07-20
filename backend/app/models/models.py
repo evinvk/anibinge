@@ -29,7 +29,8 @@ class WatchlistEntry(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"))
-    anime_id: Mapped[int] = mapped_column(Integer, index=True)  # MAL id
+    anime_id: Mapped[int] = mapped_column(Integer, index=True)  # MAL id, or AniList id if source="anilist"
+    source: Mapped[str] = mapped_column(String, default="jikan")  # "jikan" | "anilist"
     status: Mapped[str] = mapped_column(String)  # planning|watching|completed|dropped|favorites
     progress: Mapped[int] = mapped_column(Integer, default=0)
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
