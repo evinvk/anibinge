@@ -50,6 +50,28 @@ query ($page: Int, $perPage: Int) {
 }
 """
 
+_DETAIL_QUERY = """
+query ($id: Int) {
+  Media(id: $id, type: ANIME) {
+    id
+    title { romaji english native }
+    description(asHtml: false)
+    coverImage { large }
+    bannerImage
+    averageScore
+    popularity
+    favourites
+    status
+    season
+    seasonYear
+    genres
+    episodes
+    format
+    studios(isMain: true) { nodes { name } }
+  }
+}
+"""
+
 
 async def _post(query: str, variables: dict) -> dict:
     resp = await _client.post(
@@ -67,3 +89,9 @@ async def get_trending(page: int = 1, per_page: int = 20) -> dict:
 @cached("anilist:search", ttl=settings.CACHE_TTL_SHORT)
 async def search_anime(query: str, page: int = 1, per_page: int = 20) -> dict:
     return await _post(_SEARCH_QUERY, {"search": query, "page": page, "perPage": per_page})
+
+
+@cached("anilist:detail", ttl=settings.CACHE_TTL_MEDIUM)
+async def get_anime_detail(anilist_id: int) -> dict:
+    data = await _post(_DETAIL_QUERY, {"id": anilist_id})
+    return data["Media"]
