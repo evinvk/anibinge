@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { BrowseFilters } from "@/components/browse-filters";
-export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Browse Anime" };
 
 interface BrowsePageProps {
@@ -11,13 +11,22 @@ interface BrowsePageProps {
 export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const params = await searchParams;
   const query = params.q || "anime";
-  const { data } = await api.search(query, {
-    ...(params.genres ? { genres: params.genres } : {}),
-    ...(params.status ? { status: params.status } : {}),
-    ...(params.type ? { type: params.type } : {}),
-    ...(params.order_by ? { order_by: params.order_by } : {}),
-    ...(params.sort ? { sort: params.sort } : {}),
-  });
+
+  let data: Awaited<ReturnType<typeof api.search>>["data"] = [];
+  let fetchFailed = false;
+  try {
+    const res = await api.search(query, {
+      ...(params.genres ? { genres: params.genres } : {}),
+      ...(params.status ? { status: params.status } : {}),
+      ...(params.type ? { type: params.type } : {}),
+      ...(params.order_by ? { order_by: params.order_by } : {}),
+      ...(params.sort ? { sort: params.sort } : {}),
+    });
+    data = res.data;
+  } catch (err) {
+    console.error("Browse search failed:", err);
+    fetchFailed = true;
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -34,7 +43,9 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
       {data.length === 0 && (
         <div className="mt-16 text-center text-mist">
-          No results. Try a different search term or clear your filters.
+          {fetchFailed
+            ? "The anime database is temporarily unavailable. Please try again in a moment."
+            : "No results. Try a different search term or clear your filters."}
         </div>
       )}
     </div>
