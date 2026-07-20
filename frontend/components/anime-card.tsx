@@ -16,7 +16,10 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
   const isAiring = anime.status === "Currently Airing" || anime.status === "RELEASING";
 
   return (
-    <Link href={`/anime/${anime.id}`} className="group block">
+    <Link
+      href={anime.source === "anilist" ? `/anime/${anime.id}?source=anilist` : `/anime/${anime.id}`}
+      className="group block"
+    >
       <motion.div
         whileHover={{ y: -4 }}
         transition={{ type: "spring", stiffness: 300, damping: 24 }}
