@@ -1,7 +1,7 @@
 import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { SeasonTabs } from "@/components/season-tabs";
-export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Seasonal Anime" };
 
 const SEASONS = ["winter", "spring", "summer", "fall"] as const;
@@ -23,7 +23,12 @@ export default async function SeasonalPage({ searchParams }: Props) {
   const year = Number(params.year) || fallback.year;
   const season = (params.season as (typeof SEASONS)[number]) || fallback.season;
 
-  const res = await api.season(year, season);
+  let res: any = { data: [] };
+  try {
+    res = await api.season(year, season);
+  } catch (err) {
+    console.error("Seasonal fetch failed:", err);
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
