@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Query
+import httpx
 
 from app.services import aggregator, jikan_client
 
@@ -33,8 +34,17 @@ async def anime_detail(mal_id: int, source: str = Query("jikan")):
     try:
         data = await aggregator.get_detail(mal_id, source=source)
         return {"data": data}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            # Upstream (Jikan/AniList) genuinely has no record for this id.
+            raise HTTPException(status_code=404, detail="Anime not found")
+        # Upstream returned an error (rate-limited, 5xx, etc.) — temporary,
+        # not a real 404, so let the frontend show a "try again" message.
+        raise HTTPException(status_code=502, detail="Upstream data source error")
     except Exception:
-        raise HTTPException(status_code=404, detail="Anime not found")
+        # Timeout, connection error, or anything else unexpected — also
+        # temporary, so don't tell the user the anime doesn't exist.
+        raise HTTPException(status_code=503, detail="Anime data temporarily unavailable")
 
 
 @router.get("/{mal_id}/characters")
