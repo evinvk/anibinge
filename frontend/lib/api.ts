@@ -18,7 +18,7 @@ export interface AnimeSummary {
   format: string | null;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
   }
@@ -26,7 +26,7 @@ class ApiError extends Error {
 
 async function request<T>(path: string, revalidateSeconds = 60): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    next: { revalidate: revalidateSeconds }, // Next.js ISR-style caching on top of Redis
+    next: { revalidate: revalidateSeconds },
   });
   if (!res.ok) throw new ApiError(res.status, `Request to ${path} failed: ${res.status}`);
   return res.json();
@@ -52,4 +52,15 @@ export const api = {
     return request<{ data: AnimeSummary[] }>(`/api/v1/search?${qs.toString()}`, 60);
   },
   genres: () => request<any>(`/api/v1/search/genres`, 86400),
+  news: (limit = 24) => request<{ data: NewsItem[] }>(`/api/v1/news?limit=${limit}`, 900),
 };
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  url: string;
+  summary: string;
+  image: string | null;
+  category: "news" | "industry" | "trailer" | "announcement";
+  published_at: string | null;
+}
