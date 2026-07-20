@@ -6,12 +6,14 @@ import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 export const dynamic = "force-dynamic";
 interface PageProps {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ source?: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const { source } = await searchParams;
   try {
-    const { data } = await api.detail(Number(id));
+    const { data } = await api.detail(Number(id), source || "jikan");
     return {
       title: data.title_english || data.title,
       description: data.synopsis?.slice(0, 160),
@@ -24,12 +26,14 @@ export async function generateMetadata({ params }: PageProps) {
   }
 }
 
-export default async function AnimeDetailPage({ params }: PageProps) {
+export default async function AnimeDetailPage({ params, searchParams }: PageProps) {
   const { id } = await params;
+  const { source } = await searchParams;
   const malId = Number(id);
+  const resolvedSource = source || "jikan";
 let detail;
   try {
-    const res = await api.detail(malId);
+    const res = await api.detail(malId, resolvedSource);
     detail = res.data;
   } catch (err) {
     // Only show "not found" when the backend genuinely reports the anime
@@ -52,10 +56,15 @@ let detail;
   }
   
 
-  const [charactersRes, recsRes] = await Promise.all([
-    api.characters(malId).catch(() => ({ data: [] })),
-    api.recommendations(malId).catch(() => ({ data: [] })),
-  ]);
+  // Characters & recommendations only exist on the Jikan (MAL) side — an
+  // AniList id has no matching MAL entry to look those up by.
+  const [charactersRes, recsRes] =
+    resolvedSource === "anilist"
+      ? [{ data: [] }, { data: [] }]
+      : await Promise.all([
+          api.characters(malId).catch(() => ({ data: [] })),
+          api.recommendations(malId).catch(() => ({ data: [] })),
+        ]);
 
   const jsonLd = {
     "@context": "https://schema.org",
