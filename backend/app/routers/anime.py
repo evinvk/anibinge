@@ -29,9 +29,10 @@ async def upcoming(page: int = Query(1, ge=1)):
 
 
 @router.get("/{mal_id}")
-async def anime_detail(mal_id: int):
+async def anime_detail(mal_id: int, source: str = Query("jikan")):
     try:
-        return await jikan_client.get_anime_full(mal_id)
+        data = await aggregator.get_detail(mal_id, source=source)
+        return {"data": data}
     except Exception:
         raise HTTPException(status_code=404, detail="Anime not found")
 
