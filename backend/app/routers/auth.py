@@ -1,7 +1,7 @@
 """
 Auth: email/password (JWT) + Google OAuth.
 Uses passlib for hashing and python-jose for tokens. DB access is
-via SQLAlchemy async session (see app/models/user.py).
+via SQLAlchemy async session (see app/models/models.py).
 """
 from datetime import datetime, timedelta
 
@@ -9,8 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from jose import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.core.db import get_db
+from app.models.models import User
 
 settings = get_settings()
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -40,23 +44,37 @@ def create_access_token(user_id: str) -> str:
 
 
 @router.post("/register")
-async def register(payload: RegisterRequest):
-    # TODO: persist to Postgres via SQLAlchemy (app/models/user.py),
-    # check for existing email/username, then hash + store password.
-    hashed = pwd_context.hash(payload.password)
-    fake_user_id = "usr_" + payload.email.split("@")[0]
-    return {"access_token": create_access_token(fake_user_id), "token_type": "bearer"}
+async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    existing = await db.scalar(
+        select(User).where((User.email == payload.email) | (User.username == payload.username))
+    )
+    if existing:
+        field = "email" if existing.email == payload.email else "username"
+        raise HTTPException(status_code=409, detail=f"That {field} is already registered")
+
+    user = User(
+        email=payload.email,
+        username=payload.username,
+        hashed_password=pwd_context.hash(payload.password),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
 
 
 @router.post("/login")
-async def login(payload: LoginRequest):
-    # TODO: look up user, verify pwd_context.verify(payload.password, user.hashed_password)
-    fake_user_id = "usr_" + payload.email.split("@")[0]
-    return {"access_token": create_access_token(fake_user_id), "token_type": "bearer"}
+async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+    user = await db.scalar(select(User).where(User.email == payload.email))
+    if not user or not user.hashed_password or not pwd_context.verify(payload.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+
+    return {"access_token": create_access_token(user.id), "token_type": "bearer"}
 
 
 @router.post("/google")
-async def google_login(payload: GoogleLoginRequest):
+async def google_login(payload: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
     """
     Verifies the Google ID token (google-auth library) then
     creates/looks-up the local user and issues our own JWT.
@@ -71,11 +89,40 @@ async def google_login(payload: GoogleLoginRequest):
     except ValueError:
         raise HTTPException(status_code=401, detail="Invalid Google token")
 
-    user_id = "usr_google_" + idinfo["sub"]
+    google_id = idinfo["sub"]
+    email = idinfo.get("email")
+
+    user = await db.scalar(select(User).where(User.google_id == google_id))
+    if not user and email:
+        # First Google login for an email that may already have a
+        # password account — link them instead of creating a duplicate.
+        user = await db.scalar(select(User).where(User.email == email))
+        if user:
+            user.google_id = google_id
+
+    if not user:
+        base_username = (email or f"user_{google_id[:8]}").split("@")[0]
+        username = base_username
+        suffix = 1
+        while await db.scalar(select(User).where(User.username == username)):
+            suffix += 1
+            username = f"{base_username}{suffix}"
+
+        user = User(
+            email=email or f"{google_id}@google.local",
+            username=username,
+            google_id=google_id,
+            avatar_url=idinfo.get("picture"),
+        )
+        db.add(user)
+
+    await db.commit()
+    await db.refresh(user)
+
     return {
-        "access_token": create_access_token(user_id),
+        "access_token": create_access_token(user.id),
         "token_type": "bearer",
-        "email": idinfo.get("email"),
+        "email": user.email,
         "name": idinfo.get("name"),
-        "avatar": idinfo.get("picture"),
+        "avatar": user.avatar_url,
     }
