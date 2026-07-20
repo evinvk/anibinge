@@ -1,10 +1,16 @@
 import { api } from "@/lib/api";
 import { ScheduleGrid } from "@/components/schedule-grid";
-export const dynamic = "force-dynamic";
+
 export const metadata = { title: "Airing Schedule" };
 
 export default async function SchedulePage() {
-  const weekly = await api.weeklySchedule();
+  let weekly = {};
+  try {
+    weekly = await api.weeklySchedule();
+  } catch (err) {
+    console.error("Weekly schedule fetch failed:", err);
+    // fall through with an empty schedule rather than crashing the page
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
