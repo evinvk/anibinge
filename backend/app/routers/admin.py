@@ -26,8 +26,8 @@ async def analytics_overview(user_id: str = Depends(get_current_user_id)):
 async def api_monitoring(user_id: str = Depends(get_current_user_id)):
     # TODO: pull from a Prometheus/logging sink; placeholder response.
     return {
-        "jikan": {"status": "healthy", "avg_latency_ms": 0, "error_rate": 0.0},
         "anilist": {"status": "healthy", "avg_latency_ms": 0, "error_rate": 0.0},
+        "wibu": {"status": "healthy", "avg_latency_ms": 0, "error_rate": 0.0},
     }
 
 

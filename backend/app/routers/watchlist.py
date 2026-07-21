@@ -23,7 +23,7 @@ class WatchStatus(str, Enum):
 
 class WatchlistEntryIn(BaseModel):
     anime_id: int
-    source: str = "jikan"  # "jikan" | "anilist" — id spaces differ between the two
+    source: str = "anilist"  # "anilist" or "mal" — id spaces differ between sources
     status: WatchStatus
     progress: int = 0
     rating: float | None = None

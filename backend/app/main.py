@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
-from app.routers import admin, anime, auth, schedule, search, seasonal, watchlist
+from app.routers import admin, anime, auth, schedule, search, seasonal, streaming, watchlist
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("anibinge")
@@ -54,14 +54,19 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
+# ============== ROUTERS ==============
+
 app.include_router(anime.router)
 app.include_router(seasonal.router)
 app.include_router(schedule.router)
 app.include_router(search.router)
+app.include_router(streaming.router)
 app.include_router(auth.router)
 app.include_router(watchlist.router)
 app.include_router(admin.router)
 
+
+# ============== HEALTH CHECK ==============
 
 @app.get("/api/health")
 async def health():
