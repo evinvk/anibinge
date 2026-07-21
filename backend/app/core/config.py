@@ -17,9 +17,9 @@ class Settings(BaseSettings):
 
     # Redis cache
     REDIS_URL: str = "redis://localhost:6379/0"
-    CACHE_TTL_SHORT: int = 60 * 5          # 5 min  – schedule / airing-today
+    CACHE_TTL_SHORT: int = 60 * 5          # 5 min  – search, trending, popular
     CACHE_TTL_MEDIUM: int = 60 * 60        # 1 hr   – anime details, seasonal
-    CACHE_TTL_LONG: int = 60 * 60 * 24     # 24 hr  – genres, studios, static lists
+    CACHE_TTL_LONG: int = 60 * 60 * 24     # 24 hr  – genres, characters, staff
 
     # Auth
     JWT_SECRET: str = "change-me-in-production"
@@ -29,11 +29,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
 
     # Upstream anime data providers
-    JIKAN_BASE_URL: str = "https://api.jikan.moe/v4"
+    # Primary: AniList GraphQL
     ANILIST_BASE_URL: str = "https://graphql.anilist.co"
-    TMDB_API_KEY: str = ""
-    TMDB_BASE_URL: str = "https://api.themoviedb.org/3"
-    YOUTUBE_API_KEY: str = ""
+    # Streaming: Wibu API
+    WIBU_BASE_URL: str = "https://api.wibu.live/v2"
 
     # Rate limiting (per IP)
     RATE_LIMIT_PER_MINUTE: int = 60
