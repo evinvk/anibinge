@@ -29,8 +29,18 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
 
     # Upstream anime data providers
+    # MyAnimeList API (primary) - requires OAuth credentials
+    MAL_CLIENT_ID: str = ""
+    MAL_CLIENT_SECRET: str = ""
+    MAL_BASE_URL: str = "https://api.myanimelist.net/v2"
+    
+    # Jikan API (fallback) - public, no key required
     JIKAN_BASE_URL: str = "https://api.jikan.moe/v4"
+    
+    # AniList GraphQL (fallback)
     ANILIST_BASE_URL: str = "https://graphql.anilist.co"
+    
+    # Optional data sources
     TMDB_API_KEY: str = ""
     TMDB_BASE_URL: str = "https://api.themoviedb.org/3"
     YOUTUBE_API_KEY: str = ""
