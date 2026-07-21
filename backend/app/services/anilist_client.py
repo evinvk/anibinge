@@ -1,97 +1,218 @@
-"""
-AniList GraphQL client — FALLBACK data source, used automatically when
-Jikan is unavailable or rate-limited (see services/aggregator.py).
-"""
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.core.cache import cached
-from app.core.config import get_settings
-
-settings = get_settings()
-
-_client = httpx.AsyncClient(base_url="", timeout=10.0)
-
-_SEARCH_QUERY = """
-query ($search: String, $page: Int, $perPage: Int) {
-  Page(page: $page, perPage: $perPage) {
-    pageInfo { total currentPage lastPage hasNextPage }
-    media(search: $search, type: ANIME) {
-      id
-      title { romaji english native }
-      coverImage { large color }
-      bannerImage
-      averageScore
-      popularity
-      status
-      season
-      seasonYear
-      genres
-      episodes
-      format
-    }
-  }
-}
-"""
-
-_TRENDING_QUERY = """
-query ($page: Int, $perPage: Int) {
-  Page(page: $page, perPage: $perPage) {
-    media(sort: TRENDING_DESC, type: ANIME) {
-      id
-      title { romaji english }
-      coverImage { large }
-      bannerImage
-      averageScore
-      genres
-      episodes
-      status
-    }
-  }
-}
-"""
-
-_DETAIL_QUERY = """
-query ($id: Int) {
-  Media(id: $id, type: ANIME) {
-    id
-    title { romaji english native }
-    description(asHtml: false)
-    coverImage { large }
-    bannerImage
-    averageScore
-    popularity
-    favourites
-    status
-    season
-    seasonYear
-    genres
-    episodes
-    format
-    studios(isMain: true) { nodes { name } }
-  }
-}
-"""
+ANILIST_URL = "https://graphql.anilist.co"
 
 
-async def _post(query: str, variables: dict) -> dict:
-    resp = await _client.post(
-        settings.ANILIST_BASE_URL, json={"query": query, "variables": variables}
+class AniListClient:
+
+    def __init__(self):
+        self.client = httpx.AsyncClient(
+            timeout=20,
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    resp.raise_for_status()
-    return resp.json()["data"]
+    async def _query(self, query: str, variables: dict):
+
+        response = await self.client.post(
+            ANILIST_URL,
+            json={
+                "query": query,
+                "variables": variables,
+            },
+        )
+
+        response.raise_for_status()
+
+        data = response.json()
+
+        if "errors" in data:
+            raise Exception(data["errors"])
+
+        return data["data"]
+
+    async def search_anime(
+        self,
+        search: str,
+        page: int = 1,
+        per_page: int = 20,
+    ):
+
+        query = """
+        query ($search:String,$page:Int,$perPage:Int){
+
+          Page(page:$page,perPage:$perPage){
+
+            pageInfo{
+              total
+              currentPage
+              hasNextPage
+            }
+
+            media(
+              search:$search,
+              type:ANIME
+            ){
+
+              id
+
+              title{
+                romaji
+                english
+                native
+              }
+
+              coverImage{
+                extraLarge
+                large
+              }
+
+              bannerImage
+
+              description
+
+              averageScore
+
+              popularity
+
+              episodes
+
+              duration
+
+              status
+
+              season
+
+              seasonYear
+
+              genres
+
+              format
+            }
+
+          }
+
+        }
+        """
+
+        return await self._query(
+            query,
+            {
+                "search": search,
+                "page": page,
+                "perPage": per_page,
+            },
+        )
+
+    async def get_trending(
+        self,
+        page=1,
+        per_page=20,
+    ):
+
+        query = """
+        query ($page:Int,$perPage:Int){
+
+        Page(page:$page,perPage:$perPage){
+
+        media(
+            type:ANIME,
+            sort:TRENDING_DESC
+        ){
+
+            id
+
+            title{
+              romaji
+              english
+            }
+
+            coverImage{
+              extraLarge
+            }
+
+            bannerImage
+
+            averageScore
+
+            genres
+
+            episodes
+
+            status
+
+            seasonYear
+
+        }
+
+        }
+
+        }
+        """
+
+        return await self._query(
+            query,
+            {
+                "page": page,
+                "perPage": per_page,
+            },
+        )
+
+    async def get_popular(self, page=1, per_page=20):
+
+        query = """
+        query($page:Int,$perPage:Int){
+
+        Page(page:$page,perPage:$perPage){
+
+        media(
+            type:ANIME,
+            sort:POPULARITY_DESC
+        ){
+
+            id
+
+            title{
+                romaji
+                english
+            }
+
+            coverImage{
+                extraLarge
+            }
+
+            bannerImage
+
+            averageScore
+
+            popularity
+
+            genres
+
+        }
+
+        }
+
+        }
+        """
+
+        return await self._query(
+            query,
+            {
+                "page": page,
+                "perPage": per_page,
+            },
+        )
+
+    async def close(self):
+        await self.client.aclose()
 
 
-@cached("anilist:trending", ttl=settings.CACHE_TTL_MEDIUM)
-async def get_trending(page: int = 1, per_page: int = 20) -> dict:
-    return await _post(_TRENDING_QUERY, {"page": page, "perPage": per_page})
-
-
-@cached("anilist:search", ttl=settings.CACHE_TTL_SHORT)
-async def search_anime(query: str, page: int = 1, per_page: int = 20) -> dict:
-    return await _post(_SEARCH_QUERY, {"search": query, "page": page, "perPage": per_page})
-
-
-@cached("anilist:detail", ttl=settings.CACHE_TTL_MEDIUM)
-async def get_anime_detail(anilist_id: int) -> dict:
-    data = await _post(_DETAIL_QUERY, {"id": anilist_id})
-    return data["Media"]
+anilist_client = AniListClient()
