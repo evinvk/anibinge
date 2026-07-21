@@ -48,8 +48,13 @@ class Settings(BaseSettings):
     # Rate limiting (per IP)
     RATE_LIMIT_PER_MINUTE: int = 60
 
-    # CORS
-    CORS_ORIGINS: list[str] = ["http://localhost:3000", "https://anibinge.app"]
+    # CORS - Allow your frontend domains
+    CORS_ORIGINS: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://anibinge-nine.vercel.app",
+        "https://anibinge.app",
+    ]
 
 
 @lru_cache
