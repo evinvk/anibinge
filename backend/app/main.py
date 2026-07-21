@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
-from app.routers import admin, anime, auth, schedule, search, seasonal, watchlist
+from app.routers import admin, anime, auth, news, schedule, search, seasonal, watchlist
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("anibinge")
@@ -20,7 +20,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
-    description="Aggregated anime data API — Jikan (primary) + AniList (fallback).",
+    description="Aggregated anime data API — Jikan (primary) + AniList (fallback) + AnimeNewsNetwork (news).",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -60,6 +60,7 @@ app.include_router(schedule.router)
 app.include_router(search.router)
 app.include_router(auth.router)
 app.include_router(watchlist.router)
+app.include_router(news.router)
 app.include_router(admin.router)
 
 
