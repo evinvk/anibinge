@@ -2,18 +2,23 @@
 Client for the MyAnimeList Official API.
 This is our PRIMARY data source.
 
-MyAnimeList API requires OAuth2 authentication. The access token is obtained
-via the authorization code flow and cached. Rate limits are generous (generous
-quota for anime data endpoints).
+IMPORTANT: MyAnimeList's OAuth2 implementation only supports the
+Authorization Code Grant (with PKCE) — it does NOT support the
+"client_credentials" grant type. There is no way to mint an app-only
+Bearer token for MAL without a real user login/consent flow.
+
+For read-only public data (search, rankings, details, characters, etc.
+— everything this app needs), MAL instead just wants a simple
+`X-MAL-CLIENT-ID` header with your registered client ID. No OAuth
+token, no client secret, no login flow required. This client uses
+that approach.
 
 All public methods are wrapped in the Redis `cached()` decorator to minimize
 API calls and handle rate limits gracefully.
 """
 import asyncio
-import base64
 import logging
 from typing import Any
-from datetime import datetime, timedelta
 
 import httpx
 
@@ -24,63 +29,23 @@ logger = logging.getLogger("anibinge.mal_client")
 settings = get_settings()
 
 _client = httpx.AsyncClient(base_url=settings.MAL_BASE_URL, timeout=10.0)
-_access_token: str | None = None
-_token_expiry: datetime | None = None
-
-
-async def _get_access_token() -> str:
-    """
-    Get or refresh the OAuth2 access token for MyAnimeList API.
-    Tokens are cached with expiry tracking.
-    """
-    global _access_token, _token_expiry
-
-    # Return cached token if still valid
-    if _access_token and _token_expiry and datetime.now() < _token_expiry:
-        return _access_token
-
-    if not settings.MAL_CLIENT_ID or not settings.MAL_CLIENT_SECRET:
-        raise ValueError(
-            "MAL_CLIENT_ID and MAL_CLIENT_SECRET must be set in environment variables. "
-            "Register your app at https://myanimelist.net/apiconfig"
-        )
-
-    # Request new token using Client Credentials flow (for public data)
-    auth_str = f"{settings.MAL_CLIENT_ID}:{settings.MAL_CLIENT_SECRET}"
-    auth_b64 = base64.b64encode(auth_str.encode()).decode()
-
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(
-                "https://myanimelist.net/v1/oauth2/token",
-                headers={"Authorization": f"Basic {auth_b64}"},
-                data={"grant_type": "client_credentials"},
-                timeout=10.0,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-            _access_token = data["access_token"]
-            # Set expiry 5 minutes before actual expiry for safety
-            expires_in = data.get("expires_in", 3600)
-            _token_expiry = datetime.now() + timedelta(seconds=expires_in - 300)
-
-            logger.info("MAL OAuth2 token refreshed, expires at %s", _token_expiry)
-            return _access_token
-
-        except httpx.HTTPError as e:
-            logger.error("Failed to get MAL access token: %s", e)
-            raise
 
 
 async def _get(
     path: str, params: dict | None = None, retries: int = 2
 ) -> dict[str, Any]:
     """
-    Make authenticated GET request to MAL API with retry logic for rate limits.
+    Make a GET request to MAL API using X-MAL-CLIENT-ID header auth
+    (the correct scheme for MAL's public read endpoints), with retry
+    logic for rate limits.
     """
-    token = await _get_access_token()
-    headers = {"Authorization": f"Bearer {token}"}
+    if not settings.MAL_CLIENT_ID:
+        raise ValueError(
+            "MAL_CLIENT_ID must be set in environment variables. "
+            "Register your app at https://myanimelist.net/apiconfig"
+        )
+
+    headers = {"X-MAL-CLIENT-ID": settings.MAL_CLIENT_ID}
 
     for attempt in range(retries + 1):
         try:
@@ -99,14 +64,10 @@ async def _get(
             return resp.json()
 
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401:
-                # Token expired, reset and retry
-                global _access_token, _token_expiry
-                _access_token = None
-                _token_expiry = None
-                if attempt < retries:
-                    await asyncio.sleep(0.5)
-                    continue
+            if e.response.status_code in (401, 403) and attempt < retries:
+                # Transient auth hiccup, brief backoff and retry once
+                await asyncio.sleep(0.5)
+                continue
             raise
 
     return {}
@@ -133,7 +94,7 @@ async def search_anime(query: str, page: int = 1, limit: int = 10) -> dict:
         return result
     except Exception as e:
         logger.error("MAL search failed: %s", e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:detail", ttl=settings.CACHE_TTL_MEDIUM)
@@ -155,7 +116,7 @@ async def get_anime_details(anime_id: int) -> dict:
         return result
     except Exception as e:
         logger.error("MAL anime detail failed for id %s: %s", anime_id, e)
-        return {"error": str(e)}
+        raise
 
 
 @cached("mal:characters", ttl=settings.CACHE_TTL_LONG)
@@ -169,7 +130,7 @@ async def get_anime_characters(anime_id: int) -> dict:
         return result
     except Exception as e:
         logger.error("MAL characters failed for id %s: %s", anime_id, e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:forum", ttl=settings.CACHE_TTL_SHORT)
@@ -183,7 +144,7 @@ async def get_anime_forum(anime_id: int) -> dict:
         return result
     except Exception as e:
         logger.error("MAL forum failed for id %s: %s", anime_id, e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:reviews", ttl=settings.CACHE_TTL_MEDIUM)
@@ -198,7 +159,7 @@ async def get_anime_reviews(anime_id: int, page: int = 1, limit: int = 10) -> di
         return result
     except Exception as e:
         logger.error("MAL reviews failed for id %s: %s", anime_id, e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:recommendations", ttl=settings.CACHE_TTL_LONG)
@@ -212,7 +173,7 @@ async def get_anime_recommendations(anime_id: int) -> dict:
         return result
     except Exception as e:
         logger.error("MAL recommendations failed for id %s: %s", anime_id, e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:ranking", ttl=settings.CACHE_TTL_MEDIUM)
@@ -235,7 +196,7 @@ async def get_anime_ranking(ranking_type: str = "all", page: int = 1, limit: int
         return result
     except Exception as e:
         logger.error("MAL ranking failed: %s", e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:seasonal", ttl=settings.CACHE_TTL_MEDIUM)
@@ -260,7 +221,7 @@ async def get_seasonal_anime(year: int, season: str, page: int = 1, limit: int =
         return result
     except Exception as e:
         logger.error("MAL seasonal failed for %s %s: %s", year, season, e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:genres", ttl=settings.CACHE_TTL_LONG)
@@ -273,7 +234,7 @@ async def get_genres() -> dict:
         return result
     except Exception as e:
         logger.error("MAL genres failed: %s", e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:studios", ttl=settings.CACHE_TTL_LONG)
@@ -286,7 +247,7 @@ async def get_studios() -> dict:
         return result
     except Exception as e:
         logger.error("MAL studios failed: %s", e)
-        return {"data": [], "error": str(e)}
+        raise
 
 
 @cached("mal:broadcast", ttl=settings.CACHE_TTL_SHORT)
@@ -305,4 +266,4 @@ async def get_broadcast_schedule(day: str | None = None) -> dict:
         return result
     except Exception as e:
         logger.error("MAL broadcast failed: %s", e)
-        return {"data": [], "error": str(e)}
+        raise
