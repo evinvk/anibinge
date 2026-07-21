@@ -55,7 +55,7 @@ async def get_featured(request: Request):
 @limiter.limit("30/minute")
 async def get_rankings(
     request: Request,
-    ranking_type: str = Query(..., description="Type of ranking: top-anime, top-manga, most-popular, etc."),
+    ranking_type: str,
 ):
     """
     Get ANN rankings by type.
@@ -84,8 +84,8 @@ async def search_encyclopedia(
 @limiter.limit("30/minute")
 async def get_encyclopedia_entry(
     request: Request,
-    entry_type: str = Query(..., description="Type: anime, manga, people, companies, etc."),
-    entry_id: str = Query(..., description="ID of the encyclopedia entry"),
+    entry_type: str,
+    entry_id: str,
 ):
     """
     Get detailed information about an encyclopedia entry.
