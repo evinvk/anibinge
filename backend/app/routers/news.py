@@ -1,7 +1,7 @@
 """
 News router — aggregates anime news from AnimeNewsNetwork and other sources.
 """
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -14,6 +14,7 @@ limiter = Limiter(key_func=get_remote_address)
 @router.get("/")
 @limiter.limit("30/minute")
 async def get_news(
+    request: Request,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Results per page"),
 ):
@@ -28,6 +29,7 @@ async def get_news(
 @router.get("/reviews")
 @limiter.limit("30/minute")
 async def get_reviews(
+    request: Request,
     anime_id: str | None = Query(None, description="Optional anime ID to filter reviews"),
     page: int = Query(1, ge=1, description="Page number"),
 ):
@@ -42,7 +44,7 @@ async def get_reviews(
 
 @router.get("/featured")
 @limiter.limit("30/minute")
-async def get_featured():
+async def get_featured(request: Request):
     """
     Get featured articles and content from AnimeNewsNetwork's homepage.
     """
@@ -52,6 +54,7 @@ async def get_featured():
 @router.get("/rankings/{ranking_type}")
 @limiter.limit("30/minute")
 async def get_rankings(
+    request: Request,
     ranking_type: str = Query(..., description="Type of ranking: top-anime, top-manga, most-popular, etc."),
 ):
     """
@@ -65,6 +68,7 @@ async def get_rankings(
 @router.get("/encyclopedia/search")
 @limiter.limit("30/minute")
 async def search_encyclopedia(
+    request: Request,
     q: str = Query(..., description="Search query"),
     type_filter: str | None = Query(None, description="Filter by type: anime, manga, people, companies, etc."),
 ):
@@ -79,6 +83,7 @@ async def search_encyclopedia(
 @router.get("/encyclopedia/{entry_type}/{entry_id}")
 @limiter.limit("30/minute")
 async def get_encyclopedia_entry(
+    request: Request,
     entry_type: str = Query(..., description="Type: anime, manga, people, companies, etc."),
     entry_id: str = Query(..., description="ID of the encyclopedia entry"),
 ):
