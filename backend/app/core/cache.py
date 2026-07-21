@@ -8,6 +8,7 @@ public APIs (which are rate-limited). This is the backbone of the
 """
 import hashlib
 import json
+import logging
 from functools import wraps
 from typing import Any, Callable
 
@@ -15,14 +16,28 @@ import redis.asyncio as redis
 
 from app.core.config import get_settings
 
+logger = logging.getLogger("anibinge.cache")
+
 settings = get_settings()
 _redis: redis.Redis | None = None
+
+# Once a Redis connection failure has been observed, stop retrying it on
+# every single request (each attempt costs a connection-timeout's worth of
+# latency). We retry again after a short cooldown in case Redis recovers.
+_redis_unavailable_until: float = 0.0
+_REDIS_RETRY_COOLDOWN_SECONDS = 30.0
 
 
 async def get_redis() -> redis.Redis:
     global _redis
     if _redis is None:
-        _redis = redis.from_url(settings.REDIS_URL, encoding="utf-8", decode_responses=True)
+        _redis = redis.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
     return _redis
 
 
@@ -33,22 +48,53 @@ def _make_key(prefix: str, args: tuple, kwargs: dict) -> str:
 
 
 def cached(prefix: str, ttl: int):
-    """Decorator: cache an async function's JSON-serializable return value."""
+    """
+    Decorator: cache an async function's JSON-serializable return value.
+
+    Redis is a *performance* layer, not a dependency the app should be down
+    without. If Redis is unreachable or misconfigured (e.g. REDIS_URL isn't
+    set in production and there's no Redis instance to talk to), every
+    decorated function transparently falls back to calling the underlying
+    function directly instead of raising — so anime data still loads, it's
+    just not cached until Redis comes back.
+    """
 
     def decorator(fn: Callable):
         @wraps(fn)
         async def wrapper(*args, **kwargs) -> Any:
-            r = await get_redis()
-            key = _make_key(prefix, args, kwargs)
-            existing = await r.get(key)
-            if existing is not None:
-                return json.loads(existing)
+            import time
 
+            global _redis_unavailable_until
+
+            key = _make_key(prefix, args, kwargs)
+            skip_redis = time.monotonic() < _redis_unavailable_until
+
+            if not skip_redis:
+                try:
+                    r = await get_redis()
+                    existing = await r.get(key)
+                    if existing is not None:
+                        return json.loads(existing)
+                except Exception as e:
+                    logger.warning(
+                        "Redis unavailable (%s); serving '%s' uncached for %.0fs",
+                        e, prefix, _REDIS_RETRY_COOLDOWN_SECONDS,
+                    )
+                    _redis_unavailable_until = time.monotonic() + _REDIS_RETRY_COOLDOWN_SECONDS
+
+            # Always call the real function on a cache miss / cache failure.
             result = await fn(*args, **kwargs)
-            try:
-                await r.set(key, json.dumps(result), ex=ttl)
-            except (TypeError, ValueError):
-                pass  # non-serializable result: skip caching silently
+
+            if time.monotonic() >= _redis_unavailable_until:
+                try:
+                    r = await get_redis()
+                    await r.set(key, json.dumps(result), ex=ttl)
+                except (TypeError, ValueError):
+                    pass  # non-serializable result: skip caching silently
+                except Exception as e:
+                    logger.warning("Redis set failed for '%s': %s", prefix, e)
+                    _redis_unavailable_until = time.monotonic() + _REDIS_RETRY_COOLDOWN_SECONDS
+
             return result
 
         return wrapper
