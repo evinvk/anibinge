@@ -1,7 +1,7 @@
 """
 Streaming router — integrates Wibu API for episode streaming and video sources.
 """
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -14,6 +14,7 @@ limiter = Limiter(key_func=get_remote_address)
 @router.get("/anime/{anime_id}/episodes")
 @limiter.limit("60/minute")
 async def get_episodes(
+    request: Request,
     anime_id: int,
     page: int = Query(1, ge=1, description="Page number"),
 ):
@@ -36,6 +37,7 @@ async def get_episodes(
 @router.get("/anime/{anime_id}/episode/{episode_number}")
 @limiter.limit("60/minute")
 async def get_episode_detail(
+    request: Request,
     anime_id: int,
     episode_number: int,
 ):
@@ -58,6 +60,7 @@ async def get_episode_detail(
 @router.get("/anime/{anime_id}/episode/{episode_number}/sources")
 @limiter.limit("60/minute")
 async def get_episode_sources(
+    request: Request,
     anime_id: int,
     episode_number: int,
     server: str | None = Query(None, description="Optional: specific server (vidstream, streamtape, etc)"),
@@ -82,6 +85,7 @@ async def get_episode_sources(
 @router.get("/anime/{anime_id}/episode/{episode_number}/subtitles")
 @limiter.limit("60/minute")
 async def get_episode_subtitles(
+    request: Request,
     anime_id: int,
     episode_number: int,
 ):
@@ -100,7 +104,7 @@ async def get_episode_subtitles(
 
 @router.get("/servers")
 @limiter.limit("30/minute")
-async def list_streaming_servers():
+async def list_streaming_servers(request: Request):
     """
     Get list of all available streaming servers on Wibu.
     
@@ -117,6 +121,7 @@ async def list_streaming_servers():
 @router.get("/recent")
 @limiter.limit("30/minute")
 async def get_recent_episodes(
+    request: Request,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Results per page"),
 ):
@@ -135,6 +140,7 @@ async def get_recent_episodes(
 @router.get("/trending")
 @limiter.limit("30/minute")
 async def get_trending_on_wibu(
+    request: Request,
     page: int = Query(1, ge=1, description="Page number"),
     limit: int = Query(20, ge=1, le=50, description="Results per page"),
 ):
@@ -153,6 +159,7 @@ async def get_trending_on_wibu(
 @router.get("/search")
 @limiter.limit("60/minute")
 async def search_wibu(
+    request: Request,
     q: str = Query(..., description="Search query"),
     page: int = Query(1, ge=1, description="Page number"),
 ):
@@ -171,6 +178,7 @@ async def search_wibu(
 @router.get("/play/{anime_id}/{episode_number}")
 @limiter.limit("120/minute")
 async def get_play_url(
+    request: Request,
     anime_id: int,
     episode_number: int,
     server: str = Query("vidstream", description="Streaming server to use"),
