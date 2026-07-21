@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: anibinge-api
+    runtime: python
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: ENV
+        value: production
+      - key: PYTHON_VERSION
+        value: 3.11
+    healthCheckPath: /api/health
+    healthCheckProtocol: http
