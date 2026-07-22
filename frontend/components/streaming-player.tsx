@@ -76,48 +76,67 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     };
   }, [masterUrl]);
 
+  const [source, setSource] = useState<"gogoanime" | "anivexa" | null>(null);
+  const fallbackAttemptedRef = useRef(false);
+
+  const loadAnivexaFallback = useCallback(async (ep: number) => {
+    if (!anilistId) return false;
+    try {
+      const params = new URLSearchParams({ ep: String(ep), anilist_id: String(anilistId) });
+      const res = await fetch(`${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?${params}`).then(r => {
+        if (!r.ok) throw new Error("not ok");
+        return r.json();
+      });
+      // Try each provider
+      for (const prov of ["anikoto", "animegg", "anineko"]) {
+        try {
+          const provRes = await fetch(`${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}&provider=${prov}`).then(r => {
+            if (!r.ok) throw new Error("not ok");
+            return r.json();
+          });
+          if (provRes && !provRes.error) {
+            const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}&provider=${prov}`;
+            setSource("anivexa");
+            setMasterUrl(masterUrlFull);
+            setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+            setLoadingStream(false);
+            return true;
+          }
+        } catch { /* try next provider */ }
+      }
+    } catch { /* fallback failed */ }
+    return false;
+  }, [anilistId]);
+
   const loadStream = useCallback(async (slug: string, ep: number) => {
     setLoadingStream(true);
     setError(null);
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(0);
+    fallbackAttemptedRef.current = false;
     try {
-      // Try GogoAnime first
       const res = await api.gogoanimeStream(slug, ep);
       const data = res.data;
       if (data?.qualities) {
+        setSource("gogoanime");
         setStreamData({ qualities: data.qualities });
         setMasterUrl(api.gogoanimeMaster(slug, ep));
+        setLoadingStream(false);
         return;
       }
     } catch {
       // GogoAnime failed, fall through to Anivexa
     }
 
-    try {
-      // Fallback: use Anivexa via the fallback endpoint
-      const params = new URLSearchParams({ q: animeTitle, ep: String(ep) });
-      if (anilistId) params.set("anilist_id", String(anilistId));
-      const res = await fetch(`${API_BASE}/api/v1/streaming/fallback/stream?${params}`).then(r => r.json());
-      if (res?.master_url) {
-        const masterUrlFull = res.master_url.startsWith("http")
-          ? res.master_url
-          : `${API_BASE}${res.master_url}`;
-        setMasterUrl(masterUrlFull);
-        setStreamData({
-          qualities: res.qualities || [{ quality: "auto", url: masterUrlFull }],
-          _source: res.source,
-        } as any);
-        return;
-      }
-    } catch {
-      // Both failed
+    // GogoAnime unavailable, try Anivexa directly
+    fallbackAttemptedRef.current = true;
+    const ok = await loadAnivexaFallback(ep);
+    if (!ok) {
+      setError("No streaming sources available for this episode");
+      setLoadingStream(false);
     }
-
-    setError("No streaming sources available for this episode");
-    setLoadingStream(false);
-  }, [animeTitle, anilistId]);
+  }, [animeTitle, anilistId, loadAnivexaFallback]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {
@@ -169,8 +188,20 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         }
         video.play().catch(() => {});
       });
-      hls.on(Hls.Events.ERROR, (_: any, data: any) => {
-        if (data.fatal) {
+      hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
+        if (data.fatal && source === "gogoanime" && !fallbackAttemptedRef.current && anilistId) {
+          // GogoAnime CDN is broken — try Anivexa fallback
+          fallbackAttemptedRef.current = true;
+          hls.destroy();
+          hlsRef.current = null;
+          setLoadingStream(true);
+          setError(null);
+          const ok = await loadAnivexaFallback(currentEp);
+          if (!ok) {
+            setError("Streaming unavailable from all providers");
+            setLoadingStream(false);
+          }
+        } else if (data.fatal) {
           setError("Playback error: " + data.type);
         }
       });
