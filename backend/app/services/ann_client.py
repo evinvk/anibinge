@@ -27,8 +27,8 @@ _client = httpx.AsyncClient(
 )
 
 # ANN RSS feed URLs
-_RSS_NEWS = "/news/feature"
-_RSS_REVIEWS = "/reviews.xml"
+_RSS_NEWS = "/all/rss.xml"
+_RSS_REVIEWS = "/review/rss.xml"
 
 
 async def _fetch_rss(path: str, retries: int = 2) -> str:
