@@ -11,7 +11,6 @@ interface StreamSource {
 }
 
 interface StreamData {
-  master_m3u8: string;
   qualities: StreamSource[];
 }
 
@@ -24,12 +23,12 @@ interface Props {
 export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
   const [currentEp, setCurrentEp] = useState(1);
   const [streamData, setStreamData] = useState<StreamData | null>(null);
+  const [masterUrl, setMasterUrl] = useState<string | null>(null);
   const [selectedQuality, setSelectedQuality] = useState(0);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
-  const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -37,7 +36,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
-      cleanupBlobUrl();
     };
   }, []);
 
@@ -48,8 +46,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
   }, [slug, currentEp]);
 
   useEffect(() => {
-    if (streamData?.master_m3u8 && videoRef.current) {
-      loadMaster(streamData.master_m3u8);
+    if (masterUrl && videoRef.current) {
+      loadPlayer(masterUrl);
     }
     return () => {
       if (hlsRef.current) {
@@ -57,26 +55,20 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
         hlsRef.current = null;
       }
     };
-  }, [streamData]);
-
-  function cleanupBlobUrl() {
-    if (blobUrlRef.current) {
-      URL.revokeObjectURL(blobUrlRef.current);
-      blobUrlRef.current = null;
-    }
-  }
+  }, [masterUrl]);
 
   const loadStream = useCallback(async (s: string, ep: number) => {
     setLoadingStream(true);
     setError(null);
     setStreamData(null);
+    setMasterUrl(null);
     setSelectedQuality(0);
-    cleanupBlobUrl();
     try {
       const res = await api.gogoanimeStream(s, ep);
       const data = res.data;
-      if (data?.master_m3u8) {
-        setStreamData(data);
+      if (data?.qualities) {
+        setStreamData({ qualities: data.qualities });
+        setMasterUrl(api.gogoanimeMaster(s, ep));
       } else {
         setError("No streaming sources available for this episode");
       }
@@ -90,21 +82,16 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
     }
   }, []);
 
-  async function loadMaster(m3u8Content: string) {
+  async function loadPlayer(url: string) {
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
-    cleanupBlobUrl();
 
     const video = videoRef.current;
     if (!video) return;
 
     const Hls = (await import("hls.js")).default;
-
-    const blob = new Blob([m3u8Content], { type: "application/vnd.apple.mpegurl" });
-    const blobUrl = URL.createObjectURL(blob);
-    blobUrlRef.current = blobUrl;
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -112,7 +99,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
         maxMaxBufferLength: 60,
       });
       hlsRef.current = hls;
-      hls.loadSource(blobUrl);
+      hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
         if (data.levels?.length > 1) {
@@ -126,7 +113,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = blobUrl;
+      video.src = url;
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");

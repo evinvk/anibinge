@@ -258,6 +258,44 @@ async def get_gogoanime_episode(
         raise HTTPException(status_code=503, detail="GogoAnime episode unavailable")
 
 
+@router.get("/gogoanime/{slug}/master")
+@limiter.limit("30/minute")
+async def gogoanime_master_m3u8(
+    request: Request,
+    slug: str,
+    ep: int = Query(..., ge=1, description="Episode number"),
+):
+    """Serve the rewritten master M3U8 directly so hls.js can resolve variant URLs correctly.
+    Blob URLs break relative URL resolution; serving from our domain fixes this."""
+    from urllib.parse import urlparse
+    try:
+        episode = await gogoanime_client.get_episode(slug, ep)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found on GogoAnime")
+
+        proxy_url = episode.get("defaultStreamingUrl", "")
+        if not proxy_url:
+            raise HTTPException(status_code=404, detail="No streaming URL available")
+
+        m3u8_text, resolved_url = await gogoanime_client.resolve_m3u8(proxy_url)
+        if not m3u8_text:
+            raise HTTPException(status_code=503, detail="Failed to resolve M3U8 from GogoAnime")
+
+        parsed = urlparse(resolved_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        rewritten = gogoanime_client._rewrite_m3u8_urls(m3u8_text, base_url)
+
+        return Response(
+            content=rewritten,
+            media_type="application/vnd.apple.mpegurl",
+            headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="GogoAnime master M3U8 unavailable")
+
+
 @router.get("/gogoanime/{slug}/stream")
 @limiter.limit("30/minute")
 async def get_gogoanime_stream(

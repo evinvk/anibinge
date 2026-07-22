@@ -181,6 +181,8 @@ export const api = {
     request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
   gogoanimeStream: (slug: string, ep: number) =>
     request<{ data: { master_m3u8: string; qualities: { quality: string; url: string }[] } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}`, 60),
+  gogoanimeMaster: (slug: string, ep: number) =>
+    `${API_BASE}/api/v1/streaming/gogoanime/${slug}/master?ep=${ep}`,
   gogoanimeLatest: () =>
     request<{ data: GogoAnimeItem[] }>(`/api/v1/streaming/gogoanime/latest`, 300),
 };
