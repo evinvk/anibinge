@@ -28,13 +28,11 @@ export const metadata: Metadata = {
     url: SITE_URL,
     title: "Anibinge — Discover, Track & Never Miss an Episode",
     description: "Track what's airing, browse by studio or genre, and build your watchlist.",
-    images: [{ url: "/og-image.png", width: 1200, height: 630 }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Anibinge",
     description: "Discover, track, and never miss an episode.",
-    images: ["/og-image.png"],
   },
   manifest: "/manifest.json",
   icons: {
