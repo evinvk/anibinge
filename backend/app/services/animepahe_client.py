@@ -1,6 +1,6 @@
 """
 AnimePahe scraper client — searches, fetches episodes, and resolves streaming links.
-Uses cloudscraper for Cloudflare bypass and PyExecJS for Kwik URL resolution.
+Uses tls_client for Cloudflare bypass and Node.js for Kwik URL resolution.
 """
 import asyncio
 import logging
@@ -12,7 +12,7 @@ import os
 import time
 from typing import Any
 
-import cloudscraper
+import tls_client
 import execjs
 from bs4 import BeautifulSoup
 
@@ -30,42 +30,37 @@ _COOKIE_REFRESH_INTERVAL = 1800  # 30 min
 
 class AnimePaheClient:
     def __init__(self):
-        self._scraper: cloudscraper.CloudScraper | None = None
+        self._session: tls_client.Session | None = None
         self._last_refresh: float = 0
         self._lock = asyncio.Lock()
 
-    def _get_scraper(self) -> cloudscraper.CloudScraper:
-        if self._scraper is None:
-            self._scraper = cloudscraper.create_scraper(
-                browser={"browser": "chrome", "platform": "windows", "desktop": True},
-            )
+    def _get_session(self) -> tls_client.Session:
+        if self._session is None:
+            self._session = tls_client.Session(client_identifier="chrome_120")
             self._last_refresh = time.time()
-        return self._scraper
+        return self._session
 
     async def _refresh_cookies(self):
         async with self._lock:
             now = time.time()
             if now - self._last_refresh < _COOKIE_REFRESH_INTERVAL:
                 return
-            self._scraper = None
-            self._get_scraper()
+            self._session = None
+            self._get_session()
             self._last_refresh = now
-            logger.info("AnimePahe cookies refreshed")
+            logger.info("AnimePahe session refreshed")
 
     async def _get(self, url: str) -> Any:
         await self._refresh_cookies()
-        scraper = self._get_scraper()
+        session = self._get_session()
+        headers = {
+            "User-Agent": random.choice(_USER_AGENTS),
+            "Referer": f"{_BASE_URL}/",
+            "Accept": "application/json, text/html, */*",
+        }
 
         def _do():
-            return scraper.get(
-                url,
-                headers={
-                    "User-Agent": random.choice(_USER_AGENTS),
-                    "Referer": f"{_BASE_URL}/",
-                    "Accept": "application/json, text/html, */*",
-                },
-                timeout=30,
-            )
+            return session.get(url, headers=headers)
 
         return await asyncio.to_thread(_do)
 
@@ -73,6 +68,9 @@ class AnimePaheClient:
         url = f"{_BASE_URL}/api?m=search&q={query}"
         try:
             resp = await self._get(url)
+            if resp.status_code == 403:
+                logger.warning("AnimePahe search got 403 for '%s' — Cloudflare block", query)
+                return []
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
