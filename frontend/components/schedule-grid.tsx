@@ -87,16 +87,20 @@ export function ScheduleGrid({ data }: { data: Record<string, any> }) {
                   </div>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{item.title}</p>
-                    <p className="font-mono text-xs text-mist">
-                      {item.broadcast?.time
-                        ? new Date(
-                            `1970-01-01T${item.broadcast.time}:00`
-                          ).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })
-                        : ""}
-                    </p>
+                    {item.air_time && (
+                      <p className="font-mono text-xs text-primary-400">
+                        {(() => {
+                          try {
+                            const [h, m] = item.air_time.split(":");
+                            const d = new Date();
+                            d.setHours(parseInt(h), parseInt(m));
+                            return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                          } catch {
+                            return item.air_time;
+                          }
+                        })()}
+                      </p>
+                    )}
                   </div>
                 </Link>
               ))}

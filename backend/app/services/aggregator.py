@@ -60,6 +60,12 @@ def _normalize_anilist(item: dict) -> dict:
         start_date = f"{start['year']}-{start['month']:02d}"
     elif start.get("year"):
         start_date = str(start["year"])
+    air_time = None
+    next_ep = item.get("nextAiringEpisode") or {}
+    if next_ep.get("airingAt"):
+        from datetime import datetime, timezone
+        dt = datetime.fromtimestamp(next_ep["airingAt"], tz=timezone.utc)
+        air_time = dt.strftime("%H:%M")
     return {
         "id": item.get("id"),
         "source": "anilist",
@@ -77,12 +83,14 @@ def _normalize_anilist(item: dict) -> dict:
         "season": item.get("season"),
         "format": item.get("format"),
         "start_date": start_date,
+        "air_time": air_time,
     }
 
 
 def _normalize_jikan(item: dict) -> dict:
     """Normalize Jikan response to standard schema."""
     aired = item.get("aired") or {}
+    broadcast = item.get("broadcast") or {}
     return {
         "id": item.get("mal_id"),
         "source": "jikan",
@@ -99,8 +107,9 @@ def _normalize_jikan(item: dict) -> dict:
         "year": item.get("year"),
         "season": item.get("season"),
         "format": item.get("type"),
-        "broadcast": item.get("broadcast"),
+        "broadcast": broadcast,
         "start_date": aired.get("string", "").split(" to ")[0].strip() if aired.get("string") else None,
+        "air_time": broadcast.get("time"),
     }
 
 
@@ -135,6 +144,8 @@ def _normalize_animeschedule(item: dict) -> dict:
     image = f"https://img.animeschedule.net/v3/img/{image_route}.webp" if image_route else None
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
+    sub_time = item.get("subTime") or item.get("jpnTime") or ""
+    air_time = sub_time[11:16] if len(sub_time) > 16 else (sub_time[11:16] if len(sub_time) > 16 else None)
     return {
         "id": None,
         "source": "animeschedule",
@@ -153,6 +164,7 @@ def _normalize_animeschedule(item: dict) -> dict:
         "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
         "start_date": start_date,
         "_animeschedule_slug": item.get("route"),
+        "air_time": air_time,
     }
 
 
@@ -165,6 +177,8 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
     stats = item.get("stats") or {}
     premier = item.get("premier") or item.get("subPremier") or ""
     start_date = premier[:10] if premier else None
+    sub_time = item.get("subTime") or item.get("jpnTime") or ""
+    air_time = sub_time[11:16] if len(sub_time) > 16 else None
     return {
         "id": None,
         "source": "animeschedule",
@@ -184,6 +198,7 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
         "start_date": start_date,
         "_animeschedule_slug": item.get("route"),
         "_animeschedule_days": item.get("days", {}),
+        "air_time": air_time,
     }
 
 
