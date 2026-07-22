@@ -144,14 +144,21 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         </div>
 
         {/* Characters */}
-        {charactersRes.data?.length > 0 && (
+        {charactersRes.data?.filter((c: any) => c.character?.name).length > 0 && (
           <section className="mt-12">
             <h2 className="font-display text-xl font-bold">Characters & Voice Actors</h2>
             <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
-              {charactersRes.data.slice(0, 12).map((c: any) => (
-                <div key={c.character.mal_id} className="glass-card w-32 shrink-0 p-2 text-center">
+              {charactersRes.data.filter((c: any) => c.character?.name).slice(0, 12).map((c: any) => (
+                <div key={c.character.mal_id ?? c.character.id} className="glass-card w-32 shrink-0 p-2 text-center">
                   <div className="relative mx-auto h-20 w-20 overflow-hidden rounded-full">
-                    <Image src={c.character.images?.jpg?.image_url} alt={c.character.name} fill className="object-cover" />
+                    {(c.character.images?.jpg?.image_url || c.character.main_picture?.large) && (
+                      <Image
+                        src={c.character.images?.jpg?.image_url || c.character.main_picture?.large}
+                        alt={c.character.name}
+                        fill
+                        className="object-cover"
+                      />
+                    )}
                   </div>
                   <p className="mt-2 line-clamp-2 text-xs font-medium">{c.character.name}</p>
                   <p className="text-[10px] text-mist">{c.voice_actors?.[0]?.person?.name}</p>
@@ -162,11 +169,11 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         )}
 
         {/* Recommendations */}
-        {recsRes.data?.length > 0 && (
+        {recsRes.data?.filter((r: any) => r.id && r.title).length > 0 && (
           <section className="mt-12 pb-12">
             <h2 className="font-display text-xl font-bold">You Might Also Like</h2>
             <AnimeGrid className="mt-4">
-              {recsRes.data.slice(0, 12).map((r: any) => (
+              {recsRes.data.filter((r: any) => r.id && r.title).slice(0, 12).map((r: any) => (
                 <AnimeCard
                   key={r.id}
                   anime={r}

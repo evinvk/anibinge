@@ -45,22 +45,9 @@ async def currently_airing(page: int = Query(1, ge=1)):
 async def upcoming(page: int = Query(1, ge=1)):
     """Get upcoming anime."""
     try:
-        # Use MAL's upcoming ranking
-        from app.services import mal_client
-        data = await mal_client.get_anime_ranking(ranking_type="upcoming", page=page)
-        results = [
-            {
-                "id": x.get("id"),
-                "source": "mal",
-                "title": x.get("title"),
-                "image": x.get("main_picture", {}).get("large"),
-                "score": x.get("mean"),
-                "episodes": x.get("num_episodes"),
-                "status": x.get("status"),
-            }
-            for x in data.get("data", [])
-        ]
-        return {"data": results}
+        from app.services import aggregator
+        data = await aggregator.get_top(page=page)
+        return {"data": data}
     except Exception as e:
         logger.error("Upcoming error: %s", e)
         raise HTTPException(status_code=503, detail="Unable to fetch upcoming anime")
