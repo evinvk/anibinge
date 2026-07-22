@@ -123,7 +123,7 @@ async def get_anime_details(anime_id: int) -> dict:
         raise
 
 
-@cached("mal:characters:v3", ttl=settings.CACHE_TTL_LONG)
+@cached("mal:characters:v4", ttl=settings.CACHE_TTL_LONG)
 async def get_anime_characters(anime_id: int) -> dict:
     """
     Get main characters for an anime.
