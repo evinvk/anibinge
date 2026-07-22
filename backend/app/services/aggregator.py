@@ -337,7 +337,7 @@ def _extract_day(item: dict) -> str | None:
     return _DAY_MAP.get(day_str)
 
 
-@cached("agg:weekly_schedule", ttl=settings.CACHE_TTL_SHORT)
+@cached("agg:weekly_schedule:v2", ttl=settings.CACHE_TTL_SHORT)
 async def get_weekly_schedule() -> dict:
     """Fetch the full weekly schedule and group by broadcast day.
 
@@ -385,7 +385,7 @@ async def get_weekly_schedule() -> dict:
     return {"data": grouped}
 
 
-@cached("agg:schedule", ttl=settings.CACHE_TTL_SHORT)
+@cached("agg:schedule:v2", ttl=settings.CACHE_TTL_SHORT)
 async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     """Get schedule/airing anime for a single day.
 
@@ -408,6 +408,26 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
                 return {"data": results}
         except Exception as e:
             logger.warning("Jikan schedule filter failed for %s: %s", day, e)
+
+        # AniList doesn't have day-of-week filtering, but returns
+        # currently releasing anime which is better than nothing.
+        try:
+            data = await anilist_client.get_schedule(page=page)
+            results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+            if _is_valid_results(results):
+                logger.info("Schedule for %s from AniList (no day filter): %d results", day, len(results))
+                return {"data": results}
+        except Exception as e:
+            logger.warning("AniList schedule failed for %s: %s", day, e)
+
+        try:
+            data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
+            results = [_normalize_mal(x) for x in data.get("data", [])]
+            if _is_valid_results(results):
+                logger.info("Schedule for %s from MAL ranking: %d results", day, len(results))
+                return {"data": results}
+        except Exception as e:
+            logger.warning("MAL ranking failed for schedule %s: %s", day, e)
 
         return {"data": []}
     else:
@@ -441,7 +461,7 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
             return {"data": []}
 
 
-@cached("agg:recommendations", ttl=settings.CACHE_TTL_MEDIUM)
+@cached("agg:recommendations:v2", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_recommendations(anime_id: int, page: int = 1) -> list[dict]:
     """Get recommendations for an anime: Jikan (primary) → AniList (secondary).
     MAL has no recommendations endpoint, so we skip it entirely."""
@@ -473,7 +493,7 @@ async def get_recommendations(anime_id: int, page: int = 1) -> list[dict]:
     return []
 
 
-@cached("agg:characters", ttl=settings.CACHE_TTL_MEDIUM)
+@cached("agg:characters:v2", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_characters(anime_id: int) -> dict:
     """Get characters for an anime: Jikan (primary) → MAL (fallback).
     Returns empty if no source provides usable data (names/images)."""

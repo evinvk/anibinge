@@ -69,7 +69,7 @@ async def get_anime_full(mal_id: int) -> dict:
     return await _get(f"/anime/{mal_id}/full")
 
 
-@cached("jikan:characters", ttl=settings.CACHE_TTL_LONG)
+@cached("jikan:characters:v2", ttl=settings.CACHE_TTL_LONG)
 async def get_anime_characters(mal_id: int) -> dict:
     return await _get(f"/anime/{mal_id}/characters")
 
