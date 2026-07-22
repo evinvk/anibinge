@@ -11,7 +11,7 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
-from app.services import anilist_client, jikan_client, mal_client, gogoanime_client
+from app.services import anilist_client, jikan_client, mal_client, gogoanime_client, animeschedule_client
 
 logger = logging.getLogger("anibinge.aggregator")
 settings = get_settings()
@@ -123,6 +123,36 @@ def _normalize_gogoanime(item: dict) -> dict:
         "season": None,
         "format": item.get("type"),
         "_gogoanime_slug": item.get("slug"),
+    }
+
+
+def _normalize_animeschedule(item: dict) -> dict:
+    """Normalize AnimeSchedule timetable response to standard schema."""
+    premier = item.get("premier") or item.get("subPremier") or ""
+    start_date = premier[:10] if premier else None
+    names = item.get("names") or {}
+    image_route = item.get("imageVersionRoute", "")
+    image = f"https://img.animeschedule.net/v3/img/{image_route}.webp" if image_route else None
+    genres = [g.get("name", "") for g in item.get("genres", [])]
+    stats = item.get("stats") or {}
+    return {
+        "id": None,
+        "source": "animeschedule",
+        "title": item.get("title") or names.get("romaji"),
+        "title_english": names.get("english"),
+        "image": image,
+        "banner": None,
+        "score": stats.get("averageScore"),
+        "popularity": stats.get("trackedCount"),
+        "episodes": item.get("episodes"),
+        "status": item.get("status"),
+        "genres": genres,
+        "synopsis": None,
+        "year": item.get("year"),
+        "season": (item.get("season") or {}).get("season"),
+        "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
+        "start_date": start_date,
+        "_animeschedule_slug": item.get("route"),
     }
 
 
@@ -356,7 +386,18 @@ async def get_top(page: int = 1) -> list[dict]:
 
 @cached("agg:upcoming", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_upcoming(page: int = 1) -> list[dict]:
-    """Get upcoming (not yet aired) anime: MAL → AniList → Jikan."""
+    """Get upcoming (not yet aired) anime: AnimeSchedule → MAL → AniList → Jikan."""
+    if settings.ANIMESCHEDULE_API_TOKEN:
+        try:
+            data = await animeschedule_client.animeschedule.get_upcoming(page=page)
+            items = data if isinstance(data, list) else data.get("timetableAnime", data.get("data", []))
+            results = [_normalize_animeschedule(x) for x in items]
+            if _is_valid_results(results):
+                logger.info("Upcoming from AnimeSchedule: %d results", len(results))
+                return results
+            logger.warning("AnimeSchedule upcoming returned invalid data, falling back to MAL")
+        except Exception as e:
+            logger.warning("AnimeSchedule upcoming failed (%s), falling back to MAL", e)
     try:
         data = await mal_client.get_anime_ranking(ranking_type="upcoming", page=page)
         results = [_normalize_mal(x) for x in data.get("data", [])]

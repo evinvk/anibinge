@@ -13,6 +13,8 @@ services:
         fromDatabase:
           name: anibinge-db
           property: connectionString
+      - key: ANIMESCHEDULE_API_TOKEN
+        sync: false
     healthCheckPath: /api/health
     healthCheckProtocol: http
 
