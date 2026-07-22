@@ -18,6 +18,8 @@ settings = get_settings()
 
 def _normalize_mal(item: dict) -> dict:
     """Normalize MyAnimeList response to standard schema."""
+    if "node" in item:
+        item = item["node"]
     main_pic = item.get("main_picture", {})
     return {
         "id": item.get("id"),

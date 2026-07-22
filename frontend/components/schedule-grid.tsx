@@ -21,10 +21,10 @@ export function ScheduleGrid({ data }: { data: Record<string, any> }) {
           </h3>
           <div className="space-y-3">
             {(data?.[day]?.data ?? []).slice(0, 6).map((item: any) => (
-              <Link key={item.mal_id} href={`/anime/${item.mal_id}`} className="flex items-center gap-3">
+              <Link key={item.id} href={`/anime/${item.id}`} className="flex items-center gap-3">
                 <div className="relative h-12 w-9 shrink-0 overflow-hidden rounded">
-                  {item.images?.jpg?.image_url && (
-                    <Image src={item.images.jpg.image_url} alt={item.title} fill className="object-cover" />
+                  {item.image && (
+                    <Image src={item.image} alt={item.title} fill className="object-cover" />
                   )}
                 </div>
                 <div className="min-w-0">

@@ -40,24 +40,8 @@ export default async function SeasonalPage({ searchParams }: Props) {
       <AnimeGrid className="mt-8">
         {res.data?.map((item: any) => (
           <AnimeCard
-            key={item.mal_id}
-            anime={{
-              id: item.mal_id,
-              source: "jikan",
-              title: item.title,
-              title_english: item.title_english,
-              image: item.images?.jpg?.large_image_url,
-              banner: null,
-              score: item.score,
-              popularity: item.popularity,
-              episodes: item.episodes,
-              status: item.status,
-              genres: item.genres?.map((g: any) => g.name) ?? [],
-              synopsis: item.synopsis,
-              year: item.year,
-              season: item.season,
-              format: item.type,
-            }}
+            key={item.id}
+            anime={item}
           />
         ))}
       </AnimeGrid>

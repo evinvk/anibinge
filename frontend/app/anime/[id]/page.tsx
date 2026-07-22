@@ -168,24 +168,8 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
             <AnimeGrid className="mt-4">
               {recsRes.data.slice(0, 12).map((r: any) => (
                 <AnimeCard
-                  key={r.entry.mal_id}
-                  anime={{
-                    id: r.entry.mal_id,
-                    source: "jikan",
-                    title: r.entry.title,
-                    title_english: null,
-                    image: r.entry.images?.jpg?.large_image_url,
-                    banner: null,
-                    score: null,
-                    popularity: null,
-                    episodes: null,
-                    status: null,
-                    genres: [],
-                    synopsis: null,
-                    year: null,
-                    season: null,
-                    format: null,
-                  }}
+                  key={r.id}
+                  anime={r}
                 />
               ))}
             </AnimeGrid>
