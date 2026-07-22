@@ -36,7 +36,7 @@ export const metadata: Metadata = {
   },
   manifest: "/manifest.json",
   icons: {
-    icon: "/favicon.svg",
+    icon: "/favicon.ico",
   },
   robots: { index: true, follow: true },
 };
