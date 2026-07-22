@@ -12,7 +12,7 @@ interface NewsArticle {
   summary: string;
   image: string | null;
   category: string;
-  published_at: string;
+  published_at: string | null;
 }
 
 export default function NewsPage() {
