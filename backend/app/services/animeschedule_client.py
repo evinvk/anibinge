@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.core.config import get_settings
 
@@ -28,8 +28,9 @@ class AnimeScheduleClient:
         )
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        retry=retry_if_not_exception_type(httpx.HTTPStatusError),
     )
     async def get_upcoming(self, page: int = 1, per_page: int = 25) -> dict[str, Any]:
         """Fetch upcoming anime from the timetable endpoint."""
@@ -44,13 +45,14 @@ class AnimeScheduleClient:
             )
             response.raise_for_status()
             return response.json()
-        except httpx.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             logger.error("AnimeSchedule HTTP error: %s", e)
             raise
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        retry=retry_if_not_exception_type(httpx.HTTPStatusError),
     )
     async def get_timetable(self, air_type: str = "all") -> dict[str, Any]:
         """Fetch the full timetable (ongoing anime with broadcast days)."""
@@ -58,13 +60,14 @@ class AnimeScheduleClient:
             response = await self.client.get(f"{BASE_URL}/timetables/{air_type}")
             response.raise_for_status()
             return response.json()
-        except httpx.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             logger.error("AnimeSchedule timetable HTTP error: %s", e)
             raise
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=5),
+        retry=retry_if_not_exception_type(httpx.HTTPStatusError),
     )
     async def get_anime(self, route: str) -> dict[str, Any]:
         """Fetch a specific anime by its URL slug."""
@@ -72,7 +75,7 @@ class AnimeScheduleClient:
             response = await self.client.get(f"{BASE_URL}/anime/{route}")
             response.raise_for_status()
             return response.json()
-        except httpx.HTTPError as e:
+        except httpx.HTTPStatusError as e:
             logger.error("AnimeSchedule HTTP error for %s: %s", route, e)
             raise
 

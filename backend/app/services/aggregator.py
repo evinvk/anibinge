@@ -564,8 +564,13 @@ async def get_weekly_schedule() -> dict:
     if settings.ANIMESCHEDULE_API_TOKEN:
         try:
             data = await animeschedule_client.animeschedule.get_timetable("all")
-            items = data if isinstance(data, list) else data.get("timetableAnime", [])
+            items = data if isinstance(data, list) else data.get("timetableAnime", data.get("data", []))
+            logger.info("AnimeSchedule timetable returned %d items, type=%s", len(items), type(items).__name__)
+            if items:
+                logger.info("Sample item keys: %s", list(items[0].keys()) if isinstance(items[0], dict) else "not dict")
             for item in items:
+                if not isinstance(item, dict):
+                    continue
                 days_obj = item.get("days") or {}
                 anime = _normalize_animeschedule_timetable(item)
                 for day_name in DAYS:
