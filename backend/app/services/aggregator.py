@@ -136,57 +136,74 @@ def _normalize_gogoanime(item: dict) -> dict:
 
 
 def _normalize_animeschedule(item: dict) -> dict:
-    """Normalize AnimeSchedule timetable response to standard schema."""
+    """Normalize AnimeSchedule /anime response to standard schema."""
     premier = item.get("premier") or item.get("subPremier") or ""
     start_date = premier[:10] if premier else None
     names = item.get("names") or {}
     image_route = item.get("imageVersionRoute", "")
-    image = f"https://img.animeschedule.net/v3/img/{image_route}.webp" if image_route else None
+    image = f"https://img.animeschedule.net/v3/img/{image_route}" if image_route else None
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
     sub_time = item.get("subTime") or item.get("jpnTime") or ""
-    air_time = sub_time[11:16] if len(sub_time) > 16 else (sub_time[11:16] if len(sub_time) > 16 else None)
+    air_time = sub_time[11:16] if len(sub_time) > 16 else None
+    # Extract MAL ID from websites.mal URL if available
+    mal_id = None
+    websites = item.get("websites") or {}
+    mal_url = websites.get("mal") or ""
+    if "/anime/" in mal_url:
+        try:
+            mal_id = int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
+        except (ValueError, IndexError):
+            pass
     return {
-        "id": None,
-        "source": "animeschedule",
+        "id": mal_id,
+        "source": "mal" if mal_id else "animeschedule",
         "title": item.get("title") or names.get("romaji"),
         "title_english": names.get("english"),
         "image": image,
         "banner": None,
-        "score": stats.get("averageScore"),
+        "score": (stats.get("averageScore") or 0) / 10 if stats.get("averageScore") else None,
         "popularity": stats.get("trackedCount"),
         "episodes": item.get("episodes"),
         "status": item.get("status"),
         "genres": genres,
-        "synopsis": None,
+        "synopsis": item.get("description"),
         "year": item.get("year"),
         "season": (item.get("season") or {}).get("season"),
         "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
         "start_date": start_date,
-        "_animeschedule_slug": item.get("route"),
         "air_time": air_time,
     }
 
 
 def _normalize_animeschedule_timetable(item: dict) -> dict:
-    """Normalize AnimeSchedule timetable anime to standard schema."""
+    """Normalize AnimeSchedule /anime response (for schedule view)."""
     names = item.get("names") or {}
     image_route = item.get("imageVersionRoute", "")
-    image = f"https://img.animeschedule.net/v3/img/{image_route}.webp" if image_route else None
+    image = f"https://img.animeschedule.net/v3/img/{image_route}" if image_route else None
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
     premier = item.get("premier") or item.get("subPremier") or ""
     start_date = premier[:10] if premier else None
     sub_time = item.get("subTime") or item.get("jpnTime") or ""
     air_time = sub_time[11:16] if len(sub_time) > 16 else None
+    # Extract MAL ID from websites.mal URL if available
+    mal_id = None
+    websites = item.get("websites") or {}
+    mal_url = websites.get("mal") or ""
+    if "/anime/" in mal_url:
+        try:
+            mal_id = int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
+        except (ValueError, IndexError):
+            pass
     return {
-        "id": None,
-        "source": "animeschedule",
+        "id": mal_id,
+        "source": "mal" if mal_id else "animeschedule",
         "title": item.get("title") or names.get("romaji"),
         "title_english": names.get("english"),
         "image": image,
         "banner": None,
-        "score": stats.get("averageScore"),
+        "score": (stats.get("averageScore") or 0) / 10 if stats.get("averageScore") else None,
         "popularity": stats.get("trackedCount"),
         "episodes": item.get("episodes"),
         "status": item.get("status"),
@@ -196,8 +213,6 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
         "season": (item.get("season") or {}).get("season"),
         "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
         "start_date": start_date,
-        "_animeschedule_slug": item.get("route"),
-        "_animeschedule_days": item.get("days", {}),
         "air_time": air_time,
     }
 

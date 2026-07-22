@@ -50,7 +50,9 @@ class AnimeScheduleClient:
             )
             response.raise_for_status()
             data = response.json()
-            return data if isinstance(data, list) else data.get("data", [])
+            if isinstance(data, list):
+                return data
+            return data.get("anime", data.get("data", []))
         except httpx.HTTPStatusError as e:
             logger.error("AnimeSchedule HTTP error: %s", e)
             raise
