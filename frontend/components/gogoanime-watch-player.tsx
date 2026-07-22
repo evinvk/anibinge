@@ -27,12 +27,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
   const [selectedQuality, setSelectedQuality] = useState(0);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [streamingUnavailable, setStreamingUnavailable] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
 
   useEffect(() => {
-    checkHealth();
     return () => {
       if (hlsRef.current) {
         hlsRef.current.destroy();
@@ -42,10 +40,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
   }, []);
 
   useEffect(() => {
-    if (currentEp && !streamingUnavailable) {
+    if (currentEp) {
       loadStream(slug, currentEp);
     }
-  }, [slug, currentEp, streamingUnavailable]);
+  }, [slug, currentEp]);
 
   useEffect(() => {
     if (masterUrl && videoRef.current) {
@@ -60,10 +58,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
   }, [masterUrl]);
 
   const loadStream = useCallback(async (s: string, ep: number) => {
-    if (streamingUnavailable) {
-      setError("Streaming is temporarily unavailable due to a CDN outage. Please try again later.");
-      return;
-    }
     setLoadingStream(true);
     setError(null);
     setStreamData(null);
@@ -86,19 +80,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
     } finally {
       setLoadingStream(false);
     }
-  }, [streamingUnavailable]);
-
-  async function checkHealth() {
-    try {
-      const res = await api.gogoanimeHealth();
-      if (!res.healthy) {
-        setStreamingUnavailable(true);
-        setError("Streaming is temporarily unavailable due to a CDN outage. Please try again later.");
-      }
-    } catch {
-      // If health check fails, still try to stream
-    }
-  }
+  }, []);
 
   async function loadPlayer(url: string) {
     if (hlsRef.current) {
@@ -127,7 +109,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
       });
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {
         if (data.fatal) {
-          setError("Playback error: " + data.type + ". The streaming CDN may be experiencing issues.");
+          setError("Playback error: " + data.type);
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
