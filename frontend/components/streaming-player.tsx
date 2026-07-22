@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, ChevronLeft, ChevronRight, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 import clsx from "clsx";
 
 interface SearchResult {
@@ -80,23 +82,39 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
     setMasterUrl(null);
     setSelectedQuality(0);
     try {
+      // Try GogoAnime first
       const res = await api.gogoanimeStream(slug, ep);
       const data = res.data;
       if (data?.qualities) {
         setStreamData({ qualities: data.qualities });
         setMasterUrl(api.gogoanimeMaster(slug, ep));
-      } else {
-        setError("No streaming sources available for this episode");
+        return;
       }
-    } catch (err: any) {
-      const msg = err?.status === 404
-        ? "This episode is not available yet. It may not have been uploaded to GogoAnime."
-        : "Failed to load streaming sources. The streaming service may be temporarily unavailable.";
-      setError(msg);
-    } finally {
-      setLoadingStream(false);
+    } catch {
+      // GogoAnime failed, fall through to Anivexa
     }
-  }, []);
+
+    try {
+      // Fallback: use Anivexa via the fallback endpoint
+      const res = await api.fallbackStream(animeTitle, ep);
+      if (res?.master_url) {
+        const masterUrlFull = res.master_url.startsWith("http")
+          ? res.master_url
+          : `${API_BASE}${res.master_url}`;
+        setMasterUrl(masterUrlFull);
+        setStreamData({
+          qualities: res.qualities || [{ quality: "auto", url: masterUrlFull }],
+          _source: res.source,
+        } as any);
+        return;
+      }
+    } catch {
+      // Both failed
+    }
+
+    setError("No streaming sources available for this episode");
+    setLoadingStream(false);
+  }, [animeTitle]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {

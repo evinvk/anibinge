@@ -187,4 +187,20 @@ export const api = {
     request<{ data: GogoAnimeItem[] }>(`/api/v1/streaming/gogoanime/latest`, 300),
   gogoanimeHealth: () =>
     request<{ healthy: boolean; reason?: string }>(`/api/v1/streaming/gogoanime/health`, 120),
+
+  // Anivexa fallback streaming
+  anivexaSearch: (q: string) =>
+    request<{ data: any[] }>(`/api/v1/streaming/anivexa/search?q=${encodeURIComponent(q)}`, 300),
+  anivexaEpisodes: (anilistId: number) =>
+    request<any>(`/api/v1/streaming/anivexa/${anilistId}/episodes`, 300),
+  anivexaStream: (anilistId: number, ep: number, audio = "sub") =>
+    request<any>(`/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}&audio=${audio}`, 60),
+  anivexaMaster: (anilistId: number, ep: number, audio = "sub") =>
+    `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}&audio=${audio}`,
+
+  // Fallback (tries GogoAnime, then Anivexa)
+  fallbackSearch: (q: string) =>
+    request<{ data: any[]; source: string }>(`/api/v1/streaming/fallback/search?q=${encodeURIComponent(q)}`, 300),
+  fallbackStream: (q: string, ep: number, audio = "sub") =>
+    request<any>(`/api/v1/streaming/fallback/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`, 60),
 };

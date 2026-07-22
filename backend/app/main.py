@@ -127,8 +127,10 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    from app.services import gogoanime_client, animeschedule_client
+    from app.services import gogoanime_client, animeschedule_client, anivexa_client
     await gogoanime_client.close()
     logger.info("GogoAnime client closed")
+    await anivexa_client.close()
+    logger.info("Anivexa client closed")
     await animeschedule_client.animeschedule.close()
     logger.info("AnimeSchedule client closed")

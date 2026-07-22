@@ -20,6 +20,8 @@ interface Props {
   totalEps: number | null;
 }
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
   const [currentEp, setCurrentEp] = useState(1);
   const [streamData, setStreamData] = useState<StreamData | null>(null);
@@ -64,23 +66,41 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps }: Props) {
     setMasterUrl(null);
     setSelectedQuality(0);
     try {
+      // Try GogoAnime first
       const res = await api.gogoanimeStream(s, ep);
       const data = res.data;
       if (data?.qualities) {
         setStreamData({ qualities: data.qualities });
         setMasterUrl(api.gogoanimeMaster(s, ep));
-      } else {
-        setError("No streaming sources available for this episode");
+        setLoadingStream(false);
+        return;
       }
-    } catch (err: any) {
-      const msg = err?.status === 404
-        ? "This episode is not available yet. It may not have been uploaded to GogoAnime."
-        : "Failed to load streaming sources. The streaming service may be temporarily unavailable.";
-      setError(msg);
-    } finally {
-      setLoadingStream(false);
+    } catch {
+      // GogoAnime failed, fall through to Anivexa
     }
-  }, []);
+
+    try {
+      // Fallback: use Anivexa via the fallback endpoint
+      const res = await api.fallbackStream(title, ep);
+      if (res?.master_url) {
+        const masterUrlFull = res.master_url.startsWith("http")
+          ? res.master_url
+          : `${API_BASE}${res.master_url}`;
+        setMasterUrl(masterUrlFull);
+        setStreamData({
+          qualities: res.qualities || [{ quality: "auto", url: masterUrlFull }],
+          _source: res.source,
+        } as any);
+        setLoadingStream(false);
+        return;
+      }
+    } catch {
+      // Both failed
+    }
+
+    setError("No streaming sources available for this episode");
+    setLoadingStream(false);
+  }, [title]);
 
   async function loadPlayer(url: string) {
     if (hlsRef.current) {
