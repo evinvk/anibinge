@@ -23,7 +23,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
-    description="Aggregated anime data API — MAL (primary) + AniList (secondary) + Jikan (fallback) for metadata, Wibu API for streaming.",
+    description="Aggregated anime data API — MAL (primary) + AniList (secondary) + Jikan (fallback) for metadata, Wibu API for streaming, AnimePahe for search & HLS streaming.",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",

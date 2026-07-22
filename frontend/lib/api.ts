@@ -161,4 +161,14 @@ export const api = {
     authedRequest<{ removed: number }>(`/api/v1/watchlist/${animeId}`, token, {
       method: "DELETE",
     }),
+
+  // AnimePahe streaming
+  animepaheSearch: (q: string) =>
+    request<{ data: any[] }>(`/api/v1/streaming/animepahe/search?q=${encodeURIComponent(q)}`, 300),
+  animepaheEpisodes: (session: string) =>
+    request<{ data: any[] }>(`/api/v1/streaming/animepahe/${session}/episodes`, 300),
+  animepaheSources: (animeSession: string, episodeSession: string) =>
+    request<{ data: any[] }>(`/api/v1/streaming/animepahe/${animeSession}/episode/${episodeSession}/sources`, 60),
+  animepaheM3u8: (url: string) =>
+    request<{ m3u8: string }>(`/api/v1/streaming/animepahe/m3u8?url=${encodeURIComponent(url)}`, 60),
 };

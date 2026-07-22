@@ -1,7 +1,7 @@
 """
 Aggregation layer: tries MAL first (primary), then AniList (secondary), 
-then Jikan (fallback). Normalizes all shapes into one consistent schema 
-the frontend can rely on.
+then Jikan (fallback), then AnimePahe (streaming search fallback).
+Normalizes all shapes into one consistent schema the frontend can rely on.
 """
 import logging
 from typing import Any
@@ -10,7 +10,7 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
-from app.services import anilist_client, jikan_client, mal_client
+from app.services import anilist_client, jikan_client, mal_client, animepahe_client
 
 logger = logging.getLogger("anibinge.aggregator")
 settings = get_settings()
@@ -91,6 +91,28 @@ def _normalize_jikan(item: dict) -> dict:
     }
 
 
+def _normalize_animepahe(item: dict) -> dict:
+    """Normalize AnimePahe response to standard schema."""
+    return {
+        "id": item.get("id"),
+        "source": "animepahe",
+        "title": item.get("title"),
+        "title_english": None,
+        "image": item.get("poster"),
+        "banner": None,
+        "score": item.get("score"),
+        "popularity": None,
+        "episodes": item.get("episodes"),
+        "status": item.get("status"),
+        "genres": [],
+        "synopsis": None,
+        "year": item.get("year"),
+        "season": None,
+        "format": item.get("type"),
+        "_animepahe_session": item.get("session"),
+    }
+
+
 @cached("agg:trending", ttl=settings.CACHE_TTL_SHORT)
 async def get_trending(page: int = 1) -> list[dict]:
     """Get trending anime: MAL (primary) → AniList → Jikan (fallback chain)."""
@@ -124,7 +146,7 @@ async def get_trending(page: int = 1) -> list[dict]:
 
 @cached("agg:search", ttl=settings.CACHE_TTL_SHORT)
 async def search(query: str, page: int = 1, **filters) -> list[dict]:
-    """Search anime: MAL (primary) → AniList → Jikan (fallback chain)."""
+    """Search anime: MAL (primary) → AniList → Jikan → AnimePahe (fallback chain)."""
     try:
         data = await mal_client.search_anime(query, page=page)
         results = [_normalize_mal(x) for x in data.get("data", [])]
@@ -146,11 +168,23 @@ async def search(query: str, page: int = 1, **filters) -> list[dict]:
     try:
         data = await jikan_client.search_anime(query, page=page, **filters)
         results = [_normalize_jikan(x) for x in data.get("data", [])]
-        logger.info("Search '%s' from Jikan: %d results", query, len(results))
-        return results
+        if _is_valid_results(results):
+            logger.info("Search '%s' from Jikan: %d results", query, len(results))
+            return results
+        logger.warning("Jikan search returned invalid data for '%s', falling back to AnimePahe", query)
     except Exception as e3:
-        logger.error("All search sources failed for '%s': %s", query, e3)
-        return []
+        logger.warning("Jikan search failed (%s), falling back to AnimePahe", e3)
+    if settings.ANIMEPAHE_ENABLED:
+        try:
+            pahe_results = await animepahe_client.get_client().search_anime(query)
+            results = [_normalize_animepahe(x) for x in pahe_results]
+            if _is_valid_results(results):
+                logger.info("Search '%s' from AnimePahe: %d results", query, len(results))
+                return results
+        except Exception as e4:
+            logger.warning("AnimePahe search failed for '%s': %s", query, e4)
+    logger.error("All search sources failed for '%s'", query)
+    return []
 
 
 def _denormalize_mal_detail(m: dict) -> dict:

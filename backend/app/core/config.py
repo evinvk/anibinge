@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     # AniList GraphQL (fallback)
     ANILIST_BASE_URL: str = "https://graphql.anilist.co"
     
+    # AnimePahe (streaming + search fallback)
+    ANIMEPAHE_ENABLED: bool = True
+
     # Optional data sources
     TMDB_API_KEY: str = ""
     TMDB_BASE_URL: str = "https://api.themoviedb.org/3"

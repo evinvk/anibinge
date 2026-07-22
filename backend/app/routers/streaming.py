@@ -1,14 +1,18 @@
 """
 Streaming router — integrates Wibu API for episode streaming and video sources.
+Also provides AnimePahe endpoints for search, episodes, and streaming links.
 """
 from fastapi import APIRouter, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from app.core.config import get_settings
 from app.services import wibu_client
+from app.services import animepahe_client
 
 router = APIRouter(prefix="/api/v1/streaming", tags=["streaming"])
 limiter = Limiter(key_func=get_remote_address)
+settings = get_settings()
 
 
 @router.get("/anime/{anime_id}/episodes")
@@ -198,3 +202,81 @@ async def get_play_url(
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail="Stream URL unavailable")
+
+
+# ── AnimePahe endpoints ──────────────────────────────────────────────
+
+
+@router.get("/animepahe/search")
+@limiter.limit("30/minute")
+async def search_animepahe(
+    request: Request,
+    q: str = Query(..., min_length=2, description="Search query"),
+):
+    """Search for anime on AnimePahe."""
+    if not settings.ANIMEPAHE_ENABLED:
+        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
+    try:
+        results = await animepahe_client.get_client().search_anime(q)
+        return {"data": results}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="AnimePahe search unavailable")
+
+
+@router.get("/animepahe/{anime_session}/episodes")
+@limiter.limit("30/minute")
+async def get_animepahe_episodes(
+    request: Request,
+    anime_session: str,
+):
+    """Get episode list for an anime on AnimePahe."""
+    if not settings.ANIMEPAHE_ENABLED:
+        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
+    try:
+        episodes = await animepahe_client.get_client().get_episodes(anime_session)
+        return {"data": episodes}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="AnimePahe episodes unavailable")
+
+
+@router.get("/animepahe/{anime_session}/episode/{episode_session}/sources")
+@limiter.limit("30/minute")
+async def get_animepahe_sources(
+    request: Request,
+    anime_session: str,
+    episode_session: str,
+):
+    """Get streaming sources for an episode on AnimePahe."""
+    if not settings.ANIMEPAHE_ENABLED:
+        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
+    try:
+        sources = await animepahe_client.get_client().get_sources(anime_session, episode_session)
+        if not sources:
+            raise HTTPException(status_code=404, detail="No streaming sources found")
+        return {"data": sources}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="AnimePahe sources unavailable")
+
+
+@router.get("/animepahe/m3u8")
+@limiter.limit("30/minute")
+async def resolve_animepahe_m3u8(
+    request: Request,
+    url: str = Query(..., description="Kwik URL to resolve"),
+):
+    """Resolve a Kwik URL to a direct .m3u8 streaming link."""
+    if not settings.ANIMEPAHE_ENABLED:
+        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
+    if "kwik." not in url:
+        raise HTTPException(status_code=400, detail="Invalid Kwik URL")
+    try:
+        m3u8_url = await animepahe_client.get_client().resolve_m3u8(url)
+        if not m3u8_url:
+            raise HTTPException(status_code=404, detail="Could not resolve m3u8 link")
+        return {"m3u8": m3u8_url}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="m3u8 resolution unavailable")
