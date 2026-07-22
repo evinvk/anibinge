@@ -93,7 +93,12 @@ app.include_router(admin.router)
 @app.get("/api/health")
 async def health():
     """Health check endpoint."""
-    return {"status": "ok", "env": settings.ENV, "version": "2.0.0"}
+    return {
+        "status": "ok",
+        "env": settings.ENV,
+        "version": "2.0.0",
+        "has_animeschedule_token": bool(settings.ANIMESCHEDULE_API_TOKEN),
+    }
 
 
 @app.get("/")
