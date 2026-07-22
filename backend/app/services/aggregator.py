@@ -463,30 +463,32 @@ def _extract_day(item: dict) -> str | None:
 
 @cached("agg:weekly_schedule:v3", ttl=settings.CACHE_TTL_SHORT)
 async def get_weekly_schedule() -> dict:
-    """Fetch the weekly schedule by querying Jikan per-day.
+    """Fetch the weekly schedule by querying Jikan per-day in parallel batches.
 
-    Instead of one all-schedules call (which Jikan often 504s), we issue
-    one lightweight ``/schedules?filter=<day>`` call per day.  At 3 req/s
-    and 60 req/min Jikan limits, 7 sequential calls are fine.  If Jikan
-    is entirely down we fall back to MAL airing ranking (no day info).
+    Issues 7 per-day calls in two batches (3 + 4) to respect Jikan's
+    3 req/sec rate limit while keeping total time under ~4 seconds.
     """
     DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     grouped: dict[str, list[dict]] = {d: [] for d in DAYS}
-    jikan_ok = False
 
-    for day in DAYS:
+    async def _fetch_day(day: str):
         try:
             data = await jikan_client.get_schedule(day)
             items = data.get("data", [])
             if items:
                 grouped[day] = [_normalize_jikan(x) for x in items]
-                jikan_ok = True
-            await asyncio.sleep(0.4)  # stay under Jikan rate limit
         except Exception as e:
             logger.warning("Jikan schedule failed for %s: %s", day, e)
 
-    if jikan_ok:
-        counts = {d: len(v) for d, v in grouped.items() if v}
+    # Batch 1: first 3 days
+    await asyncio.gather(*[_fetch_day(d) for d in DAYS[:3]])
+    await asyncio.sleep(1.0)  # respect rate limit
+
+    # Batch 2: remaining 4 days
+    await asyncio.gather(*[_fetch_day(d) for d in DAYS[3:]])
+
+    counts = {d: len(v) for d, v in grouped.items() if v}
+    if counts:
         logger.info("Weekly schedule from Jikan (per-day): %s", counts)
         return {"data": grouped}
 
@@ -507,17 +509,11 @@ async def get_weekly_schedule() -> dict:
 async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     """Get schedule/airing anime for a single day.
 
-    Uses the weekly schedule (which makes per-day Jikan calls) and extracts
-    the requested day — more reliable than Jikan's per-day filter alone.
+    For a specific day, calls Jikan's per-day filter directly (fast).
+    For no-day "currently airing", tries MAL → AniList → Jikan.
     """
     if day:
-        weekly = await get_weekly_schedule()
-        day_data = weekly.get("data", {}).get(day, [])
-        if day_data:
-            logger.info("Schedule for %s from grouped weekly: %d results", day, len(day_data))
-            return {"data": day_data}
-
-        # Fallback: try Jikan's per-day filter directly
+        # Direct per-day Jikan call — fast and accurate
         try:
             data = await jikan_client.get_schedule(day)
             results = [_normalize_jikan(x) for x in data.get("data", [])]
