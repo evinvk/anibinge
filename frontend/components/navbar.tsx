@@ -6,6 +6,7 @@ import { Search, Menu, X, Sparkles, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchModal } from "@/components/search-modal";
 import { useAuth } from "@/lib/auth-context";
+import { NotificationBell } from "@/components/notification-bell";
 
 const LINKS = [
   { href: "/browse", label: "Browse" },
@@ -44,6 +45,7 @@ export function Navbar() {
           >
             <Search className="h-5 w-5" />
           </button>
+          <NotificationBell />
           <Link
             href="/watchlist"
             className="hidden rounded-full bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:block"
@@ -91,6 +93,10 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
+          <div className="flex items-center gap-2 px-3 py-2">
+            <span className="text-sm text-mist">Notifications</span>
+            <NotificationBell />
+          </div>
           {!loading && (
             user ? (
               <Link href="/profile" className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">

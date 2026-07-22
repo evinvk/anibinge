@@ -3,6 +3,7 @@ import { Sora, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/lib/auth-context";
+import { NotificationsProvider } from "@/lib/notifications-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 
@@ -55,11 +56,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${sora.variable} ${inter.variable} ${jetbrains.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
-            <div className="relative min-h-screen bg-aura-gradient bg-fixed">
-              <Navbar />
-              <main>{children}</main>
-              <Footer />
-            </div>
+            <NotificationsProvider>
+              <div className="relative min-h-screen bg-aura-gradient bg-fixed">
+                <Navbar />
+                <main>{children}</main>
+                <Footer />
+              </div>
+            </NotificationsProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>
