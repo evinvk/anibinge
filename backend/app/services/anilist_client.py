@@ -355,7 +355,6 @@ class AniListClient:
             seasonYear
             genres
             format
-            source
             studios(isMain:true){
               nodes{
                 id
@@ -370,20 +369,7 @@ class AniListClient:
                   title{
                     romaji
                   }
-                  type
-                }
-              }
-            }
-            recommendations{
-              nodes{
-                mediaRecommendation{
-                  id
-                  title{
-                    romaji
-                  }
-                  coverImage{
-                    large
-                  }
+                  format
                 }
               }
             }

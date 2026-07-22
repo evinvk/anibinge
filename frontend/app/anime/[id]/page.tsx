@@ -59,15 +59,10 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
     );
   }
 
-  // Characters & recommendations only exist on the Jikan (MAL) side — an
-  // AniList id has no matching MAL entry to look those up by.
-  const [charactersRes, recsRes] =
-    resolvedSource === "anilist"
-      ? [{ data: [] }, { data: [] }]
-      : await Promise.all([
-          api.characters(malId).catch(() => ({ data: [] })),
-          api.recommendations(malId).catch(() => ({ data: [] })),
-        ]);
+  const [charactersRes, recsRes] = await Promise.all([
+    api.characters(malId).catch(() => ({ data: [] })),
+    api.recommendations(malId).catch(() => ({ data: [] })),
+  ]);
 
   const jsonLd = {
     "@context": "https://schema.org",

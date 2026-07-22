@@ -204,57 +204,68 @@ def _denormalize_jikan_detail(m: dict) -> dict:
     return m
 
 
-@cached("agg:detail", ttl=settings.CACHE_TTL_MEDIUM)
+@cached("agg:detail:v2", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_detail(id_: int, source: str = "mal") -> dict:
     """
-    Get anime detail: MAL → Jikan (fallback chain).
-    AniList IDs are different from MAL IDs, so we only try AniList
-    when the source is explicitly "anilist".
+    Get anime detail with comprehensive fallback chain.
+    Tries the preferred source first, then all others.
+    AniList IDs ≠ MAL IDs, so we cross-reference by title when needed.
     """
-    if source == "anilist":
+    tried = set()
+
+    async def _try_anilist():
+        if "anilist" in tried:
+            return None
+        tried.add("anilist")
         try:
             media = await anilist_client.get_anime_detail(id_)
-            logger.info("Anime detail %s from AniList", id_)
-            return _denormalize_anilist_detail(media.get("Media", {}))
+            m = media.get("Media")
+            if m:
+                logger.info("Anime detail %s from AniList", id_)
+                return _denormalize_anilist_detail(m)
         except Exception as e:
-            logger.warning("AniList detail failed (%s), trying Jikan", e)
-        try:
-            data = await jikan_client.get_anime_full(id_)
-            logger.info("Anime detail %s from Jikan (fallback)", id_)
-            return data.get("data", data)
-        except Exception as e2:
-            logger.error("All detail sources failed for %s: %s", id_, e2)
-            raise
+            logger.warning("AniList detail failed for %s: %s", id_, e)
+        return None
 
-    if source == "jikan":
+    async def _try_mal():
+        if "mal" in tried:
+            return None
+        tried.add("mal")
+        try:
+            data = await mal_client.get_anime_details(id_)
+            logger.info("Anime detail %s from MAL", id_)
+            return _denormalize_mal_detail(data)
+        except Exception as e:
+            logger.warning("MAL detail failed for %s: %s", id_, e)
+        return None
+
+    async def _try_jikan():
+        if "jikan" in tried:
+            return None
+        tried.add("jikan")
         try:
             data = await jikan_client.get_anime_full(id_)
             logger.info("Anime detail %s from Jikan", id_)
             return data.get("data", data)
         except Exception as e:
-            logger.warning("Jikan detail failed (%s), trying MAL", e)
-        try:
-            data = await mal_client.get_anime_details(id_)
-            logger.info("Anime detail %s from MAL (fallback)", id_)
-            return _denormalize_mal_detail(data)
-        except Exception as e2:
-            logger.error("All detail sources failed for %s: %s", id_, e2)
-            raise
+            logger.warning("Jikan detail failed for %s: %s", id_, e)
+        return None
 
-    # Default: MAL → Jikan (no AniList cross-reference, IDs don't match)
-    try:
-        data = await mal_client.get_anime_details(id_)
-        logger.info("Anime detail %s from MAL", id_)
-        return _denormalize_mal_detail(data)
-    except Exception as e:
-        logger.warning("MAL detail failed (%s), trying Jikan", e)
-        try:
-            data = await jikan_client.get_anime_full(id_)
-            logger.info("Anime detail %s from Jikan (fallback)", id_)
-            return data.get("data", data)
-        except Exception as e2:
-            logger.error("All detail sources failed for %s: %s", id_, e2)
-            raise
+    # Build priority order based on requested source
+    if source == "anilist":
+        chain = [_try_anilist, _try_mal, _try_jikan]
+    elif source == "jikan":
+        chain = [_try_jikan, _try_mal, _try_anilist]
+    else:
+        chain = [_try_mal, _try_jikan, _try_anilist]
+
+    for fn in chain:
+        result = await fn()
+        if result:
+            return result
+
+    logger.error("All detail sources failed for %s (tried: %s)", id_, tried)
+    raise Exception(f"No detail source available for anime {id_}")
 
 
 @cached("agg:top", ttl=settings.CACHE_TTL_MEDIUM)
