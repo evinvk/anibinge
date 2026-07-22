@@ -24,6 +24,41 @@ def _is_valid_results(results: list[dict]) -> bool:
     return any(r.get("id") is not None for r in results)
 
 
+async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
+    """Replace broken/animeschedule images with AniList CDN images using MAL IDs."""
+    mal_ids = [r["id"] for r in results if isinstance(r.get("id"), int)]
+    if not mal_ids:
+        return results
+    try:
+        query = """
+        query($ids:[Int]){
+          Page(page:1,perPage:50){
+            media(idMal_in:$ids,type:ANIME){
+              idMal
+              coverImage{ large }
+              bannerImage
+            }
+          }
+        }
+        """
+        data = await anilist_client._query(query, {"ids": mal_ids})
+        image_map = {}
+        for m in data.get("Page", {}).get("media", []):
+            mid = m.get("idMal")
+            if mid:
+                image_map[mid] = m
+        for r in results:
+            mid = r.get("id")
+            if isinstance(mid, int) and mid in image_map:
+                m = image_map[mid]
+                r["image"] = m.get("coverImage", {}).get("large") or r.get("image")
+                r["banner"] = m.get("bannerImage") or r.get("banner")
+        logger.info("Enriched %d results with AniList images", len(image_map))
+    except Exception as e:
+        logger.warning("AniList image enrichment failed: %s", e)
+    return results
+
+
 def _normalize_mal(item: dict) -> dict:
     """Normalize MyAnimeList response to standard schema."""
     if "node" in item:
@@ -459,6 +494,7 @@ async def get_upcoming(page: int = 1) -> list[dict]:
             )
             results = [_normalize_animeschedule(x) for x in items]
             if _is_valid_results(results):
+                results = await _enrich_images_anilist(results)
                 logger.info("Upcoming from AnimeSchedule: %d results", len(results))
                 return results
             logger.warning("AnimeSchedule upcoming returned invalid data, falling back to MAL")
@@ -603,8 +639,16 @@ async def get_weekly_schedule() -> dict:
                         continue
             counts = {d: len(v) for d, v in grouped.items() if v}
             if counts:
+                all_items = [item for v in grouped.values() for item in v]
+                enriched = await _enrich_images_anilist(all_items)
+                enriched_grouped = {d: [] for d in grouped}
+                idx = 0
+                for d in grouped:
+                    for _ in grouped[d]:
+                        enriched_grouped[d].append(enriched[idx])
+                        idx += 1
                 logger.info("Weekly schedule from AnimeSchedule: %s", counts)
-                return {"data": grouped}
+                return {"data": enriched_grouped}
             logger.warning("AnimeSchedule returned no day-grouped data, trying AniList")
         except Exception as e:
             logger.warning("AnimeSchedule weekly schedule failed (%s), trying AniList", e)
@@ -690,6 +734,7 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
                         except (ValueError, IndexError):
                             continue
                 if day_items:
+                    day_items = await _enrich_images_anilist(day_items)
                     logger.info("Schedule for %s from AnimeSchedule: %d results", day, len(day_items))
                     return {"data": day_items}
             except Exception as e:
