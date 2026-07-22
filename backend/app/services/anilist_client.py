@@ -361,18 +361,6 @@ class AniListClient:
                 name
               }
             }
-            relations{
-              edges{
-                relationshipType
-                node{
-                  id
-                  title{
-                    romaji
-                  }
-                  format
-                }
-              }
-            }
           }
         }
         """
