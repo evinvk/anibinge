@@ -16,7 +16,7 @@ export default function AdminDashboardPage() {
   const [busyPrefix, setBusyPrefix] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("anibinge:token");
+    const token = localStorage.getItem("anibinge_token");
     if (!token) return;
     const headers = { Authorization: `Bearer ${token}` };
     fetch(`${API_BASE}/api/v1/admin/analytics/overview`, { headers }).then((r) => r.json()).then(setOverview);
@@ -25,7 +25,7 @@ export default function AdminDashboardPage() {
 
   async function invalidateCache(prefix: string) {
     setBusyPrefix(prefix);
-    const token = localStorage.getItem("anibinge:token");
+    const token = localStorage.getItem("anibinge_token");
     await fetch(`${API_BASE}/api/v1/admin/cache/invalidate/${prefix}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },

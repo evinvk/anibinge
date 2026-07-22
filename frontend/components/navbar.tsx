@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Search, Menu, X, Sparkles } from "lucide-react";
+import { Search, Menu, X, Sparkles, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchModal } from "@/components/search-modal";
+import { useAuth } from "@/lib/auth-context";
 
 const LINKS = [
   { href: "/browse", label: "Browse" },
@@ -17,6 +18,7 @@ const LINKS = [
 export function Navbar() {
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const { user, loading } = useAuth();
 
   return (
     <header className="sticky top-0 z-50 glass border-b border-white/10">
@@ -48,6 +50,30 @@ export function Navbar() {
           >
             My Watchlist
           </Link>
+          {!loading && (
+            <>
+              {user ? (
+                <Link
+                  href="/profile"
+                  className="hidden items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-sm text-mist transition-colors hover:text-paper sm:flex"
+                >
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt="" className="h-5 w-5 rounded-full object-cover" />
+                  ) : (
+                    <User className="h-4 w-4" />
+                  )}
+                  {user.username}
+                </Link>
+              ) : (
+                <Link
+                  href="/login"
+                  className="hidden rounded-full border border-white/10 px-4 py-2 text-sm text-mist transition-colors hover:text-paper sm:block"
+                >
+                  Sign in
+                </Link>
+              )}
+            </>
+          )}
           <button
             aria-label="Toggle menu"
             className="p-2 md:hidden"
@@ -65,6 +91,17 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
+          {!loading && (
+            user ? (
+              <Link href="/profile" className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
+                Profile ({user.username})
+              </Link>
+            ) : (
+              <Link href="/login" className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
+                Sign in
+              </Link>
+            )
+          )}
         </div>
       </div>
 

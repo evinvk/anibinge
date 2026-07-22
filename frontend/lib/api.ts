@@ -72,6 +72,15 @@ export interface NewsItem {
   published_at: string | null;
 }
 
+export interface UserProfile {
+  id: string;
+  email: string;
+  username: string;
+  avatar_url: string | null;
+  is_admin: boolean;
+  created_at: string | null;
+}
+
 export const api = {
   // Anime browsing (now uses MyAnimeList as primary)
   trending: (page = 1) => request<{ data: AnimeSummary[] }>(`/api/v1/anime/trending?page=${page}`, 300),
@@ -131,6 +140,9 @@ export const api = {
       if (!res.ok) throw new ApiError(res.status, json.detail || "Login failed");
       return json as { access_token: string; token_type: string };
     }),
+
+  getMe: (token: string) =>
+    authedRequest<UserProfile>("/api/v1/auth/me", token),
 
   // Watchlist
   getWatchlist: (token: string) =>

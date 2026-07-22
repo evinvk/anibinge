@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.security import get_current_user_id
 from app.models.models import User
 
 settings = get_settings()
@@ -125,4 +126,23 @@ async def google_login(payload: GoogleLoginRequest, db: AsyncSession = Depends(g
         "email": user.email,
         "name": idinfo.get("name"),
         "avatar": user.avatar_url,
+    }
+
+
+@router.get("/me")
+async def get_me(
+    user_id: str = Depends(get_current_user_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the current user's profile from the JWT token."""
+    user = await db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": user.id,
+        "email": user.email,
+        "username": user.username,
+        "avatar_url": user.avatar_url,
+        "is_admin": user.is_admin,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
     }
