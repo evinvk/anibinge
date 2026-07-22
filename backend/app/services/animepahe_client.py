@@ -1,80 +1,122 @@
 """
 AnimePahe scraper client — searches, fetches episodes, and resolves streaming links.
-Uses tls_client for Cloudflare bypass and Node.js for Kwik URL resolution.
+Uses Playwright headless browser to bypass Cloudflare Turnstile protection.
 """
 import asyncio
 import logging
-import random
 import re
 import subprocess
 import tempfile
 import os
-import time
 from typing import Any
 
-import tls_client
-import execjs
+from playwright.async_api import async_playwright, Browser, Page
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger("anibinge.animepahe")
 
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-]
-
 _BASE_URL = "https://animepahe.com"
-_COOKIE_REFRESH_INTERVAL = 1800  # 30 min
 
 
 class AnimePaheClient:
     def __init__(self):
-        self._session: tls_client.Session | None = None
-        self._last_refresh: float = 0
+        self._playwright = None
+        self._browser: Browser | None = None
+        self._page: Page | None = None
         self._lock = asyncio.Lock()
+        self._initialized = False
 
-    def _get_session(self) -> tls_client.Session:
-        if self._session is None:
-            self._session = tls_client.Session(client_identifier="chrome_120")
-            self._last_refresh = time.time()
-        return self._session
-
-    async def _refresh_cookies(self):
+    async def _ensure_browser(self):
+        if self._initialized and self._browser and self._browser.is_connected():
+            return
         async with self._lock:
-            now = time.time()
-            if now - self._last_refresh < _COOKIE_REFRESH_INTERVAL:
+            if self._initialized and self._browser and self._browser.is_connected():
                 return
-            self._session = None
-            self._get_session()
-            self._last_refresh = now
-            logger.info("AnimePahe session refreshed")
+            try:
+                if self._page:
+                    await self._page.close()
+                if self._browser:
+                    await self._browser.close()
+                if self._playwright:
+                    await self._playwright.stop()
+            except Exception:
+                pass
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage",
+                    "--disable-gpu",
+                ],
+            )
+            context = await self._browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+                viewport={"width": 1280, "height": 720},
+            )
+            self._page = await context.new_page()
+            self._initialized = True
+            logger.info("AnimePahe browser launched")
 
-    async def _get(self, url: str) -> Any:
-        await self._refresh_cookies()
-        session = self._get_session()
-        headers = {
-            "User-Agent": random.choice(_USER_AGENTS),
-            "Referer": f"{_BASE_URL}/",
-            "Accept": "application/json, text/html, */*",
-        }
+            try:
+                await self._page.goto(_BASE_URL, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(3)
+                logger.info("AnimePahe initial page loaded")
+            except Exception as e:
+                logger.warning("AnimePahe initial load failed: %s", e)
 
-        def _do():
-            return session.get(url, headers=headers)
+    async def close(self):
+        try:
+            if self._page:
+                await self._page.close()
+            if self._browser:
+                await self._browser.close()
+            if self._playwright:
+                await self._playwright.stop()
+        except Exception:
+            pass
+        self._page = None
+        self._browser = None
+        self._playwright = None
+        self._initialized = False
 
-        return await asyncio.to_thread(_do)
+    async def _api_get(self, url: str) -> Any:
+        await self._ensure_browser()
+        try:
+            result = await self._page.evaluate("""
+                async (url) => {
+                    const resp = await fetch(url, { credentials: 'include' });
+                    const text = await resp.text();
+                    return { status: resp.status, text: text };
+                }
+            """, url)
+            if result["status"] == 200:
+                import json
+                return json.loads(result["text"])
+            else:
+                logger.warning("AnimePahe API %s returned %d", url, result["status"])
+                return None
+        except Exception as e:
+            logger.warning("AnimePahe API fetch failed for %s: %s", url, e)
+            return None
+
+    async def _page_get(self, url: str) -> str | None:
+        await self._ensure_browser()
+        try:
+            resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            if resp and resp.status == 200:
+                return await self._page.content()
+            logger.warning("AnimePahe page %s returned %s", url, resp.status if resp else "None")
+            return None
+        except Exception as e:
+            logger.warning("AnimePahe page load failed for %s: %s", url, e)
+            return None
 
     async def search_anime(self, query: str) -> list[dict]:
         url = f"{_BASE_URL}/api?m=search&q={query}"
-        try:
-            resp = await self._get(url)
-            if resp.status_code == 403:
-                logger.warning("AnimePahe search got 403 for '%s' — Cloudflare block", query)
-                return []
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as e:
-            logger.warning("AnimePahe search failed for '%s': %s", query, e)
+        data = await self._api_get(url)
+        if not data:
             return []
 
         results = []
@@ -94,40 +136,36 @@ class AnimePaheClient:
         return results
 
     async def get_episodes(self, anime_session: str) -> list[dict]:
-        try:
-            html_resp = await self._get(f"{_BASE_URL}/anime/{anime_session}")
-            html_resp.raise_for_status()
-            soup = BeautifulSoup(html_resp.text, "html.parser")
-
-            meta = soup.find("meta", {"property": "og:url"})
-            if not meta:
-                logger.warning("AnimePahe: no og:url meta found for session %s", anime_session)
-                return []
-            temp_id = meta["content"].rstrip("/").split("/")[-1]
-
-            first_page_resp = await self._get(
-                f"{_BASE_URL}/api?m=release&id={temp_id}&sort=episode_asc&page=1"
-            )
-            first_page_resp.raise_for_status()
-            first_page_data = first_page_resp.json()
-            episodes = first_page_data.get("data", [])
-            last_page = first_page_data.get("last_page", 1)
-
-            if last_page > 1:
-                async def _fetch_page(p):
-                    r = await self._get(
-                        f"{_BASE_URL}/api?m=release&id={temp_id}&sort=episode_asc&page={p}"
-                    )
-                    r.raise_for_status()
-                    return r.json().get("data", [])
-
-                remaining = await asyncio.gather(*[_fetch_page(p) for p in range(2, last_page + 1)])
-                for page_data in remaining:
-                    episodes.extend(page_data)
-
-        except Exception as e:
-            logger.warning("AnimePahe episodes failed for session %s: %s", anime_session, e)
+        html = await self._page_get(f"{_BASE_URL}/anime/{anime_session}")
+        if not html:
             return []
+
+        soup = BeautifulSoup(html, "html.parser")
+        meta = soup.find("meta", {"property": "og:url"})
+        if not meta:
+            logger.warning("AnimePahe: no og:url meta for session %s", anime_session)
+            return []
+        temp_id = meta["content"].rstrip("/").split("/")[-1]
+
+        first_page_data = await self._api_get(
+            f"{_BASE_URL}/api?m=release&id={temp_id}&sort=episode_asc&page=1"
+        )
+        if not first_page_data:
+            return []
+
+        episodes = first_page_data.get("data", [])
+        last_page = first_page_data.get("last_page", 1)
+
+        if last_page > 1:
+            async def _fetch_page(p):
+                return await self._api_get(
+                    f"{_BASE_URL}/api?m=release&id={temp_id}&sort=episode_asc&page={p}"
+                )
+
+            remaining = await asyncio.gather(*[_fetch_page(p) for p in range(2, last_page + 1)])
+            for page_data in remaining:
+                if page_data:
+                    episodes.extend(page_data.get("data", []))
 
         return [
             {
@@ -141,12 +179,8 @@ class AnimePaheClient:
         ]
 
     async def get_sources(self, anime_session: str, episode_session: str) -> list[dict]:
-        try:
-            resp = await self._get(f"{_BASE_URL}/play/{anime_session}/{episode_session}")
-            resp.raise_for_status()
-            html = resp.text
-        except Exception as e:
-            logger.warning("AnimePahe sources failed: %s", e)
+        html = await self._page_get(f"{_BASE_URL}/play/{anime_session}/{episode_session}")
+        if not html:
             return []
 
         buttons = re.findall(
@@ -189,11 +223,8 @@ class AnimePaheClient:
         return unique
 
     async def resolve_m3u8(self, kwik_url: str) -> str | None:
-        try:
-            resp = await self._get(kwik_url)
-            html = resp.text
-        except Exception as e:
-            logger.warning("AnimePahe m3u8 resolve fetch failed for %s: %s", kwik_url, e)
+        html = await self._page_get(kwik_url)
+        if not html:
             return None
 
         direct = re.search(r"https?://[^'\"\s<>]+\.m3u8[^'\"\s<>]*", html)

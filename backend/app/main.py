@@ -105,3 +105,10 @@ async def root():
         "docs": "/api/docs",
         "status": "running"
     }
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    from app.services import animepahe_client
+    await animepahe_client.get_client().close()
+    logger.info("AnimePahe browser closed")
