@@ -22,25 +22,43 @@ settings = get_settings()
 
 _client = httpx.AsyncClient(
     base_url="https://www.animenewsnetwork.com",
-    timeout=15.0,
-    headers={"User-Agent": "Anibinge/1.0 (anime tracker)"},
+    timeout=20.0,
+    follow_redirects=True,
+    headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        "Accept": "application/rss+xml, application/xml, text/xml, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+    },
 )
 
-# ANN RSS feed URLs
 _RSS_NEWS = "/all/rss.xml"
 _RSS_REVIEWS = "/review/rss.xml"
 
 
-async def _fetch_rss(path: str, retries: int = 2) -> str:
+async def _fetch_rss(path: str, retries: int = 3) -> str:
     """Fetch raw XML text from an ANN RSS endpoint."""
+    last_exc = None
     for attempt in range(retries + 1):
-        resp = await _client.get(path)
-        if resp.status_code == 429 and attempt < retries:
-            await asyncio.sleep(1.5 * (attempt + 1))
-            continue
-        resp.raise_for_status()
-        return resp.text
-    resp.raise_for_status()
+        try:
+            resp = await _client.get(path)
+            if resp.status_code == 429 and attempt < retries:
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+            if resp.status_code >= 400:
+                logger.warning("ANN RSS %s returned HTTP %s (attempt %d)", path, resp.status_code, attempt + 1)
+                if attempt < retries:
+                    await asyncio.sleep(2 * (attempt + 1))
+                    continue
+            resp.raise_for_status()
+            return resp.text
+        except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+            last_exc = e
+            logger.warning("ANN RSS %s fetch error (attempt %d): %s", path, attempt + 1, e)
+            if attempt < retries:
+                await asyncio.sleep(2 * (attempt + 1))
+                continue
+    if last_exc:
+        raise last_exc
     return ""
 
 
@@ -125,9 +143,10 @@ async def get_anime_news(page: int = 1, limit: int = 20) -> dict:
         total = len(all_items)
         start = (page - 1) * limit
         page_items = all_items[start : start + limit]
+        logger.info("ANN news: fetched %d items, returning page %d (%d items)", total, page, len(page_items))
         return {"data": page_items, "total": total, "page": page, "limit": limit}
     except Exception as e:
-        logger.error("ANN news fetch failed: %s", e)
+        logger.error("ANN news fetch failed: %s", e, exc_info=True)
         return {"data": [], "total": 0, "page": page, "limit": limit}
 
 
