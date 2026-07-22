@@ -319,34 +319,96 @@ async def get_seasonal(year: int, season: str, page: int = 1) -> list[dict]:
         return []
 
 
+_DAY_MAP = {
+    "monday": "monday", "mondays": "monday",
+    "tuesday": "tuesday", "tuesdays": "tuesday",
+    "wednesday": "wednesday", "wednesdays": "wednesday",
+    "thursday": "thursday", "thursdays": "thursday",
+    "friday": "friday", "fridays": "friday",
+    "saturday": "saturday", "saturdays": "saturday",
+    "sunday": "sunday", "sundays": "sunday",
+}
+
+
+def _extract_day(item: dict) -> str | None:
+    """Pull the broadcast day from a Jikan anime item and normalize it."""
+    broadcast = item.get("broadcast") or {}
+    day_str = (broadcast.get("day") or "").strip().lower()
+    return _DAY_MAP.get(day_str)
+
+
+@cached("agg:weekly_schedule", ttl=settings.CACHE_TTL_SHORT)
+async def get_weekly_schedule() -> dict:
+    """Fetch the full weekly schedule and group by broadcast day.
+
+    Instead of trusting Jikan's day filter (which is unreliable), we fetch
+    ALL schedules once, then group client-side using the broadcast.day field
+    that each anime carries. This guarantees each day shows only the anime
+    that actually air on that day.
+    """
+    DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    grouped: dict[str, list[dict]] = {d: [] for d in DAYS}
+
+    # --- 1. Try Jikan (best source for broadcast-day grouping) ---
+    try:
+        data = await jikan_client.get_all_schedules()
+        items = data.get("data", [])
+        if items:
+            for raw in items:
+                day = _extract_day(raw)
+                if day and day in grouped:
+                    grouped[day].append(_normalize_jikan(raw))
+            logger.info(
+                "Weekly schedule from Jikan: %d total, %s per-day counts",
+                len(items),
+                {d: len(v) for d, v in grouped.items() if v},
+            )
+            # If we got a reasonable distribution, return it
+            if any(len(v) > 0 for v in grouped.values()):
+                return {"data": grouped}
+    except Exception as e:
+        logger.warning("Jikan weekly schedule failed (%s), trying fallback", e)
+
+    # --- 2. Fallback: MAL airing ranking (no broadcast-day info) ---
+    try:
+        data = await mal_client.get_anime_ranking(ranking_type="airing", page=1, limit=100)
+        results = [_normalize_mal(x) for x in data.get("data", [])]
+        if results:
+            # MAL doesn't provide broadcast day in ranking data,
+            # so put everything under a generic key and let the frontend
+            # show it as "today's airing" or similar.
+            logger.info("Weekly schedule fallback from MAL: %d results", len(results))
+            return {"data": grouped, "fallback": results}
+    except Exception as e:
+        logger.warning("MAL ranking fallback failed for weekly schedule: %s", e)
+
+    return {"data": grouped}
+
+
 @cached("agg:schedule", ttl=settings.CACHE_TTL_SHORT)
 async def get_schedule(day: str | None = None, page: int = 1) -> dict:
-    """Get schedule/airing anime.
-    
-    When day is provided (e.g. 'monday'), use Jikan's /schedules endpoint
-    which filters by broadcast day. When day is None, use MAL ranking
-    for a broad 'currently airing' list.
+    """Get schedule/airing anime for a single day.
+
+    Uses the weekly schedule (which groups by broadcast.day) and extracts
+    the requested day — more reliable than Jikan's per-day filter.
     """
     if day:
-        # Schedule by day — Jikan /schedules is the only source that
-        # properly groups anime by their weekly broadcast day.
+        weekly = await get_weekly_schedule()
+        day_data = weekly.get("data", {}).get(day, [])
+        if day_data:
+            logger.info("Schedule for %s from grouped weekly: %d results", day, len(day_data))
+            return {"data": day_data}
+
+        # Fallback: try Jikan's per-day filter directly
         try:
             data = await jikan_client.get_schedule(day)
             results = [_normalize_jikan(x) for x in data.get("data", [])]
             if results:
-                logger.info("Schedule for %s from Jikan: %d results", day, len(results))
-                return {"data": results}
-            logger.warning("Jikan schedule empty for %s, trying MAL ranking", day)
-        except Exception as e:
-            logger.warning("Jikan schedule failed for %s (%s), trying MAL ranking", day, e)
-        try:
-            data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
-            results = [_normalize_mal(x) for x in data.get("data", [])]
-            if _is_valid_results(results):
-                logger.info("Schedule for %s from MAL ranking: %d results", day, len(results))
+                logger.info("Schedule for %s from Jikan filter: %d results", day, len(results))
                 return {"data": results}
         except Exception as e:
-            logger.warning("MAL ranking failed for schedule %s: %s", day, e)
+            logger.warning("Jikan schedule filter failed for %s: %s", day, e)
+
         return {"data": []}
     else:
         # No day filter — "currently airing" overview. Try MAL first,

@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Query, HTTPException
-import asyncio
 import logging
 
 from app.services import aggregator
@@ -15,24 +14,17 @@ VALID_DAYS = {
 
 @router.get("/weekly")
 async def weekly_schedule():
-    """Fetch all 7 days of anime schedule in parallel."""
+    """Fetch the full weekly schedule, grouped by broadcast day.
+
+    Uses a single Jikan call to get all schedules, then groups anime by
+    their broadcast.day field — much more reliable than 7 separate
+    filtered requests.
+    """
     try:
-        # Fetch all days in parallel
-        results = await asyncio.gather(
-            *[aggregator.get_schedule(day=day) for day in VALID_DAYS],
-            return_exceptions=True
-        )
-        
-        # Combine results
-        schedule = {}
-        for day, result in zip(VALID_DAYS, results):
-            if isinstance(result, Exception):
-                logger.error("Schedule error for %s: %s", day, result)
-                schedule[day] = {"data": []}
-            else:
-                schedule[day] = result
-        
-        return schedule
+        result = await aggregator.get_weekly_schedule()
+        raw = result.get("data", {})
+        # Wrap each day's list in {"data": [...]} to match frontend shape
+        return {day: {"data": items} for day, items in raw.items()}
     except Exception as e:
         logger.error("Weekly schedule error: %s", e)
         raise HTTPException(status_code=503, detail="Unable to fetch weekly schedule")

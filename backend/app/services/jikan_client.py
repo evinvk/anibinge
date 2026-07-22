@@ -54,8 +54,14 @@ async def get_current_season(page: int = 1) -> dict:
 
 @cached("jikan:schedule", ttl=settings.CACHE_TTL_SHORT)
 async def get_schedule(day: str | None = None) -> dict:
-    """day: monday..sunday, or None for 'other/unknown'"""
+    """day: monday..sunday, or None for all schedules"""
     return await _get("/schedules", {"filter": day} if day else {})
+
+
+@cached("jikan:schedule_all", ttl=settings.CACHE_TTL_SHORT)
+async def get_all_schedules() -> dict:
+    """Fetch the full weekly schedule (all days) in a single request."""
+    return await _get("/schedules")
 
 
 @cached("jikan:detail", ttl=settings.CACHE_TTL_MEDIUM)
