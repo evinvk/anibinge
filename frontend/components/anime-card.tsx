@@ -93,6 +93,12 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
           <p className="mt-1 truncate text-xs text-mist">
             {metaLine || "\u00A0"}
           </p>
+          {isUpcoming && releaseDate && (
+            <p className="mt-1.5 flex items-center gap-1 text-xs font-medium text-primary-400">
+              <Clock className="h-3 w-3 shrink-0" />
+              {releaseDate}
+            </p>
+          )}
         </div>
       </motion.div>
     </Link>
