@@ -509,3 +509,26 @@ class AniListClient:
 
 # Singleton instance
 anilist_client = AniListClient()
+
+
+# Module-level convenience functions (matches mal_client/jikan_client pattern)
+async def search_anime(query: str, page: int = 1, **kwargs) -> dict:
+    return await anilist_client.search_anime(search=query, page=page)
+
+async def get_trending(page: int = 1, **kwargs) -> dict:
+    return await anilist_client.get_trending(page=page)
+
+async def get_top(page: int = 1, **kwargs) -> dict:
+    return await anilist_client.get_top(page=page)
+
+async def get_seasonal(year: int, season: str, page: int = 1, **kwargs) -> dict:
+    return await anilist_client.get_seasonal(year=year, season=season, page=page)
+
+async def get_schedule(page: int = 1, **kwargs) -> dict:
+    return await anilist_client.get_schedule(page=page)
+
+async def get_anime_detail(anime_id: int) -> dict:
+    return await anilist_client.get_anime_detail(anime_id)
+
+async def get_recommendations(anime_id: int, page: int = 1) -> dict:
+    return await anilist_client.get_recommendations(anime_id=anime_id, page=page)

@@ -83,12 +83,12 @@ async def search_anime(query: str, page: int = 1, limit: int = 10) -> dict:
     try:
         offset = (page - 1) * limit
         params = {
-            "query": query,
+            "q": query,
             "limit": min(limit, 100),  # MAL max limit is 100
             "offset": offset,
             "fields": "id,title,main_picture,alternative_titles,start_date,end_date,"
             "synopsis,mean,rank,popularity,num_list_users,media_type,status,"
-            "genres,num_episodes,pictures,statistics",
+            "genres,num_episodes,pictures",
         }
         result = await _get("/anime", params=params)
         result["data"] = [item.get("node", item) for item in result.get("data", [])]
