@@ -3,11 +3,8 @@ import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
 
-export const revalidate = 300; // ISR: page regenerates at most every 5 min
+export const revalidate = 300;
 
-// Jikan is a free, publicly rate-limited API and occasionally times out.
-// Each row fetches independently and swallows its own failure so a single
-// slow/unavailable upstream call never crashes the whole homepage.
 async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
@@ -26,48 +23,25 @@ async function TrendingRow() {
 async function AiringRow() {
   const res = await safeFetch(() => api.airing());
   if (!res) return null;
-  return <CarouselRow title="Currently Airing" href="/browse?status=airing" items={res.data?.map(normalizeJikan)} />;
+  return <CarouselRow title="Currently Airing" href="/browse?status=airing" items={res.data} />;
 }
 
 async function UpcomingRow() {
   const res = await safeFetch(() => api.upcoming());
   if (!res) return null;
-  return <CarouselRow title="Upcoming Anime" href="/browse?status=upcoming" items={res.data?.map(normalizeJikan)} />;
+  return <CarouselRow title="Upcoming Anime" href="/browse?status=upcoming" items={res.data} />;
 }
 
 async function TopRatedRow() {
   const res = await safeFetch(() => api.topRated());
   if (!res) return null;
-  return <CarouselRow title="Top Rated" href="/browse?sort=score" items={res.data?.map(normalizeJikan)} />;
+  return <CarouselRow title="Top Rated" href="/browse?sort=score" items={res.data} />;
 }
 
 async function SeasonalRow() {
   const res = await safeFetch(() => api.currentSeason());
   if (!res) return null;
-  return <CarouselRow title="This Season" href="/seasonal" items={res.data?.map(normalizeJikan)} />;
-}
-
-// Jikan's raw shape -> the AnimeSummary shape our cards expect
-// (the backend already normalizes /trending; other endpoints are
-// passed through raw from Jikan for flexibility, so we adapt here)
-function normalizeJikan(item: any) {
-  return {
-    id: item.mal_id,
-    source: "jikan" as const,
-    title: item.title,
-    title_english: item.title_english,
-    image: item.images?.jpg?.large_image_url,
-    banner: item.trailer?.images?.maximum_image_url ?? null,
-    score: item.score,
-    popularity: item.popularity,
-    episodes: item.episodes,
-    status: item.status,
-    genres: item.genres?.map((g: any) => g.name) ?? [],
-    synopsis: item.synopsis,
-    year: item.year,
-    season: item.season,
-    format: item.type,
-  };
+  return <CarouselRow title="This Season" href="/seasonal" items={res.data} />;
 }
 
 export default async function HomePage() {

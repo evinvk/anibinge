@@ -91,6 +91,7 @@ async def search_anime(query: str, page: int = 1, limit: int = 10) -> dict:
             "genres,num_episodes,pictures,statistics",
         }
         result = await _get("/anime", params=params)
+        result["data"] = [item.get("node", item) for item in result.get("data", [])]
         return result
     except Exception as e:
         logger.error("MAL search failed: %s", e)
@@ -185,7 +186,11 @@ async def get_anime_ranking(ranking_type: str = "all", page: int = 1, limit: int
     """
     try:
         offset = (page - 1) * limit
-        fields = "id,title,main_picture,mean,rank,popularity,num_list_users,status"
+        fields = (
+            "id,title,main_picture,alternative_titles,start_date,synopsis,"
+            "mean,rank,popularity,num_list_users,status,genres,"
+            "num_episodes,media_type"
+        )
         params = {
             "ranking_type": ranking_type,
             "limit": min(limit, 100),
@@ -193,6 +198,7 @@ async def get_anime_ranking(ranking_type: str = "all", page: int = 1, limit: int
             "fields": fields,
         }
         result = await _get("/anime/ranking", params=params)
+        result["data"] = [item.get("node", item) for item in result.get("data", [])]
         return result
     except Exception as e:
         logger.error("MAL ranking failed: %s", e)
@@ -208,16 +214,19 @@ async def get_seasonal_anime(year: int, season: str, page: int = 1, limit: int =
     """
     try:
         offset = (page - 1) * limit
-        fields = "id,title,main_picture,mean,rank,popularity,num_list_users,status,num_episodes"
+        fields = (
+            "id,title,main_picture,alternative_titles,start_date,synopsis,"
+            "mean,rank,popularity,num_list_users,status,num_episodes,"
+            "genres,media_type"
+        )
         params = {
             "sort": "anime_score",
             "limit": min(limit, 100),
             "offset": offset,
             "fields": fields,
         }
-        # Note: MyAnimeList API doesn't have a direct seasonal endpoint in v2.
-        # Using ranking by season as alternative, or search by start_date range
         result = await _get("/anime/ranking", params={**params, "ranking_type": "airing"})
+        result["data"] = [item.get("node", item) for item in result.get("data", [])]
         return result
     except Exception as e:
         logger.error("MAL seasonal failed for %s %s: %s", year, season, e)
