@@ -123,13 +123,14 @@ async def get_anime_details(anime_id: int) -> dict:
         raise
 
 
-@cached("mal:characters:v2", ttl=settings.CACHE_TTL_LONG)
+@cached("mal:characters:v3", ttl=settings.CACHE_TTL_LONG)
 async def get_anime_characters(anime_id: int) -> dict:
     """
     Get main characters for an anime.
+    MAL characters endpoint requires fields to get names/pictures.
     """
     try:
-        params = {"limit": 20}
+        params = {"limit": 20, "fields": "name,main_picture"}
         result = await _get(f"/anime/{anime_id}/characters", params=params)
         return result
     except Exception as e:
