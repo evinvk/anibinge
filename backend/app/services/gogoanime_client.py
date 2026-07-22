@@ -298,6 +298,18 @@ async def get_stream_sources(slug: str, episode_number: int) -> dict | None:
     return {"master_m3u8": rewritten_master, "qualities": qualities}
 
 
+def get_catalog() -> list[dict]:
+    """Return all unique catalog items as a list (deduplicated)."""
+    seen_slugs: set[str] = set()
+    unique: list[dict] = []
+    for item in _catalog.values():
+        slug = item.get("slug", "")
+        if slug and slug not in seen_slugs:
+            seen_slugs.add(slug)
+            unique.append(item)
+    return unique
+
+
 async def close():
     """Close the httpx client."""
     global _client

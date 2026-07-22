@@ -19,6 +19,19 @@ export interface AnimeSummary {
   start_date: string | null;
 }
 
+export interface GogoAnimeItem {
+  slug: string;
+  title: string;
+  title_english: string | null;
+  title_japanese: string | null;
+  poster: string | null;
+  score: string | null;
+  type: string | null;
+  episodes_count: number | null;
+  latest_episode: number | null;
+  status: string | null;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -168,4 +181,6 @@ export const api = {
     request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
   gogoanimeStream: (slug: string, ep: number) =>
     request<{ data: { master_m3u8: string; qualities: { quality: string; url: string }[] } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}`, 60),
+  gogoanimeLatest: () =>
+    request<{ data: GogoAnimeItem[] }>(`/api/v1/streaming/gogoanime/latest`, 300),
 };

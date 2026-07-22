@@ -210,6 +210,21 @@ async def get_play_url(
 # ── GogoAnime endpoints ─────────────────────────────────────────────
 
 
+@router.get("/gogoanime/latest")
+@limiter.limit("30/minute")
+async def gogoanime_latest_releases(request: Request):
+    """Return ongoing anime from GogoAnime catalog, sorted by latest episode."""
+    try:
+        catalog = await gogoanime_client.get_catalog()
+        if not catalog:
+            return {"data": []}
+        ongoing = [a for a in catalog if a.get("status") == "Ongoing"]
+        ongoing.sort(key=lambda x: x.get("latest_episode", 0) or 0, reverse=True)
+        return {"data": ongoing[:30]}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="GogoAnime latest unavailable")
+
+
 @router.get("/gogoanime/search")
 @limiter.limit("30/minute")
 async def search_gogoanime(

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
+import { LatestReleasesSection } from "@/components/latest-releases-section";
 
 export const revalidate = 300;
 
@@ -67,6 +68,8 @@ export default async function HomePage() {
       <Suspense fallback={<CarouselRow title="Upcoming Anime" loading />}>
         <UpcomingRow />
       </Suspense>
+
+      <LatestReleasesSection />
     </>
   );
 }
