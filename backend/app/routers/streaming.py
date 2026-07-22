@@ -210,6 +210,71 @@ async def get_play_url(
 # ── GogoAnime endpoints ─────────────────────────────────────────────
 
 
+@router.get("/gogoanime/health")
+@limiter.limit("10/minute")
+async def gogoanime_health(request: Request):
+    """Check if GogoAnime streaming CDN is healthy.
+    Tests whether the video segment CDN returns actual video data
+    (vs placeholder PNGs indicating an outage)."""
+    try:
+        episode = await gogoanime_client.get_episode("one-piece-odmau", 1)
+        if not episode:
+            return {"healthy": False, "reason": "episode_api_down"}
+
+        proxy_url = episode.get("defaultStreamingUrl", "")
+        if not proxy_url:
+            return {"healthy": False, "reason": "no_streaming_url"}
+
+        result = await gogoanime_client.resolve_m3u8(proxy_url)
+        if not result:
+            return {"healthy": False, "reason": "m3u8_resolve_failed"}
+
+        m3u8_text, resolved_url = result
+
+        # Parse variant M3U8 to find a segment URL
+        lines = m3u8_text.strip().split("\n")
+        variant_url = None
+        for i, line in enumerate(lines):
+            if line.startswith("#EXT-X-STREAM-INF") and i + 1 < len(lines):
+                variant_rel = lines[i + 1].strip()
+                if variant_rel and not variant_rel.startswith("#"):
+                    variant_url = variant_rel
+                    break
+
+        if not variant_url:
+            return {"healthy": False, "reason": "no_variants"}
+
+        # Resolve variant URL
+        from urllib.parse import urlparse
+        parsed = urlparse(resolved_url)
+        if not variant_url.startswith("http"):
+            base = resolved_url.rsplit("/", 1)[0] + "/"
+            variant_url = base + variant_url
+
+        # Fetch variant M3U8
+        async with _httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as client:
+            resp = await client.get(variant_url)
+            resp.raise_for_status()
+            vlines = resp.text.strip().split("\n")
+            segs = [l.strip() for l in vlines if l.strip() and not l.startswith("#")]
+
+            if not segs:
+                return {"healthy": False, "reason": "no_segments"}
+
+            # Try fetching the first segment and check content type
+            first_seg = segs[0]
+            resp2 = await client.get(first_seg, follow_redirects=True)
+            ct = resp2.headers.get("content-type", "")
+
+            if "image/png" in ct or "image/jpeg" in ct:
+                return {"healthy": False, "reason": "cdn_returns_images"}
+
+            return {"healthy": True}
+
+    except Exception as e:
+        return {"healthy": False, "reason": "check_failed", "error": str(e)[:200]}
+
+
 @router.get("/gogoanime/latest")
 @limiter.limit("30/minute")
 async def gogoanime_latest_releases(request: Request):

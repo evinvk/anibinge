@@ -38,10 +38,12 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
   const [loading, setLoading] = useState(false);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streamingUnavailable, setStreamingUnavailable] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
 
   useEffect(() => {
+    checkHealth();
     searchAnime();
     return () => {
       if (hlsRef.current) {
@@ -50,6 +52,17 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       }
     };
   }, [animeTitle]);
+
+  async function checkHealth() {
+    try {
+      const res = await api.gogoanimeHealth();
+      if (!res.healthy) {
+        setStreamingUnavailable(true);
+      }
+    } catch {
+      // If health check fails, still try to stream (might be a transient error)
+    }
+  }
 
   useEffect(() => {
     if (selectedSlug) {
@@ -74,6 +87,10 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
   }, [masterUrl]);
 
   const loadStream = useCallback(async (slug: string, ep: number) => {
+    if (streamingUnavailable) {
+      setError("Streaming is temporarily unavailable due to a CDN outage. Please try again later.");
+      return;
+    }
     setLoadingStream(true);
     setError(null);
     setStreamData(null);
@@ -90,13 +107,13 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       }
     } catch (err: any) {
       const msg = err?.status === 404
-        ? "This episode is not available on GogoAnime"
-        : "Failed to load streaming sources";
+        ? "This episode is not available yet. It may not have been uploaded to GogoAnime."
+        : "Failed to load streaming sources. The streaming service may be temporarily unavailable.";
       setError(msg);
     } finally {
       setLoadingStream(false);
     }
-  }, []);
+  }, [streamingUnavailable]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {
@@ -105,6 +122,7 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
   }, [selectedSlug, currentEp, loadStream]);
 
   async function searchAnime() {
+    if (streamingUnavailable) return;
     setLoading(true);
     setError(null);
     try {
@@ -150,7 +168,7 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       });
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {
         if (data.fatal) {
-          setError("Playback error: " + data.type);
+          setError("Playback error: " + data.type + ". The streaming CDN may be experiencing issues.");
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
@@ -174,6 +192,21 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         <Loader2 className="h-5 w-5 animate-spin" />
         <span className="text-sm">Searching for streaming sources...</span>
       </div>
+    );
+  }
+
+  if (streamingUnavailable) {
+    return (
+      <section className="mt-12">
+        <div className="flex items-center gap-3">
+          <Play className="h-5 w-5 text-primary-400" />
+          <h2 className="font-display text-xl font-bold">Watch</h2>
+        </div>
+        <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="text-xs">Streaming is temporarily unavailable due to a CDN outage. Browsing, search, and anime info are still available.</span>
+        </div>
+      </section>
     );
   }
 

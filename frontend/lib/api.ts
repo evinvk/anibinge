@@ -185,4 +185,6 @@ export const api = {
     `${API_BASE}/api/v1/streaming/gogoanime/${slug}/master?ep=${ep}`,
   gogoanimeLatest: () =>
     request<{ data: GogoAnimeItem[] }>(`/api/v1/streaming/gogoanime/latest`, 300),
+  gogoanimeHealth: () =>
+    request<{ healthy: boolean; reason?: string }>(`/api/v1/streaming/gogoanime/health`, 120),
 };
