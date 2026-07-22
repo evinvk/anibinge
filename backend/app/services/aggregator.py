@@ -16,6 +16,13 @@ logger = logging.getLogger("anibinge.aggregator")
 settings = get_settings()
 
 
+def _is_valid_results(results: list[dict]) -> bool:
+    """Check if normalized results actually contain usable data."""
+    if not results:
+        return False
+    return any(r.get("id") is not None for r in results)
+
+
 def _normalize_mal(item: dict) -> dict:
     """Normalize MyAnimeList response to standard schema."""
     if "node" in item:
@@ -89,25 +96,29 @@ async def get_trending(page: int = 1) -> list[dict]:
     try:
         data = await mal_client.get_anime_ranking(ranking_type="by_popularity", page=page)
         results = [_normalize_mal(x) for x in data.get("data", [])]
-        logger.info("Trending from MAL: %d results", len(results))
-        return results
+        if _is_valid_results(results):
+            logger.info("Trending from MAL: %d results", len(results))
+            return results
+        logger.warning("MAL trending returned invalid data, falling back to AniList")
     except Exception as e:
         logger.warning("MAL trending failed (%s), falling back to AniList", e)
-        try:
-            data = await anilist_client.get_trending(page=page)
-            results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+    try:
+        data = await anilist_client.get_trending(page=page)
+        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+        if _is_valid_results(results):
             logger.info("Trending from AniList: %d results", len(results))
             return results
-        except Exception as e2:
-            logger.warning("AniList trending failed (%s), falling back to Jikan", e2)
-            try:
-                data = await jikan_client.get_top_anime(page=page, filter_type="bypopularity")
-                results = [_normalize_jikan(x) for x in data.get("data", [])]
-                logger.info("Trending from Jikan: %d results", len(results))
-                return results
-            except Exception as e3:
-                logger.error("All trending sources failed: %s", e3)
-                return []
+        logger.warning("AniList trending returned invalid data, falling back to Jikan")
+    except Exception as e2:
+        logger.warning("AniList trending failed (%s), falling back to Jikan", e2)
+    try:
+        data = await jikan_client.get_top_anime(page=page, filter_type="bypopularity")
+        results = [_normalize_jikan(x) for x in data.get("data", [])]
+        logger.info("Trending from Jikan: %d results", len(results))
+        return results
+    except Exception as e3:
+        logger.error("All trending sources failed: %s", e3)
+        return []
 
 
 @cached("agg:search", ttl=settings.CACHE_TTL_SHORT)
@@ -116,25 +127,29 @@ async def search(query: str, page: int = 1, **filters) -> list[dict]:
     try:
         data = await mal_client.search_anime(query, page=page)
         results = [_normalize_mal(x) for x in data.get("data", [])]
-        logger.info("Search '%s' from MAL: %d results", query, len(results))
-        return results
+        if _is_valid_results(results):
+            logger.info("Search '%s' from MAL: %d results", query, len(results))
+            return results
+        logger.warning("MAL search returned invalid data for '%s', falling back to AniList", query)
     except Exception as e:
         logger.warning("MAL search failed (%s), falling back to AniList", e)
-        try:
-            data = await anilist_client.search_anime(query, page=page)
-            results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+    try:
+        data = await anilist_client.search_anime(query, page=page)
+        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+        if _is_valid_results(results):
             logger.info("Search '%s' from AniList: %d results", query, len(results))
             return results
-        except Exception as e2:
-            logger.warning("AniList search failed (%s), falling back to Jikan", e2)
-            try:
-                data = await jikan_client.search_anime(query, page=page, **filters)
-                results = [_normalize_jikan(x) for x in data.get("data", [])]
-                logger.info("Search '%s' from Jikan: %d results", query, len(results))
-                return results
-            except Exception as e3:
-                logger.error("All search sources failed for '%s': %s", query, e3)
-                return []
+        logger.warning("AniList search returned invalid data for '%s', falling back to Jikan", query)
+    except Exception as e2:
+        logger.warning("AniList search failed (%s), falling back to Jikan", e2)
+    try:
+        data = await jikan_client.search_anime(query, page=page, **filters)
+        results = [_normalize_jikan(x) for x in data.get("data", [])]
+        logger.info("Search '%s' from Jikan: %d results", query, len(results))
+        return results
+    except Exception as e3:
+        logger.error("All search sources failed for '%s': %s", query, e3)
+        return []
 
 
 def _denormalize_mal_detail(m: dict) -> dict:
@@ -238,25 +253,29 @@ async def get_top(page: int = 1) -> list[dict]:
     try:
         data = await mal_client.get_anime_ranking(ranking_type="all", page=page)
         results = [_normalize_mal(x) for x in data.get("data", [])]
-        logger.info("Top anime from MAL: %d results", len(results))
-        return results
+        if _is_valid_results(results):
+            logger.info("Top anime from MAL: %d results", len(results))
+            return results
+        logger.warning("MAL top returned invalid data, falling back to AniList")
     except Exception as e:
         logger.warning("MAL top failed (%s), falling back to AniList", e)
-        try:
-            data = await anilist_client.get_top(page=page)
-            results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+    try:
+        data = await anilist_client.get_top(page=page)
+        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+        if _is_valid_results(results):
             logger.info("Top anime from AniList: %d results", len(results))
             return results
-        except Exception as e2:
-            logger.warning("AniList top failed (%s), falling back to Jikan", e2)
-            try:
-                data = await jikan_client.get_top_anime(page=page, filter_type="favorite")
-                results = [_normalize_jikan(x) for x in data.get("data", [])]
-                logger.info("Top anime from Jikan: %d results", len(results))
-                return results
-            except Exception as e3:
-                logger.error("All top sources failed: %s", e3)
-                return []
+        logger.warning("AniList top returned invalid data, falling back to Jikan")
+    except Exception as e2:
+        logger.warning("AniList top failed (%s), falling back to Jikan", e2)
+    try:
+        data = await jikan_client.get_top_anime(page=page, filter_type="favorite")
+        results = [_normalize_jikan(x) for x in data.get("data", [])]
+        logger.info("Top anime from Jikan: %d results", len(results))
+        return results
+    except Exception as e3:
+        logger.error("All top sources failed: %s", e3)
+        return []
 
 
 @cached("agg:seasonal", ttl=settings.CACHE_TTL_MEDIUM)
@@ -265,25 +284,29 @@ async def get_seasonal(year: int, season: str, page: int = 1) -> list[dict]:
     try:
         data = await mal_client.get_seasonal_anime(year, season.lower(), page=page)
         results = [_normalize_mal(x) for x in data.get("data", [])]
-        logger.info("Seasonal %s %d from MAL: %d results", season, year, len(results))
-        return results
+        if _is_valid_results(results):
+            logger.info("Seasonal %s %d from MAL: %d results", season, year, len(results))
+            return results
+        logger.warning("MAL seasonal returned invalid data for %s %d, falling back to AniList", season, year)
     except Exception as e:
         logger.warning("MAL seasonal failed (%s), falling back to AniList", e)
-        try:
-            data = await anilist_client.get_seasonal(year, season, page=page)
-            results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+    try:
+        data = await anilist_client.get_seasonal(year, season, page=page)
+        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+        if _is_valid_results(results):
             logger.info("Seasonal %s %d from AniList: %d results", season, year, len(results))
             return results
-        except Exception as e2:
-            logger.warning("AniList seasonal failed (%s), falling back to Jikan", e2)
-            try:
-                data = await jikan_client.get_seasonal_anime(year, season.lower(), page=page)
-                results = [_normalize_jikan(x) for x in data.get("data", [])]
-                logger.info("Seasonal %s %d from Jikan: %d results", season, year, len(results))
-                return results
-            except Exception as e3:
-                logger.error("All seasonal sources failed for %s %d: %s", season, year, e3)
-                return []
+        logger.warning("AniList seasonal returned invalid data for %s %d, falling back to Jikan", season, year)
+    except Exception as e2:
+        logger.warning("AniList seasonal failed (%s), falling back to Jikan", e2)
+    try:
+        data = await jikan_client.get_seasonal_anime(year, season.lower(), page=page)
+        results = [_normalize_jikan(x) for x in data.get("data", [])]
+        logger.info("Seasonal %s %d from Jikan: %d results", season, year, len(results))
+        return results
+    except Exception as e3:
+        logger.error("All seasonal sources failed for %s %d: %s", season, year, e3)
+        return []
 
 
 @cached("agg:schedule", ttl=settings.CACHE_TTL_SHORT)
@@ -291,31 +314,36 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     """Get schedule/airing anime: MAL → AniList → Jikan."""
     try:
         if day:
-            # MAL doesn't have day-specific schedule, use top airing
             data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
         else:
             data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
         
-        result = {"data": [_normalize_mal(x) for x in data.get("data", [])]}
-        logger.info("Schedule from MAL: %d results", len(result["data"]))
-        return result
+        results = [_normalize_mal(x) for x in data.get("data", [])]
+        if _is_valid_results(results):
+            result = {"data": results}
+            logger.info("Schedule from MAL: %d results", len(results))
+            return result
+        logger.warning("MAL schedule returned invalid data, falling back to AniList")
     except Exception as e:
         logger.warning("MAL schedule failed (%s), falling back to AniList", e)
-        try:
-            data = await anilist_client.get_schedule(page=page)
-            result = {"data": [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]}
-            logger.info("Schedule from AniList: %d results", len(result["data"]))
+    try:
+        data = await anilist_client.get_schedule(page=page)
+        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+        if _is_valid_results(results):
+            result = {"data": results}
+            logger.info("Schedule from AniList: %d results", len(results))
             return result
-        except Exception as e2:
-            logger.warning("AniList schedule failed (%s), falling back to Jikan", e2)
-            try:
-                data = await jikan_client.get_schedule(day)
-                result = {"data": [_normalize_jikan(x) for x in data.get("data", [])]}
-                logger.info("Schedule from Jikan: %d results", len(result["data"]))
-                return result
-            except Exception as e3:
-                logger.error("All schedule sources failed: %s", e3)
-                return {"data": []}
+        logger.warning("AniList schedule returned invalid data, falling back to Jikan")
+    except Exception as e2:
+        logger.warning("AniList schedule failed (%s), falling back to Jikan", e2)
+    try:
+        data = await jikan_client.get_schedule(day)
+        result = {"data": [_normalize_jikan(x) for x in data.get("data", [])]}
+        logger.info("Schedule from Jikan: %d results", len(result["data"]))
+        return result
+    except Exception as e3:
+        logger.error("All schedule sources failed: %s", e3)
+        return {"data": []}
 
 
 @cached("agg:recommendations", ttl=settings.CACHE_TTL_MEDIUM)
