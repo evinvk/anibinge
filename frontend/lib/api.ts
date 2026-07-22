@@ -163,13 +163,9 @@ export const api = {
       method: "DELETE",
     }),
 
-  // AnimePahe streaming
-  animepaheSearch: (q: string) =>
-    request<{ data: any[] }>(`/api/v1/streaming/animepahe/search?q=${encodeURIComponent(q)}`, 300),
-  animepaheEpisodes: (session: string) =>
-    request<{ data: any[] }>(`/api/v1/streaming/animepahe/${session}/episodes`, 300),
-  animepaheSources: (animeSession: string, episodeSession: string) =>
-    request<{ data: any[] }>(`/api/v1/streaming/animepahe/${animeSession}/episode/${episodeSession}/sources`, 60),
-  animepaheM3u8: (url: string) =>
-    request<{ m3u8: string }>(`/api/v1/streaming/animepahe/m3u8?url=${encodeURIComponent(url)}`, 60),
+  // GogoAnime streaming
+  gogoanimeSearch: (q: string) =>
+    request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
+  gogoanimeEpisode: (slug: string, ep: number) =>
+    request<{ data: any }>(`/api/v1/streaming/gogoanime/${slug}/episodes?ep=${ep}`, 60),
 };

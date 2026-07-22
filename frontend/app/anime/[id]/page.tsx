@@ -4,7 +4,7 @@ import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
-import { AnimePahePlayer } from "@/components/animepahe-player";
+import { StreamingPlayer } from "@/components/streaming-player";
 
 export const dynamic = "force-dynamic";
 
@@ -60,13 +60,10 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
     );
   }
 
-  const [charactersRes, recsRes, animepaheRes] = await Promise.all([
+  const [charactersRes, recsRes] = await Promise.all([
     api.characters(malId).catch(() => ({ data: [] })),
     api.recommendations(malId).catch(() => ({ data: [] })),
-    api.animepaheSearch(detail.title_english || detail.title).catch(() => ({ data: [] })),
   ]);
-
-  const animepaheSession = animepaheRes.data?.[0]?.session || null;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -167,13 +164,10 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
           </section>
         )}
 
-        {/* AnimePahe Player */}
-        {animepaheSession && (
-          <AnimePahePlayer
-            animeTitle={detail.title_english || detail.title}
-            animeSession={animepaheSession}
-          />
-        )}
+        {/* GogoAnime Streaming Player */}
+        <StreamingPlayer
+          animeTitle={detail.title_english || detail.title}
+        />
 
         {/* Recommendations */}
         {recsRes.data?.filter((r: any) => r.id && r.title).length > 0 && (

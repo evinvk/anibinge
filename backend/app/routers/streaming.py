@@ -1,6 +1,6 @@
 """
 Streaming router — integrates Wibu API for episode streaming and video sources.
-Also provides AnimePahe endpoints for search, episodes, and streaming links.
+Also provides GogoAnime endpoints for search, episodes, and iframe streaming.
 """
 from fastapi import APIRouter, HTTPException, Query, Request
 from slowapi import Limiter
@@ -8,7 +8,7 @@ from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
 from app.services import wibu_client
-from app.services import animepahe_client
+from app.services import gogoanime_client
 
 router = APIRouter(prefix="/api/v1/streaming", tags=["streaming"])
 limiter = Limiter(key_func=get_remote_address)
@@ -204,79 +204,38 @@ async def get_play_url(
         raise HTTPException(status_code=503, detail="Stream URL unavailable")
 
 
-# ── AnimePahe endpoints ──────────────────────────────────────────────
+# ── GogoAnime endpoints ─────────────────────────────────────────────
 
 
-@router.get("/animepahe/search")
+@router.get("/gogoanime/search")
 @limiter.limit("30/minute")
-async def search_animepahe(
+async def search_gogoanime(
     request: Request,
     q: str = Query(..., min_length=2, description="Search query"),
 ):
-    """Search for anime on AnimePahe."""
-    if not settings.ANIMEPAHE_ENABLED:
-        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
+    """Search for anime on GogoAnime."""
     try:
-        results = await animepahe_client.get_client().search_anime(q)
+        results = await gogoanime_client.search_anime(q)
         return {"data": results}
     except Exception as e:
-        raise HTTPException(status_code=503, detail="AnimePahe search unavailable")
+        raise HTTPException(status_code=503, detail="GogoAnime search unavailable")
 
 
-@router.get("/animepahe/{anime_session}/episodes")
+@router.get("/gogoanime/{slug}/episodes")
 @limiter.limit("30/minute")
-async def get_animepahe_episodes(
+async def get_gogoanime_episode(
     request: Request,
-    anime_session: str,
+    slug: str,
+    ep: int = Query(..., ge=1, description="Episode number"),
 ):
-    """Get episode list for an anime on AnimePahe."""
-    if not settings.ANIMEPAHE_ENABLED:
-        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
+    """Get episode streaming data for a specific episode on GogoAnime."""
     try:
-        episodes = await animepahe_client.get_client().get_episodes(anime_session)
-        return {"data": episodes}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail="AnimePahe episodes unavailable")
-
-
-@router.get("/animepahe/{anime_session}/episode/{episode_session}/sources")
-@limiter.limit("30/minute")
-async def get_animepahe_sources(
-    request: Request,
-    anime_session: str,
-    episode_session: str,
-):
-    """Get streaming sources for an episode on AnimePahe."""
-    if not settings.ANIMEPAHE_ENABLED:
-        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
-    try:
-        sources = await animepahe_client.get_client().get_sources(anime_session, episode_session)
-        if not sources:
-            raise HTTPException(status_code=404, detail="No streaming sources found")
-        return {"data": sources}
+        data = await gogoanime_client.get_episode(slug, ep)
+        if not data:
+            raise HTTPException(status_code=404, detail="Episode not found on GogoAnime")
+        watch_url = gogoanime_client.build_watch_url(slug, ep)
+        return {"data": {**data, "watch_url": watch_url, "slug": slug, "episode": ep}}
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=503, detail="AnimePahe sources unavailable")
-
-
-@router.get("/animepahe/m3u8")
-@limiter.limit("30/minute")
-async def resolve_animepahe_m3u8(
-    request: Request,
-    url: str = Query(..., description="Kwik URL to resolve"),
-):
-    """Resolve a Kwik URL to a direct .m3u8 streaming link."""
-    if not settings.ANIMEPAHE_ENABLED:
-        raise HTTPException(status_code=503, detail="AnimePahe is disabled")
-    if "kwik." not in url:
-        raise HTTPException(status_code=400, detail="Invalid Kwik URL")
-    try:
-        m3u8_url = await animepahe_client.get_client().resolve_m3u8(url)
-        if not m3u8_url:
-            raise HTTPException(status_code=404, detail="Could not resolve m3u8 link")
-        return {"m3u8": m3u8_url}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=503, detail="m3u8 resolution unavailable")
+        raise HTTPException(status_code=503, detail="GogoAnime episode unavailable")

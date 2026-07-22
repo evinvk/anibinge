@@ -48,8 +48,8 @@ class Settings(BaseSettings):
     # AniList GraphQL (fallback)
     ANILIST_BASE_URL: str = "https://graphql.anilist.co"
     
-    # AnimePahe (streaming + search fallback)
-    ANIMEPAHE_ENABLED: bool = True
+    # GogoAnime (streaming + search fallback)
+    GOGOANIME_BASE_URL: str = "https://gogoanimehd.to"
 
     # Optional data sources
     TMDB_API_KEY: str = ""

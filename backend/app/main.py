@@ -23,7 +23,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=[f"{settings.RATE_
 app = FastAPI(
     title=settings.APP_NAME,
     version="2.0.0",
-    description="Aggregated anime data API — MAL (primary) + AniList (secondary) + Jikan (fallback) for metadata, Wibu API for streaming, AnimePahe for search & HLS streaming.",
+    description="Aggregated anime data API — MAL (primary) + AniList (secondary) + Jikan (fallback) for metadata, Wibu API for streaming, GogoAnime for search & iframe streaming.",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -118,6 +118,6 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    from app.services import animepahe_client
-    await animepahe_client.get_client().close()
-    logger.info("AnimePahe browser closed")
+    from app.services import gogoanime_client
+    await gogoanime_client.close()
+    logger.info("GogoAnime client closed")
