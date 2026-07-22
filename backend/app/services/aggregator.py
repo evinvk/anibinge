@@ -156,6 +156,37 @@ def _normalize_animeschedule(item: dict) -> dict:
     }
 
 
+def _normalize_animeschedule_timetable(item: dict) -> dict:
+    """Normalize AnimeSchedule timetable anime to standard schema."""
+    names = item.get("names") or {}
+    image_route = item.get("imageVersionRoute", "")
+    image = f"https://img.animeschedule.net/v3/img/{image_route}.webp" if image_route else None
+    genres = [g.get("name", "") for g in item.get("genres", [])]
+    stats = item.get("stats") or {}
+    premier = item.get("premier") or item.get("subPremier") or ""
+    start_date = premier[:10] if premier else None
+    return {
+        "id": None,
+        "source": "animeschedule",
+        "title": item.get("title") or names.get("romaji"),
+        "title_english": names.get("english"),
+        "image": image,
+        "banner": None,
+        "score": stats.get("averageScore"),
+        "popularity": stats.get("trackedCount"),
+        "episodes": item.get("episodes"),
+        "status": item.get("status"),
+        "genres": genres,
+        "synopsis": None,
+        "year": item.get("year"),
+        "season": (item.get("season") or {}).get("season"),
+        "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
+        "start_date": start_date,
+        "_animeschedule_slug": item.get("route"),
+        "_animeschedule_days": item.get("days", {}),
+    }
+
+
 @cached("agg:trending", ttl=settings.CACHE_TTL_SHORT)
 async def get_trending(page: int = 1) -> list[dict]:
     """Get trending anime: MAL (primary) → AniList → Jikan (fallback chain)."""
@@ -505,18 +536,35 @@ def _extract_day(item: dict) -> str | None:
 async def get_weekly_schedule() -> dict:
     """Fetch the weekly schedule grouped by broadcast day.
 
-    Primary: AniList RELEASING anime with nextAiringEpisode.airingAt
-    timestamps — we convert the Unix timestamp to a day-of-week.  This
-    works reliably from cloud environments (no IP blocks).
-
-    Fallback: Jikan per-day filter in parallel batches.
+    Primary: AnimeSchedule timetable (has per-day broadcast info).
+    Fallback 1: AniList RELEASING anime with nextAiringEpisode.airingAt.
+    Fallback 2: Jikan per-day filter.
     """
     from datetime import datetime, timezone
 
     DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     grouped: dict[str, list[dict]] = {d: [] for d in DAYS}
 
-    # --- 1. AniList: group by nextAiringEpisode.airingAt day-of-week ---
+    # --- 1. AnimeSchedule: use days field to group ---
+    if settings.ANIMESCHEDULE_API_TOKEN:
+        try:
+            data = await animeschedule_client.animeschedule.get_timetable("all")
+            items = data if isinstance(data, list) else data.get("timetableAnime", [])
+            for item in items:
+                days_obj = item.get("days") or {}
+                anime = _normalize_animeschedule_timetable(item)
+                for day_name in DAYS:
+                    if days_obj.get(day_name):
+                        grouped[day_name].append(anime)
+            counts = {d: len(v) for d, v in grouped.items() if v}
+            if counts:
+                logger.info("Weekly schedule from AnimeSchedule: %s", counts)
+                return {"data": grouped}
+            logger.warning("AnimeSchedule timetable returned no day-grouped data, trying AniList")
+        except Exception as e:
+            logger.warning("AnimeSchedule weekly schedule failed (%s), trying AniList", e)
+
+    # --- 2. AniList: group by nextAiringEpisode.airingAt day-of-week ---
     try:
         pages_fetched = 0
         max_pages = 3  # up to 150 anime
@@ -542,7 +590,7 @@ async def get_weekly_schedule() -> dict:
     except Exception as e:
         logger.warning("AniList weekly schedule failed (%s), trying Jikan", e)
 
-    # --- 2. Jikan: per-day filter in parallel batches ---
+    # --- 3. Jikan: per-day filter in parallel batches ---
     async def _fetch_day(day: str):
         try:
             data = await jikan_client.get_schedule(day)
@@ -568,12 +616,28 @@ async def get_weekly_schedule() -> dict:
 async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     """Get schedule/airing anime for a single day.
 
-    Primary: AniList — fetches all RELEASING anime with nextAiringEpisode
-    timestamps and filters to the requested day-of-week.
-    Fallback: Jikan per-day filter.
+    Primary: AnimeSchedule timetable (has per-day broadcast info).
+    Fallback 1: AniList — RELEASING anime with nextAiringEpisode timestamps.
+    Fallback 2: Jikan per-day filter.
     """
     if day:
-        # Try AniList first (reliable from cloud)
+        # --- 1. AnimeSchedule: filter timetable by day ---
+        if settings.ANIMESCHEDULE_API_TOKEN:
+            try:
+                data = await animeschedule_client.animeschedule.get_timetable("all")
+                items = data if isinstance(data, list) else data.get("timetableAnime", [])
+                day_items = []
+                for item in items:
+                    days_obj = item.get("days") or {}
+                    if days_obj.get(day):
+                        day_items.append(_normalize_animeschedule_timetable(item))
+                if day_items:
+                    logger.info("Schedule for %s from AnimeSchedule: %d results", day, len(day_items))
+                    return {"data": day_items}
+            except Exception as e:
+                logger.warning("AnimeSchedule schedule failed for %s: %s", day, e)
+
+        # --- 2. AniList: filter by nextAiringEpisode day-of-week ---
         try:
             from datetime import datetime, timezone
             DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -593,7 +657,7 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
         except Exception as e:
             logger.warning("AniList schedule failed for %s: %s", day, e)
 
-        # Fallback: Jikan per-day filter
+        # --- 3. Jikan: per-day filter ---
         try:
             data = await jikan_client.get_schedule(day)
             results = [_normalize_jikan(x) for x in data.get("data", [])]

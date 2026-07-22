@@ -52,6 +52,20 @@ class AnimeScheduleClient:
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
+    async def get_timetable(self, air_type: str = "all") -> dict[str, Any]:
+        """Fetch the full timetable (ongoing anime with broadcast days)."""
+        try:
+            response = await self.client.get(f"{BASE_URL}/timetables/{air_type}")
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            logger.error("AnimeSchedule timetable HTTP error: %s", e)
+            raise
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
     async def get_anime(self, route: str) -> dict[str, Any]:
         """Fetch a specific anime by its URL slug."""
         try:
