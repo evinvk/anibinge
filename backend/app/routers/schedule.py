@@ -16,22 +16,11 @@ VALID_DAYS = {
 async def weekly_schedule():
     """Fetch the full weekly schedule, grouped by broadcast day.
 
-    Uses a single Jikan call to get all schedules, then groups anime by
-    their broadcast.day field. When Jikan is unavailable, falls back to
-    MAL airing ranking distributed across all days.
+    Uses per-day Jikan calls to get reliable broadcast-day grouping.
     """
     try:
         result = await aggregator.get_weekly_schedule()
         raw = result.get("data", {})
-        fallback = result.get("fallback")
-
-        # If all days are empty but we have fallback data, distribute it
-        if not any(raw.get(d) for d in VALID_DAYS) and fallback:
-            for item in fallback:
-                for d in VALID_DAYS:
-                    raw.setdefault(d, []).append(item)
-            logger.info("Distributed %d fallback items across all days", len(fallback))
-
         return {day: {"data": items} for day, items in raw.items()}
     except Exception as e:
         logger.error("Weekly schedule error: %s", e)
