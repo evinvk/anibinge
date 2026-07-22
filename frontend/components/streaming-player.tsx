@@ -34,7 +34,7 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
   const [currentEp, setCurrentEp] = useState(1);
   const [totalEps, setTotalEps] = useState<number | null>(null);
   const [streamData, setStreamData] = useState<StreamData | null>(null);
-  const [selectedSource, setSelectedSource] = useState<StreamSource | null>(null);
+  const [selectedQuality, setSelectedQuality] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +44,13 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
 
   useEffect(() => {
     searchAnime();
-    return () => cleanupBlobUrl();
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+      cleanupBlobUrl();
+    };
   }, [animeTitle]);
 
   useEffect(() => {
@@ -58,8 +64,8 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
   }, [selectedSlug]);
 
   useEffect(() => {
-    if (selectedSource?.url && videoRef.current) {
-      initPlayer(selectedSource.url);
+    if (streamData?.master_m3u8 && videoRef.current) {
+      loadMaster(streamData.master_m3u8);
     }
     return () => {
       if (hlsRef.current) {
@@ -67,7 +73,7 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         hlsRef.current = null;
       }
     };
-  }, [selectedSource]);
+  }, [streamData]);
 
   function cleanupBlobUrl() {
     if (blobUrlRef.current) {
@@ -80,16 +86,13 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
     setLoadingStream(true);
     setError(null);
     setStreamData(null);
-    setSelectedSource(null);
+    setSelectedQuality(0);
     cleanupBlobUrl();
     try {
       const res = await api.gogoanimeStream(slug, ep);
       const data = res.data;
       if (data?.master_m3u8) {
         setStreamData(data);
-        if (data.qualities?.length > 0) {
-          setSelectedSource(data.qualities[0]);
-        }
       } else {
         setError("No streaming sources available for this episode");
       }
@@ -128,9 +131,10 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
     }
   }
 
-  async function initPlayer(m3u8Content: string) {
+  async function loadMaster(m3u8Content: string) {
     if (hlsRef.current) {
       hlsRef.current.destroy();
+      hlsRef.current = null;
     }
     cleanupBlobUrl();
 
@@ -139,7 +143,6 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
 
     const Hls = (await import("hls.js")).default;
 
-    // Create a Blob URL from the M3U8 content so hls.js can load it
     const blob = new Blob([m3u8Content], { type: "application/vnd.apple.mpegurl" });
     const blobUrl = URL.createObjectURL(blob);
     blobUrlRef.current = blobUrl;
@@ -148,14 +151,14 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
-        xhrSetup: (xhr: XMLHttpRequest, url: string) => {
-          // All URLs in the M3U8 are already rewritten to go through our proxy
-        },
       });
       hlsRef.current = hls;
       hls.loadSource(blobUrl);
       hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
+        if (data.levels?.length > 1) {
+          hls.currentLevel = 0;
+        }
         video.play().catch(() => {});
       });
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {
@@ -168,6 +171,13 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");
+    }
+  }
+
+  function setQuality(index: number) {
+    setSelectedQuality(index);
+    if (hlsRef.current) {
+      hlsRef.current.currentLevel = index;
     }
   }
 
@@ -200,7 +210,6 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         <h2 className="font-display text-xl font-bold">Watch</h2>
       </div>
 
-      {/* Server selector if multiple results */}
       {results.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {results.slice(0, 5).map((r) => (
@@ -220,13 +229,12 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         </div>
       )}
 
-      {/* Video player */}
       <div className="relative mt-4 aspect-video w-full overflow-hidden rounded-xl bg-black">
         {loadingStream ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
           </div>
-        ) : selectedSource ? (
+        ) : streamData ? (
           <video
             ref={videoRef}
             className="h-full w-full"
@@ -245,16 +253,15 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         )}
       </div>
 
-      {/* Quality selector */}
       {streamData && streamData.qualities.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
           {streamData.qualities.map((s, i) => (
             <button
               key={i}
-              onClick={() => setSelectedSource(s)}
+              onClick={() => setQuality(i)}
               className={clsx(
                 "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-                selectedSource?.url === s.url
+                selectedQuality === i
                   ? "bg-primary-600 text-white"
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
@@ -266,7 +273,6 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         </div>
       )}
 
-      {/* Episode navigation */}
       {totalEps && totalEps > 1 && (
         <div className="mt-3 flex items-center justify-center gap-3">
           <button
@@ -301,7 +307,6 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         </div>
       )}
 
-      {/* Error display */}
       {error && !loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
