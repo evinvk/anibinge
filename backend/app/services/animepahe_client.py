@@ -60,9 +60,8 @@ class AnimePaheClient:
             logger.info("AnimePahe browser launched")
 
             try:
-                await self._page.goto(_BASE_URL, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)
-                logger.info("AnimePahe initial page loaded")
+                resp = await self._page.goto(_BASE_URL, wait_until="networkidle", timeout=45000)
+                logger.info("AnimePahe initial page loaded (status=%s)", resp.status if resp else "None")
             except Exception as e:
                 logger.warning("AnimePahe initial load failed: %s", e)
 
@@ -83,19 +82,17 @@ class AnimePaheClient:
 
     async def _api_get(self, url: str) -> Any:
         await self._ensure_browser()
+        import json
         try:
-            result = await self._page.evaluate("""
-                async (url) => {
-                    const resp = await fetch(url, { credentials: 'include' });
-                    const text = await resp.text();
-                    return { status: resp.status, text: text };
-                }
-            """, url)
-            if result["status"] == 200:
-                import json
-                return json.loads(result["text"])
+            resp = await self._page.goto(url, wait_until="networkidle", timeout=30000)
+            if resp and resp.status == 200:
+                text = await self._page.evaluate("document.body.innerText")
+                return json.loads(text)
+            elif resp and resp.status == 403:
+                logger.warning("AnimePahe API %s returned 403 (Cloudflare)", url)
+                return None
             else:
-                logger.warning("AnimePahe API %s returned %d", url, result["status"])
+                logger.warning("AnimePahe API %s returned %s", url, resp.status if resp else "None")
                 return None
         except Exception as e:
             logger.warning("AnimePahe API fetch failed for %s: %s", url, e)
@@ -104,7 +101,7 @@ class AnimePaheClient:
     async def _page_get(self, url: str) -> str | None:
         await self._ensure_browser()
         try:
-            resp = await self._page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            resp = await self._page.goto(url, wait_until="networkidle", timeout=30000)
             if resp and resp.status == 200:
                 return await self._page.content()
             logger.warning("AnimePahe page %s returned %s", url, resp.status if resp else "None")
