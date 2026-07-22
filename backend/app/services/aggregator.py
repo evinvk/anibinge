@@ -87,6 +87,7 @@ def _normalize_jikan(item: dict) -> dict:
         "year": item.get("year"),
         "season": item.get("season"),
         "format": item.get("type"),
+        "broadcast": item.get("broadcast"),
     }
 
 
@@ -311,39 +312,62 @@ async def get_seasonal(year: int, season: str, page: int = 1) -> list[dict]:
 
 @cached("agg:schedule", ttl=settings.CACHE_TTL_SHORT)
 async def get_schedule(day: str | None = None, page: int = 1) -> dict:
-    """Get schedule/airing anime: MAL → AniList → Jikan."""
-    try:
-        if day:
+    """Get schedule/airing anime.
+    
+    When day is provided (e.g. 'monday'), use Jikan's /schedules endpoint
+    which filters by broadcast day. When day is None, use MAL ranking
+    for a broad 'currently airing' list.
+    """
+    if day:
+        # Schedule by day — Jikan /schedules is the only source that
+        # properly groups anime by their weekly broadcast day.
+        try:
+            data = await jikan_client.get_schedule(day)
+            results = [_normalize_jikan(x) for x in data.get("data", [])]
+            if results:
+                logger.info("Schedule for %s from Jikan: %d results", day, len(results))
+                return {"data": results}
+            logger.warning("Jikan schedule empty for %s, trying MAL ranking", day)
+        except Exception as e:
+            logger.warning("Jikan schedule failed for %s (%s), trying MAL ranking", day, e)
+        try:
             data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
-        else:
-            data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
-        
-        results = [_normalize_mal(x) for x in data.get("data", [])]
-        if _is_valid_results(results):
-            result = {"data": results}
-            logger.info("Schedule from MAL: %d results", len(results))
-            return result
-        logger.warning("MAL schedule returned invalid data, falling back to AniList")
-    except Exception as e:
-        logger.warning("MAL schedule failed (%s), falling back to AniList", e)
-    try:
-        data = await anilist_client.get_schedule(page=page)
-        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
-        if _is_valid_results(results):
-            result = {"data": results}
-            logger.info("Schedule from AniList: %d results", len(results))
-            return result
-        logger.warning("AniList schedule returned invalid data, falling back to Jikan")
-    except Exception as e2:
-        logger.warning("AniList schedule failed (%s), falling back to Jikan", e2)
-    try:
-        data = await jikan_client.get_schedule(day)
-        result = {"data": [_normalize_jikan(x) for x in data.get("data", [])]}
-        logger.info("Schedule from Jikan: %d results", len(result["data"]))
-        return result
-    except Exception as e3:
-        logger.error("All schedule sources failed: %s", e3)
+            results = [_normalize_mal(x) for x in data.get("data", [])]
+            if _is_valid_results(results):
+                logger.info("Schedule for %s from MAL ranking: %d results", day, len(results))
+                return {"data": results}
+        except Exception as e:
+            logger.warning("MAL ranking failed for schedule %s: %s", day, e)
         return {"data": []}
+    else:
+        # No day filter — "currently airing" overview. Try MAL first,
+        # then AniList, then Jikan.
+        try:
+            data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
+            results = [_normalize_mal(x) for x in data.get("data", [])]
+            if _is_valid_results(results):
+                logger.info("Airing from MAL: %d results", len(results))
+                return {"data": results}
+            logger.warning("MAL airing returned invalid data, falling back to AniList")
+        except Exception as e:
+            logger.warning("MAL airing failed (%s), falling back to AniList", e)
+        try:
+            data = await anilist_client.get_schedule(page=page)
+            results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+            if _is_valid_results(results):
+                logger.info("Airing from AniList: %d results", len(results))
+                return {"data": results}
+            logger.warning("AniList schedule returned invalid data, falling back to Jikan")
+        except Exception as e2:
+            logger.warning("AniList schedule failed (%s), falling back to Jikan", e2)
+        try:
+            data = await jikan_client.get_schedule()
+            results = [_normalize_jikan(x) for x in data.get("data", [])]
+            logger.info("Airing from Jikan: %d results", len(results))
+            return {"data": results}
+        except Exception as e3:
+            logger.error("All airing sources failed: %s", e3)
+            return {"data": []}
 
 
 @cached("agg:recommendations", ttl=settings.CACHE_TTL_MEDIUM)
