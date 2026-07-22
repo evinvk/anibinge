@@ -204,14 +204,15 @@ def _denormalize_jikan_detail(m: dict) -> dict:
     return m
 
 
-@cached("agg:detail:v2", ttl=settings.CACHE_TTL_MEDIUM)
+@cached("agg:detail:v3", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_detail(id_: int, source: str = "mal") -> dict:
     """
     Get anime detail with comprehensive fallback chain.
     Tries the preferred source first, then all others.
-    AniList IDs ≠ MAL IDs, so we cross-reference by title when needed.
+    Skips Jikan when MAL explicitly 404s (Jikan wraps MAL, same IDs).
     """
     tried = set()
+    mal_404 = False
 
     async def _try_anilist():
         if "anilist" in tried:
@@ -228,6 +229,7 @@ async def get_detail(id_: int, source: str = "mal") -> dict:
         return None
 
     async def _try_mal():
+        nonlocal mal_404
         if "mal" in tried:
             return None
         tried.add("mal")
@@ -235,11 +237,18 @@ async def get_detail(id_: int, source: str = "mal") -> dict:
             data = await mal_client.get_anime_details(id_)
             logger.info("Anime detail %s from MAL", id_)
             return _denormalize_mal_detail(data)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                mal_404 = True
+            logger.warning("MAL detail failed for %s: %s", id_, e)
         except Exception as e:
             logger.warning("MAL detail failed for %s: %s", id_, e)
         return None
 
     async def _try_jikan():
+        # Jikan wraps MAL — same IDs. If MAL 404'd, Jikan will too.
+        if mal_404:
+            return None
         if "jikan" in tried:
             return None
         tried.add("jikan")
