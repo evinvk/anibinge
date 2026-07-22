@@ -457,11 +457,12 @@ async def get_upcoming(page: int = 1) -> list[dict]:
             items = await animeschedule_client.animeschedule.get_anime_list(
                 airing_statuses="upcoming", page=page, per_page=25
             )
+            logger.info("AnimeSchedule upcoming raw: %d items, token_len=%d", len(items), len(settings.ANIMESCHEDULE_API_TOKEN))
             results = [_normalize_animeschedule(x) for x in items]
             if _is_valid_results(results):
                 logger.info("Upcoming from AnimeSchedule: %d results", len(results))
                 return results
-            logger.warning("AnimeSchedule upcoming returned invalid data, falling back to MAL")
+            logger.warning("AnimeSchedule upcoming returned invalid data (ids=%s), falling back to MAL", [r.get("id") for r in results[:3]])
         except Exception as e:
             logger.warning("AnimeSchedule upcoming failed (%s), falling back to MAL", e)
     try:
