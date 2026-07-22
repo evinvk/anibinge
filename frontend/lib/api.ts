@@ -166,6 +166,6 @@ export const api = {
   // GogoAnime streaming
   gogoanimeSearch: (q: string) =>
     request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
-  gogoanimeEpisode: (slug: string, ep: number) =>
-    request<{ data: any }>(`/api/v1/streaming/gogoanime/${slug}/episodes?ep=${ep}`, 60),
+  gogoanimeStream: (slug: string, ep: number) =>
+    request<{ data: any[] }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}`, 60),
 };

@@ -233,9 +233,27 @@ async def get_gogoanime_episode(
         data = await gogoanime_client.get_episode(slug, ep)
         if not data:
             raise HTTPException(status_code=404, detail="Episode not found on GogoAnime")
-        watch_url = gogoanime_client.build_watch_url(slug, ep)
-        return {"data": {**data, "watch_url": watch_url, "slug": slug, "episode": ep}}
+        return {"data": data}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail="GogoAnime episode unavailable")
+
+
+@router.get("/gogoanime/{slug}/stream")
+@limiter.limit("30/minute")
+async def get_gogoanime_stream(
+    request: Request,
+    slug: str,
+    ep: int = Query(..., ge=1, description="Episode number"),
+):
+    """Get M3U8 streaming URLs for an episode on GogoAnime."""
+    try:
+        sources = await gogoanime_client.get_stream_sources(slug, ep)
+        if not sources:
+            raise HTTPException(status_code=404, detail="No streaming sources found")
+        return {"data": sources}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="GogoAnime stream unavailable")
