@@ -471,10 +471,11 @@ async def search_anivexa(
 async def anivexa_episodes(
     request: Request,
     anilist_id: int,
+    provider: str = Query("anikoto", description="Provider: anikoto, animegg, anizone"),
 ):
     """Get episode list from Anivexa by AniList ID."""
     try:
-        data = await anivexa_client.get_episodes(anilist_id)
+        data = await anivexa_client.get_episodes(anilist_id, provider)
         if not data or data.get("error"):
             raise HTTPException(status_code=404, detail="Anime not found on Anivexa")
         return data
@@ -491,10 +492,11 @@ async def anivexa_stream(
     anilist_id: int,
     ep: int = Query(..., ge=1, description="Episode number"),
     audio: str = Query("sub", description="Audio type: sub or dub"),
+    provider: str = Query("anikoto", description="Provider: anikoto, animegg, anizone"),
 ):
     """Get streaming URL from Anivexa for a specific episode."""
     try:
-        data = await anivexa_client.get_stream_data(anilist_id, ep, audio)
+        data = await anivexa_client.get_stream_data(anilist_id, ep, provider, audio)
         if not data or data.get("error"):
             raise HTTPException(status_code=404, detail="Stream not available on Anivexa")
         return data
@@ -511,16 +513,15 @@ async def anivexa_master_m3u8(
     anilist_id: int,
     ep: int = Query(..., ge=1, description="Episode number"),
     audio: str = Query("sub", description="Audio type: sub or dub"),
+    provider: str = Query("anikoto", description="Provider"),
 ):
     """Proxy the Anivexa M3U8 stream through our domain for CORS and URL rewriting."""
     try:
-        stream_data = await anivexa_client.get_stream_data(anilist_id, ep, audio)
-        if not stream_data or stream_data.get("error"):
+        result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+        if not result or not result.get("stream_url"):
             raise HTTPException(status_code=404, detail="Stream not available")
 
-        m3u8_url = stream_data.get("stream_url", "")
-        if not m3u8_url:
-            raise HTTPException(status_code=404, detail="No M3U8 URL in response")
+        m3u8_url = result["stream_url"]
 
         # Fetch the M3U8 content and rewrite URLs to proxy through us
         async with _httpx.AsyncClient(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True) as client:
@@ -663,6 +664,7 @@ async def fallback_stream(
     q: str = Query(..., min_length=2, description="Anime title to search"),
     ep: int = Query(1, ge=1, description="Episode number"),
     audio: str = Query("sub", description="Audio type: sub or dub"),
+    anilist_id: int | None = Query(None, description="AniList ID (optional, speeds up lookup)"),
 ):
     """
     Try to get a streaming URL for an episode.
@@ -696,25 +698,20 @@ async def fallback_stream(
     except Exception:
         pass
 
-    # Fallback to Anivexa — search by title, get AniList ID, then stream
-    try:
-        search_results = await anivexa_client.search_anime(q)
-        if search_results:
-            # Anivexa search returns results with anilist_id
-            anilist_id = search_results[0].get("anilist_id") or search_results[0].get("id")
-            if anilist_id:
-                stream_data = await anivexa_client.get_stream_data(int(anilist_id), ep, audio)
-                if stream_data and stream_data.get("stream_url"):
-                    master_path = f"/api/v1/streaming/anivexa/{anilist_id}/master?ep={ep}&audio={audio}"
-                    return {
-                        "source": "anivexa",
-                        "master_url": master_path,
-                        "stream_url": stream_data["stream_url"],
-                        "subtitles": stream_data.get("subtitles", []),
-                        "anilist_id": anilist_id,
-                        "title": search_results[0].get("title", q),
-                    }
-    except Exception:
-        pass
+    # Fallback to Anivexa
+    if anilist_id:
+        try:
+            result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+            if result and result.get("stream_url"):
+                master_path = f"/api/v1/streaming/anivexa/{anilist_id}/master?ep={ep}&audio={audio}"
+                return {
+                    "source": "anivexa",
+                    "provider": result.get("provider", "anikoto"),
+                    "master_url": master_path,
+                    "stream_url": result["stream_url"],
+                    "anilist_id": anilist_id,
+                }
+        except Exception:
+            pass
 
     raise HTTPException(status_code=404, detail="No streaming sources available from any provider")

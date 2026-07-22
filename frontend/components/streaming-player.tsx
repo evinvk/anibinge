@@ -27,9 +27,10 @@ interface StreamData {
 
 interface StreamingPlayerProps {
   animeTitle: string;
+  anilistId?: number;
 }
 
-export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
+export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
@@ -96,7 +97,9 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
 
     try {
       // Fallback: use Anivexa via the fallback endpoint
-      const res = await api.fallbackStream(animeTitle, ep);
+      const params = new URLSearchParams({ q: animeTitle, ep: String(ep) });
+      if (anilistId) params.set("anilist_id", String(anilistId));
+      const res = await fetch(`${API_BASE}/api/v1/streaming/fallback/stream?${params}`).then(r => r.json());
       if (res?.master_url) {
         const masterUrlFull = res.master_url.startsWith("http")
           ? res.master_url
@@ -114,7 +117,7 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
 
     setError("No streaming sources available for this episode");
     setLoadingStream(false);
-  }, [animeTitle]);
+  }, [animeTitle, anilistId]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {

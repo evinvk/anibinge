@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     GOGOANIME_BASE_URL: str = "https://gogoanimehd.to"
 
     # Anivexa API (fallback streaming when GogoAnime CDN is down)
-    ANIVEXA_BASE_URL: str = "https://anivexa.vercel.app"
+    ANIVEXA_BASE_URL: str = "https://anivexa-api-eight.vercel.app"
 
     # AnimeSchedule (upcoming anime primary source)
     ANIMESCHEDULE_API_TOKEN: str = ""
