@@ -7,6 +7,7 @@ the same trending list regardless of the keyword. We work around this by fetchin
 the full catalog and doing local fuzzy title matching.
 """
 import asyncio
+import base64
 import logging
 import re
 import time
@@ -191,8 +192,9 @@ async def get_episode(slug: str, episode_number: int) -> dict | None:
         return None
 
 
-async def resolve_m3u8(proxy_url: str) -> str | None:
-    """Follow the proxy URL to get the actual M3U8 manifest URL."""
+async def resolve_m3u8(proxy_url: str) -> tuple[str, str] | None:
+    """Follow the proxy URL to get the actual M3U8 content.
+    Returns (m3u8_content, resolved_url) or None."""
     client = await _get_client()
     try:
         full_url = proxy_url if proxy_url.startswith("http") else f"{_BASE_URL}{proxy_url}"
@@ -201,12 +203,15 @@ async def resolve_m3u8(proxy_url: str) -> str | None:
         content_type = resp.headers.get("content-type", "")
 
         if "mpegurl" in content_type or resp.text.strip().startswith("#EXTM3U"):
-            return str(resp.url)
+            return (resp.text, full_url)
 
         text = resp.text
         m3u8_match = re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', text)
         if m3u8_match:
-            return m3u8_match.group(0)
+            m3u8_url = m3u8_match.group(0)
+            resp2 = await client.get(m3u8_url, headers={"Referer": _BASE_URL + "/"})
+            resp2.raise_for_status()
+            return (resp2.text, m3u8_url)
 
         logger.warning("GogoAnime: no M3U8 found at %s", full_url)
         return None
@@ -215,50 +220,82 @@ async def resolve_m3u8(proxy_url: str) -> str | None:
         return None
 
 
-async def get_stream_sources(slug: str, episode_number: int) -> list[dict]:
-    """Get quality-tagged M3U8 URLs for an episode."""
+def _resolve_url(base: str, relative: str) -> str:
+    """Resolve a relative URL against a base URL."""
+    if relative.startswith("http"):
+        return relative
+    if relative.startswith("/"):
+        return f"{_BASE_URL}{relative}"
+    # relative path
+    base_path = base.rsplit("/", 1)[0] + "/"
+    return base_path + relative
+
+
+def _rewrite_m3u8_urls(content: str, base_url: str) -> str:
+    """Rewrite M3U8 URLs to go through our CORS proxy endpoint."""
+    lines = content.splitlines()
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            resolved = _resolve_url(base_url, stripped)
+            encoded = base64.urlsafe_b64encode(resolved.encode()).decode()
+            result.append(f"/api/v1/streaming/gogoanime/proxy?url={encoded}")
+        else:
+            result.append(line)
+    return "\n".join(result)
+
+
+async def get_stream_sources(slug: str, episode_number: int) -> dict | None:
+    """Get quality-tagged streaming sources for an episode.
+    Returns {master_m3u8: str, qualities: [{quality, url}]} or None."""
     episode = await get_episode(slug, episode_number)
     if not episode:
-        return []
+        return None
 
     proxy_url = episode.get("defaultStreamingUrl", "")
     if not proxy_url:
         logger.warning("GogoAnime: no defaultStreamingUrl for %s ep-%d", slug, episode_number)
-        return []
+        return None
 
-    m3u8_url = await resolve_m3u8(proxy_url)
-    if not m3u8_url:
-        return []
+    result = await resolve_m3u8(proxy_url)
+    if not result:
+        return None
 
-    client = await _get_client()
-    try:
-        resp = await client.get(m3u8_url, headers={"Referer": _BASE_URL + "/"})
-        resp.raise_for_status()
-        text = resp.text
+    m3u8_content, resolved_url = result
 
-        sources = []
-        for line in text.splitlines():
-            if line.startswith("#EXT-X-STREAM-INF"):
-                attrs = {}
-                for part in line.split(","):
-                    if "=" in part:
-                        k, v = part.split("=", 1)
-                        attrs[k.strip()] = v.strip().strip('"')
-                quality = attrs.get("RESOLUTION", "Unknown")
-                if "x" in quality.lower():
-                    quality = quality.split("x")[-1] + "p"
-                sources.append({"quality": quality, "url": m3u8_url})
-            elif line.strip() and not line.startswith("#"):
-                sources.append({"quality": "default", "url": m3u8_url})
+    # Parse quality variants from the master M3U8
+    qualities = []
+    lines = m3u8_content.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("#EXT-X-STREAM-INF"):
+            attrs = {}
+            for part in line.split(","):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    attrs[k.strip()] = v.strip().strip('"')
+            quality = attrs.get("NAME") or attrs.get("RESOLUTION", "default")
+            if quality == "default" and "x" in quality.lower():
+                quality = quality.split("x")[-1] + "p"
+            # Next non-empty, non-comment line is the URL
+            i += 1
+            while i < len(lines) and (not lines[i].strip() or lines[i].startswith("#")):
+                i += 1
+            if i < len(lines):
+                variant_url = _resolve_url(resolved_url, lines[i].strip())
+                qualities.append({"quality": quality, "url": variant_url})
+        i += 1
 
-        if not sources:
-            sources = [{"quality": "default", "url": m3u8_url}]
+    # Rewrite master M3U8 so variant URLs go through our proxy
+    rewritten_master = _rewrite_m3u8_urls(m3u8_content, resolved_url)
 
-        logger.info("GogoAnime stream %s ep-%d: %d quality options", slug, episode_number, len(sources))
-        return sources
-    except Exception as e:
-        logger.warning("GogoAnime stream parse failed: %s", e)
-        return [{"quality": "default", "url": m3u8_url}]
+    if not qualities:
+        qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
+
+    logger.info("GogoAnime stream %s ep-%d: %d quality options", slug, episode_number, len(qualities))
+    return {"master_m3u8": rewritten_master, "qualities": qualities}
 
 
 async def close():

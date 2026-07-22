@@ -1,10 +1,13 @@
 """
 Streaming router — integrates Wibu API for episode streaming and video sources.
-Also provides GogoAnime endpoints for search, episodes, and iframe streaming.
+Also provides GogoAnime endpoints for search, episodes, and HLS streaming.
 """
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import Response
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+import base64 as _b64
+import httpx as _httpx
 
 from app.core.config import get_settings
 from app.services import wibu_client
@@ -257,3 +260,71 @@ async def get_gogoanime_stream(
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail="GogoAnime stream unavailable")
+
+
+_PROXY_TIMEOUT = _httpx.Timeout(15.0, connect=10.0)
+_PROXY_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+}
+_CORS_HEADERS = {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "*",
+}
+
+
+@router.get("/gogoanime/proxy")
+@limiter.limit("120/minute")
+async def gogoanime_proxy(
+    request: Request,
+    url: str = Query(..., description="Base64-encoded URL to proxy"),
+):
+    """CORS proxy for GogoAnime M3U8 and .ts segment requests.
+    URL parameter is base64-encoded to avoid query string conflicts.
+    Rewrites M3U8 content so variant/segment URLs also go through this proxy."""
+    if request.method == "OPTIONS":
+        return Response(status_code=204, headers=_CORS_HEADERS)
+
+    try:
+        decoded_url = _b64.urlsafe_b64decode(url.encode()).decode()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid proxy URL encoding")
+
+    try:
+        async with _httpx.AsyncClient(
+            timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True
+        ) as client:
+            resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/"})
+            resp.raise_for_status()
+
+            content_type = resp.headers.get("content-type", "")
+            body = resp.text
+
+            # If it's M3U8 content, rewrite URLs to go through this proxy
+            if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
+                from urllib.parse import urlparse
+                parsed = urlparse(decoded_url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                body = gogoanime_client._rewrite_m3u8_urls(body, base_url)
+                return Response(
+                    content=body,
+                    media_type="application/vnd.apple.mpegurl",
+                    headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
+                )
+
+            # Binary content (.ts segments, etc.)
+            return Response(
+                content=resp.content,
+                media_type=content_type or "video/mp2t",
+                headers={
+                    **_CORS_HEADERS,
+                    "Cache-Control": "public, max-age=86400",
+                    "Content-Length": str(len(resp.content)),
+                },
+            )
+    except _httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Proxy request failed")

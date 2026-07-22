@@ -19,6 +19,11 @@ interface StreamSource {
   url: string;
 }
 
+interface StreamData {
+  master_m3u8: string;
+  qualities: StreamSource[];
+}
+
 interface StreamingPlayerProps {
   animeTitle: string;
 }
@@ -28,16 +33,18 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
   const [totalEps, setTotalEps] = useState<number | null>(null);
-  const [sources, setSources] = useState<StreamSource[]>([]);
+  const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [selectedSource, setSelectedSource] = useState<StreamSource | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
+  const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     searchAnime();
+    return () => cleanupBlobUrl();
   }, [animeTitle]);
 
   useEffect(() => {
@@ -62,22 +69,35 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
     };
   }, [selectedSource]);
 
+  function cleanupBlobUrl() {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+  }
+
   const loadStream = useCallback(async (slug: string, ep: number) => {
     setLoadingStream(true);
     setError(null);
-    setSources([]);
+    setStreamData(null);
     setSelectedSource(null);
+    cleanupBlobUrl();
     try {
       const res = await api.gogoanimeStream(slug, ep);
-      const streamSources = res.data || [];
-      setSources(streamSources);
-      if (streamSources.length > 0) {
-        setSelectedSource(streamSources[0]);
+      const data = res.data;
+      if (data?.master_m3u8) {
+        setStreamData(data);
+        if (data.qualities?.length > 0) {
+          setSelectedSource(data.qualities[0]);
+        }
       } else {
         setError("No streaming sources available for this episode");
       }
-    } catch {
-      setError("Failed to load streaming sources");
+    } catch (err: any) {
+      const msg = err?.status === 404
+        ? "This episode is not available on GogoAnime"
+        : "Failed to load streaming sources";
+      setError(msg);
     } finally {
       setLoadingStream(false);
     }
@@ -98,6 +118,8 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       if (res.data?.length > 0) {
         setSelectedSlug(res.data[0].slug);
         setTotalEps(res.data[0].episodes_count || null);
+      } else {
+        setError("This anime is not available for streaming");
       }
     } catch {
       setError("Failed to search for streaming sources");
@@ -106,23 +128,32 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
     }
   }
 
-  async function initPlayer(m3u8Url: string) {
+  async function initPlayer(m3u8Content: string) {
     if (hlsRef.current) {
       hlsRef.current.destroy();
     }
+    cleanupBlobUrl();
 
     const video = videoRef.current;
     if (!video) return;
 
     const Hls = (await import("hls.js")).default;
 
+    // Create a Blob URL from the M3U8 content so hls.js can load it
+    const blob = new Blob([m3u8Content], { type: "application/vnd.apple.mpegurl" });
+    const blobUrl = URL.createObjectURL(blob);
+    blobUrlRef.current = blobUrl;
+
     if (Hls.isSupported()) {
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
+        xhrSetup: (xhr: XMLHttpRequest, url: string) => {
+          // All URLs in the M3U8 are already rewritten to go through our proxy
+        },
       });
       hlsRef.current = hls;
-      hls.loadSource(m3u8Url);
+      hls.loadSource(blobUrl);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         video.play().catch(() => {});
@@ -133,7 +164,7 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
         }
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = m3u8Url;
+      video.src = blobUrl;
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");
@@ -215,9 +246,9 @@ export function StreamingPlayer({ animeTitle }: StreamingPlayerProps) {
       </div>
 
       {/* Quality selector */}
-      {sources.length > 1 && (
+      {streamData && streamData.qualities.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {sources.map((s, i) => (
+          {streamData.qualities.map((s, i) => (
             <button
               key={i}
               onClick={() => setSelectedSource(s)}
