@@ -3,15 +3,13 @@ AnimePahe scraper client — searches, fetches episodes, and resolves streaming 
 Uses Playwright headless browser to bypass Cloudflare Turnstile protection.
 """
 import asyncio
+import json
 import logging
 import re
 import subprocess
 import tempfile
 import os
 from typing import Any
-
-from playwright.async_api import async_playwright, Browser, Page
-from bs4 import BeautifulSoup
 
 logger = logging.getLogger("anibinge.animepahe")
 
@@ -21,8 +19,8 @@ _BASE_URL = "https://animepahe.com"
 class AnimePaheClient:
     def __init__(self):
         self._playwright = None
-        self._browser: Browser | None = None
-        self._page: Page | None = None
+        self._browser = None
+        self._page = None
         self._lock = asyncio.Lock()
         self._initialized = False
 
@@ -41,6 +39,7 @@ class AnimePaheClient:
                     await self._playwright.stop()
             except Exception:
                 pass
+            from playwright.async_api import async_playwright
             self._playwright = await async_playwright().start()
             self._browser = await self._playwright.chromium.launch(
                 headless=True,
@@ -82,7 +81,6 @@ class AnimePaheClient:
 
     async def _api_get(self, url: str) -> Any:
         await self._ensure_browser()
-        import json
         try:
             resp = await self._page.goto(url, wait_until="networkidle", timeout=30000)
             if resp and resp.status == 200:
@@ -137,6 +135,7 @@ class AnimePaheClient:
         if not html:
             return []
 
+        from bs4 import BeautifulSoup
         soup = BeautifulSoup(html, "html.parser")
         meta = soup.find("meta", {"property": "og:url"})
         if not meta:
