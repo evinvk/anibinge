@@ -155,8 +155,9 @@ def _normalize_animeschedule(item: dict) -> dict:
             mal_id = int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
         except (ValueError, IndexError):
             pass
+    slug = item.get("route", "")
     return {
-        "id": mal_id,
+        "id": mal_id or slug,
         "source": "mal" if mal_id else "animeschedule",
         "title": item.get("title") or names.get("romaji"),
         "title_english": names.get("english"),
@@ -169,7 +170,7 @@ def _normalize_animeschedule(item: dict) -> dict:
         "genres": genres,
         "synopsis": item.get("description"),
         "year": item.get("year"),
-        "season": (item.get("season") or {}).get("season"),
+        "season": (item.get("season") or {}).get("season") if isinstance(item.get("season"), dict) else None,
         "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
         "start_date": start_date,
         "air_time": air_time,
@@ -196,8 +197,11 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
             mal_id = int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
         except (ValueError, IndexError):
             pass
+    slug = item.get("route", "")
+    season_raw = item.get("season")
+    season = season_raw.get("season") if isinstance(season_raw, dict) else season_raw
     return {
-        "id": mal_id,
+        "id": mal_id or slug,
         "source": "mal" if mal_id else "animeschedule",
         "title": item.get("title") or names.get("romaji"),
         "title_english": names.get("english"),
@@ -210,7 +214,7 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
         "genres": genres,
         "synopsis": None,
         "year": item.get("year"),
-        "season": (item.get("season") or {}).get("season"),
+        "season": season,
         "format": (item.get("mediaTypes") or [{}])[0].get("name") if item.get("mediaTypes") else None,
         "start_date": start_date,
         "air_time": air_time,

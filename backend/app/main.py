@@ -97,7 +97,6 @@ async def health():
         "status": "ok",
         "env": settings.ENV,
         "version": "2.0.0",
-        "has_animeschedule_token": bool(settings.ANIMESCHEDULE_API_TOKEN),
     }
 
 
