@@ -461,16 +461,48 @@ def _extract_day(item: dict) -> str | None:
     return _DAY_MAP.get(day_str)
 
 
-@cached("agg:weekly_schedule:v3", ttl=settings.CACHE_TTL_SHORT)
+@cached("agg:weekly_schedule:v4", ttl=settings.CACHE_TTL_SHORT)
 async def get_weekly_schedule() -> dict:
-    """Fetch the weekly schedule by querying Jikan per-day in parallel batches.
+    """Fetch the weekly schedule grouped by broadcast day.
 
-    Issues 7 per-day calls in two batches (3 + 4) to respect Jikan's
-    3 req/sec rate limit while keeping total time under ~4 seconds.
+    Primary: AniList RELEASING anime with nextAiringEpisode.airingAt
+    timestamps — we convert the Unix timestamp to a day-of-week.  This
+    works reliably from cloud environments (no IP blocks).
+
+    Fallback: Jikan per-day filter in parallel batches.
     """
+    from datetime import datetime, timezone
+
     DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     grouped: dict[str, list[dict]] = {d: [] for d in DAYS}
 
+    # --- 1. AniList: group by nextAiringEpisode.airingAt day-of-week ---
+    try:
+        pages_fetched = 0
+        max_pages = 3  # up to 150 anime
+        for pg in range(1, max_pages + 1):
+            data = await anilist_client.get_schedule(page=pg, per_page=50)
+            media_list = data.get("Page", {}).get("media", [])
+            if not media_list:
+                break
+            for item in media_list:
+                next_ep = item.get("nextAiringEpisode")
+                if not next_ep or not next_ep.get("airingAt"):
+                    continue
+                dt = datetime.fromtimestamp(next_ep["airingAt"], tz=timezone.utc)
+                day_name = DAYS[dt.weekday()]  # 0=monday..6=sunday
+                grouped[day_name].append(_normalize_anilist(item))
+            pages_fetched += 1
+
+        counts = {d: len(v) for d, v in grouped.items() if v}
+        if counts:
+            logger.info("Weekly schedule from AniList (by airAt): %s", counts)
+            return {"data": grouped}
+        logger.warning("AniList schedule returned no date-grouped data, trying Jikan")
+    except Exception as e:
+        logger.warning("AniList weekly schedule failed (%s), trying Jikan", e)
+
+    # --- 2. Jikan: per-day filter in parallel batches ---
     async def _fetch_day(day: str):
         try:
             data = await jikan_client.get_schedule(day)
@@ -480,11 +512,8 @@ async def get_weekly_schedule() -> dict:
         except Exception as e:
             logger.warning("Jikan schedule failed for %s: %s", day, e)
 
-    # Batch 1: first 3 days
     await asyncio.gather(*[_fetch_day(d) for d in DAYS[:3]])
-    await asyncio.sleep(1.0)  # respect rate limit
-
-    # Batch 2: remaining 4 days
+    await asyncio.sleep(1.0)
     await asyncio.gather(*[_fetch_day(d) for d in DAYS[3:]])
 
     counts = {d: len(v) for d, v in grouped.items() if v}
@@ -492,28 +521,39 @@ async def get_weekly_schedule() -> dict:
         logger.info("Weekly schedule from Jikan (per-day): %s", counts)
         return {"data": grouped}
 
-    # --- Fallback: MAL airing ranking (no broadcast-day info) ---
-    try:
-        data = await mal_client.get_anime_ranking(ranking_type="airing", page=1, limit=100)
-        results = [_normalize_mal(x) for x in data.get("data", [])]
-        if results:
-            logger.info("Weekly schedule fallback from MAL: %d results (no day info)", len(results))
-            return {"data": grouped, "fallback": results}
-    except Exception as e:
-        logger.warning("MAL ranking fallback failed for weekly schedule: %s", e)
-
     return {"data": grouped}
 
 
-@cached("agg:schedule:v3", ttl=settings.CACHE_TTL_SHORT)
+@cached("agg:schedule:v4", ttl=settings.CACHE_TTL_SHORT)
 async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     """Get schedule/airing anime for a single day.
 
-    For a specific day, calls Jikan's per-day filter directly (fast).
-    For no-day "currently airing", tries MAL → AniList → Jikan.
+    Primary: AniList — fetches all RELEASING anime with nextAiringEpisode
+    timestamps and filters to the requested day-of-week.
+    Fallback: Jikan per-day filter.
     """
     if day:
-        # Direct per-day Jikan call — fast and accurate
+        # Try AniList first (reliable from cloud)
+        try:
+            from datetime import datetime, timezone
+            DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            data = await anilist_client.get_schedule(page=1, per_page=50)
+            media_list = data.get("Page", {}).get("media", [])
+            day_items = []
+            for item in media_list:
+                next_ep = item.get("nextAiringEpisode")
+                if not next_ep or not next_ep.get("airingAt"):
+                    continue
+                dt = datetime.fromtimestamp(next_ep["airingAt"], tz=timezone.utc)
+                if DAYS[dt.weekday()] == day:
+                    day_items.append(_normalize_anilist(item))
+            if day_items:
+                logger.info("Schedule for %s from AniList: %d results", day, len(day_items))
+                return {"data": day_items}
+        except Exception as e:
+            logger.warning("AniList schedule failed for %s: %s", day, e)
+
+        # Fallback: Jikan per-day filter
         try:
             data = await jikan_client.get_schedule(day)
             results = [_normalize_jikan(x) for x in data.get("data", [])]
@@ -523,19 +563,15 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
         except Exception as e:
             logger.warning("Jikan schedule filter failed for %s: %s", day, e)
 
-        # No day-specific fallback available — return empty rather than
-        # dumping all airing anime into a single day.
         return {"data": []}
     else:
-        # No day filter — "currently airing" overview. Try MAL first,
-        # then AniList, then Jikan.
+        # No day — "currently airing" overview
         try:
             data = await mal_client.get_anime_ranking(ranking_type="airing", page=page)
             results = [_normalize_mal(x) for x in data.get("data", [])]
             if _is_valid_results(results):
                 logger.info("Airing from MAL: %d results", len(results))
                 return {"data": results}
-            logger.warning("MAL airing returned invalid data, falling back to AniList")
         except Exception as e:
             logger.warning("MAL airing failed (%s), falling back to AniList", e)
         try:
@@ -544,7 +580,6 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
             if _is_valid_results(results):
                 logger.info("Airing from AniList: %d results", len(results))
                 return {"data": results}
-            logger.warning("AniList schedule returned invalid data, falling back to Jikan")
         except Exception as e2:
             logger.warning("AniList schedule failed (%s), falling back to Jikan", e2)
         try:

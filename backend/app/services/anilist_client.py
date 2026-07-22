@@ -274,8 +274,8 @@ class AniListClient:
             },
         )
 
-    async def get_schedule(self, page: int = 1, per_page: int = 20) -> dict:
-        """Get currently airing anime (similar to schedule/broadcast)."""
+    async def get_schedule(self, page: int = 1, per_page: int = 50) -> dict:
+        """Get currently airing anime with nextAiringEpisode timestamps for day-of-week grouping."""
         query = """
         query($page:Int,$perPage:Int){
           Page(page:$page,perPage:$perPage){
@@ -306,6 +306,7 @@ class AniListClient:
               status
               genres
               format
+              description
             }
           }
         }
