@@ -1,9 +1,15 @@
 """
 GogoAnime streaming client — searches anime, fetches episodes, and resolves M3U8 streaming links.
 Uses the gogoanimehd.to JSON API (no browser required).
+
+NOTE: The /api/search?keyword= endpoint on gogoanimehd.to is BROKEN — it returns
+the same trending list regardless of the keyword. We work around this by fetching
+the full catalog and doing local fuzzy title matching.
 """
+import asyncio
 import logging
 import re
+import time
 from typing import Any
 
 import httpx
@@ -17,8 +23,14 @@ _HEADERS = {
     "Accept": "application/json, text/html, */*",
     "Referer": _BASE_URL + "/",
 }
+_CATALOG_TTL = 60 * 60 * 24  # 24 hours
+_MAX_CATALOG_PAGES = 300
 
 _client: httpx.AsyncClient | None = None
+_catalog: dict[str, dict] = {}  # normalized_title -> item
+_catalog_loaded = False
+_catalog_lock = asyncio.Lock()
+_catalog_loaded_at: float = 0
 
 
 async def _get_client() -> httpx.AsyncClient:
@@ -28,19 +40,141 @@ async def _get_client() -> httpx.AsyncClient:
     return _client
 
 
-async def search_anime(query: str) -> list[dict]:
-    """Search for anime by title."""
+def _normalize(title: str) -> str:
+    """Normalize a title for matching: lowercase, strip punctuation, collapse spaces."""
+    t = title.lower().strip()
+    t = re.sub(r"[''`]", "", t)
+    t = re.sub(r"[^\w\s]", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def _token_set(title: str) -> set[str]:
+    """Extract a set of tokens from a title for set-similarity matching."""
+    return set(_normalize(title).split())
+
+
+async def _fetch_catalog_page(page: int) -> list[dict]:
+    """Fetch a single page of the GogoAnime catalog."""
     client = await _get_client()
     try:
-        resp = await client.get(f"{_BASE_URL}/api/search", params={"keyword": query})
+        resp = await client.get(f"{_BASE_URL}/api/search", params={"keyword": "", "page": page})
         resp.raise_for_status()
         data = resp.json()
-        items = data.get("items", [])
-        logger.info("GogoAnime search '%s': %d results", query, len(items))
-        return items
+        return data.get("items", [])
     except Exception as e:
-        logger.warning("GogoAnime search failed for '%s': %s", query, e)
+        logger.warning("GogoAnime catalog page %d fetch failed: %s", page, e)
         return []
+
+
+async def _load_catalog():
+    """Load the full GogoAnime catalog into memory. Runs in background."""
+    global _catalog, _catalog_loaded, _catalog_loaded_at
+
+    logger.info("GogoAnime: starting catalog load (fetching %d pages)...", _MAX_CATALOG_PAGES)
+    start = time.monotonic()
+
+    # Fetch in batches of 10 to avoid overwhelming the server
+    all_items = []
+    batch_size = 10
+    for batch_start in range(1, _MAX_CATALOG_PAGES + 1, batch_size):
+        batch_end = min(batch_start + batch_size, _MAX_CATALOG_PAGES + 1)
+        tasks = [_fetch_catalog_page(p) for p in range(batch_start, batch_end)]
+        results = await asyncio.gather(*tasks)
+        for page_items in results:
+            all_items.extend(page_items)
+        # Small delay between batches
+        await asyncio.sleep(0.2)
+
+    # Build the search index
+    new_catalog = {}
+    for item in all_items:
+        slug = item.get("slug", "")
+        title = item.get("title", "")
+        title_en = item.get("title_english", "") or ""
+        title_jp = item.get("title_japanese", "") or ""
+
+        # Index by all title variants
+        for t in [title, title_en, title_jp]:
+            if t:
+                norm = _normalize(t)
+                if norm and norm not in new_catalog:
+                    new_catalog[norm] = item
+
+    _catalog = new_catalog
+    _catalog_loaded = True
+    _catalog_loaded_at = time.monotonic()
+
+    elapsed = time.monotonic() - start
+    logger.info(
+        "GogoAnime catalog loaded: %d items indexed in %.1fs",
+        len(_catalog), elapsed,
+    )
+
+
+def _fuzzy_search(query: str, max_results: int = 5) -> list[dict]:
+    """Search the local catalog using fuzzy matching."""
+    global _catalog
+
+    q_norm = _normalize(query)
+    q_tokens = _token_set(query)
+
+    scored = []
+    for norm, item in _catalog.items():
+        score = 0.0
+
+        # Exact match
+        if q_norm == norm:
+            score = 100.0
+        # Query is a substring of catalog title
+        elif q_norm in norm:
+            score = 80.0 + (len(q_norm) / max(len(norm), 1)) * 20
+        # Catalog title is a substring of query
+        elif norm in q_norm:
+            score = 70.0 + (len(norm) / max(len(q_norm), 1)) * 20
+        else:
+            # Token overlap (Jaccard-like)
+            cat_tokens = set(norm.split())
+            if q_tokens and cat_tokens:
+                overlap = len(q_tokens & cat_tokens)
+                union = len(q_tokens | cat_tokens)
+                if overlap > 0:
+                    score = (overlap / union) * 60.0
+
+                    # Bonus: more tokens matched = better
+                    score += overlap * 5
+
+        if score > 10:
+            scored.append((score, item))
+
+    scored.sort(key=lambda x: (-x[0], x[1].get("episodes_count", 0) or 0))
+    return [item for _, item in scored[:max_results]]
+
+
+async def search_anime(query: str) -> list[dict]:
+    """Search for anime by title using local fuzzy matching against the catalog."""
+    global _catalog, _catalog_loaded, _catalog_lock
+
+    # Ensure catalog is loaded
+    if not _catalog_loaded:
+        async with _catalog_lock:
+            if not _catalog_loaded:
+                # Start loading in background, but also try to get immediate results
+                load_task = asyncio.create_task(_load_catalog())
+
+                # Wait a bit for partial results, or wait for full load
+                try:
+                    await asyncio.wait_for(asyncio.shield(load_task), timeout=10.0)
+                except asyncio.TimeoutError:
+                    logger.info("GogoAnime: catalog still loading, using partial results")
+
+    if not _catalog:
+        logger.warning("GogoAnime: catalog empty, cannot search")
+        return []
+
+    results = _fuzzy_search(query)
+    logger.info("GogoAnime search '%s': %d results from catalog", query, len(results))
+    return results
 
 
 async def get_episode(slug: str, episode_number: int) -> dict | None:

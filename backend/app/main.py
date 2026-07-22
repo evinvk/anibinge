@@ -115,6 +115,11 @@ async def startup_event():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables ensured")
 
+    # Pre-load GogoAnime catalog in background (non-blocking)
+    from app.services import gogoanime_client
+    import asyncio
+    asyncio.create_task(gogoanime_client._load_catalog())
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
