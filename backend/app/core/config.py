@@ -2,6 +2,7 @@
 Central app configuration, loaded from environment variables (.env).
 """
 from functools import lru_cache
+from pydantic import validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,6 +15,13 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://anibinge:anibinge@localhost:5432/anibinge"
+
+    @validator("DATABASE_URL", pre=True)
+    def _ensure_asyncpg(cls, v: str) -> str:
+        # Render provides postgresql:// — we need postgresql+asyncpg://
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
 
     # Redis cache
     REDIS_URL: str = "redis://localhost:6379/0"

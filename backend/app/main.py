@@ -107,6 +107,15 @@ async def root():
     }
 
 
+@app.on_event("startup")
+async def startup_event():
+    from app.core.db import engine
+    from app.models.models import Base
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables ensured")
+
+
 @app.on_event("shutdown")
 async def shutdown_event():
     from app.services import animepahe_client
