@@ -5,8 +5,11 @@ MyAnimeList). This is our PRIMARY data source.
 Jikan enforces ~3 req/sec & 60 req/min public rate limits, so every
 public method here is wrapped in the Redis `cached()` decorator and
 requests share a single httpx.AsyncClient with sane timeouts + retry.
+A sliding-window rate limiter ensures we stay within limits even on
+cache misses.
 """
 import asyncio
+import time
 from typing import Any
 
 import httpx
@@ -19,12 +22,53 @@ settings = get_settings()
 _client = httpx.AsyncClient(base_url=settings.JIKAN_BASE_URL, timeout=10.0)
 
 
+class _RateLimiter:
+    """Sliding-window rate limiter: 3 req/sec, 60 req/min."""
+
+    def __init__(self, per_sec: int = 3, per_min: int = 60):
+        self.per_sec = per_sec
+        self.per_min = per_min
+        self._sec_timestamps: list[float] = []
+        self._min_timestamps: list[float] = []
+        self._lock = asyncio.Lock()
+
+    async def acquire(self):
+        async with self._lock:
+            now = time.monotonic()
+            # Purge old timestamps
+            self._sec_timestamps = [t for t in self._sec_timestamps if now - t < 1.0]
+            self._min_timestamps = [t for t in self._min_timestamps if now - t < 60.0]
+
+            # Check per-second limit
+            if len(self._sec_timestamps) >= self.per_sec:
+                wait = 1.0 - (now - self._sec_timestamps[0])
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                    now = time.monotonic()
+                    self._sec_timestamps = [t for t in self._sec_timestamps if now - t < 1.0]
+
+            # Check per-minute limit
+            if len(self._min_timestamps) >= self.per_min:
+                wait = 60.0 - (now - self._min_timestamps[0])
+                if wait > 0:
+                    await asyncio.sleep(wait)
+                    now = time.monotonic()
+                    self._min_timestamps = [t for t in self._min_timestamps if now - t < 60.0]
+
+            self._sec_timestamps.append(time.monotonic())
+            self._min_timestamps.append(time.monotonic())
+
+
+_limiter = _RateLimiter()
+
+
 async def _get(path: str, params: dict | None = None, retries: int = 3) -> dict[str, Any]:
     for attempt in range(retries + 1):
+        await _limiter.acquire()
         try:
             resp = await _client.get(path, params=params or {})
             if resp.status_code in (429, 503, 504) and attempt < retries:
-                await asyncio.sleep(1.5 * (attempt + 1))
+                await asyncio.sleep(2.0 * (attempt + 1))
                 continue
             resp.raise_for_status()
             return resp.json()

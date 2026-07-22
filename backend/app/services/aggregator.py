@@ -493,9 +493,9 @@ async def get_recommendations(anime_id: int, page: int = 1) -> list[dict]:
     return []
 
 
-@cached("agg:characters:v2", ttl=settings.CACHE_TTL_MEDIUM)
+@cached("agg:characters:v3", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_characters(anime_id: int) -> dict:
-    """Get characters for an anime: Jikan (primary) → MAL (fallback).
+    """Get characters for an anime: Jikan (primary) → MAL → AniList.
     Returns empty if no source provides usable data (names/images)."""
     try:
         data = await jikan_client.get_anime_characters(anime_id)
@@ -512,9 +512,36 @@ async def get_characters(anime_id: int) -> dict:
         if results and any(c.get("node", {}).get("name") for c in results):
             logger.info("Characters for %s from MAL", anime_id)
             return data
-        logger.warning("MAL characters returned incomplete data for %s", anime_id)
+        logger.warning("MAL characters returned incomplete data for %s, trying AniList", anime_id)
     except Exception as e:
-        logger.warning("MAL characters failed (%s)", e)
+        logger.warning("MAL characters failed (%s), trying AniList", e)
+    try:
+        data = await anilist_client.get_anime_characters(anime_id)
+        edges = data.get("Media", {}).get("characters", {}).get("edges", [])
+        normalized = []
+        for edge in edges:
+            node = edge.get("node", {})
+            name = node.get("name", {})
+            full_name = name.get("full") or f"{name.get('first', '')} {name.get('last', '')}".strip()
+            if full_name:
+                normalized.append({
+                    "character": {
+                        "mal_id": node.get("id"),
+                        "name": full_name,
+                        "images": {
+                            "jpg": {
+                                "image_url": (node.get("image") or {}).get("large")
+                                or (node.get("image") or {}).get("medium")
+                            }
+                        },
+                    },
+                    "role": (edge.get("role") or "supporting").lower(),
+                })
+        if normalized:
+            logger.info("Characters for %s from AniList: %d results", anime_id, len(normalized))
+            return {"data": normalized}
+    except Exception as e:
+        logger.warning("AniList characters failed for %s: %s", anime_id, e)
     return {"data": []}
 
 

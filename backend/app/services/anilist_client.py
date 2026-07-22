@@ -502,6 +502,33 @@ class AniListClient:
             query, {"id": studio_id, "page": page, "perPage": per_page}
         )
 
+    async def get_anime_characters(self, anime_id: int) -> dict:
+        """Get characters for a specific anime via AniList Media query."""
+        query = """
+        query($id:Int){
+          Media(id:$id,type:ANIME){
+            characters(sort:ROLE,perPage:50){
+              edges{
+                role
+                node{
+                  id
+                  name{
+                    full
+                    first
+                    last
+                  }
+                  image{
+                    large
+                    medium
+                  }
+                }
+              }
+            }
+          }
+        }
+        """
+        return await self._query(query, {"id": anime_id})
+
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
@@ -532,3 +559,6 @@ async def get_anime_detail(anime_id: int) -> dict:
 
 async def get_recommendations(anime_id: int, page: int = 1) -> dict:
     return await anilist_client.get_recommendations(anime_id=anime_id, page=page)
+
+async def get_anime_characters(anime_id: int) -> dict:
+    return await anilist_client.get_anime_characters(anime_id)
