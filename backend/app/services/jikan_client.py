@@ -19,15 +19,20 @@ settings = get_settings()
 _client = httpx.AsyncClient(base_url=settings.JIKAN_BASE_URL, timeout=10.0)
 
 
-async def _get(path: str, params: dict | None = None, retries: int = 2) -> dict[str, Any]:
+async def _get(path: str, params: dict | None = None, retries: int = 3) -> dict[str, Any]:
     for attempt in range(retries + 1):
-        resp = await _client.get(path, params=params or {})
-        if resp.status_code == 429 and attempt < retries:
-            await asyncio.sleep(1.2 * (attempt + 1))  # backoff on rate limit
-            continue
-        resp.raise_for_status()
-        return resp.json()
-    resp.raise_for_status()
+        try:
+            resp = await _client.get(path, params=params or {})
+            if resp.status_code in (429, 503, 504) and attempt < retries:
+                await asyncio.sleep(1.5 * (attempt + 1))
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.TimeoutException:
+            if attempt < retries:
+                await asyncio.sleep(2.0 * (attempt + 1))
+                continue
+            raise
     return {}
 
 

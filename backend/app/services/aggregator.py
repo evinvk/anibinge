@@ -207,9 +207,9 @@ def _denormalize_jikan_detail(m: dict) -> dict:
 @cached("agg:detail", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_detail(id_: int, source: str = "mal") -> dict:
     """
-    Get anime detail: MAL (primary) → AniList → Jikan (fallback chain).
-    
-    source param lets frontend override source preference (for known AniList ids).
+    Get anime detail: MAL → Jikan (fallback chain).
+    AniList IDs are different from MAL IDs, so we only try AniList
+    when the source is explicitly "anilist".
     """
     if source == "anilist":
         try:
@@ -217,35 +217,44 @@ async def get_detail(id_: int, source: str = "mal") -> dict:
             logger.info("Anime detail %s from AniList", id_)
             return _denormalize_anilist_detail(media.get("Media", {}))
         except Exception as e:
-            logger.warning("AniList detail failed (%s), falling back to MAL", e)
-    elif source == "jikan":
+            logger.warning("AniList detail failed (%s), trying Jikan", e)
+        try:
+            data = await jikan_client.get_anime_full(id_)
+            logger.info("Anime detail %s from Jikan (fallback)", id_)
+            return data.get("data", data)
+        except Exception as e2:
+            logger.error("All detail sources failed for %s: %s", id_, e2)
+            raise
+
+    if source == "jikan":
         try:
             data = await jikan_client.get_anime_full(id_)
             logger.info("Anime detail %s from Jikan", id_)
             return data.get("data", data)
         except Exception as e:
             logger.warning("Jikan detail failed (%s), trying MAL", e)
+        try:
+            data = await mal_client.get_anime_details(id_)
+            logger.info("Anime detail %s from MAL (fallback)", id_)
+            return _denormalize_mal_detail(data)
+        except Exception as e2:
+            logger.error("All detail sources failed for %s: %s", id_, e2)
+            raise
 
-    # Try MAL first (default)
+    # Default: MAL → Jikan (no AniList cross-reference, IDs don't match)
     try:
         data = await mal_client.get_anime_details(id_)
         logger.info("Anime detail %s from MAL", id_)
         return _denormalize_mal_detail(data)
     except Exception as e:
-        logger.warning("MAL detail failed (%s), falling back to AniList", e)
+        logger.warning("MAL detail failed (%s), trying Jikan", e)
         try:
-            media = await anilist_client.get_anime_detail(id_)
-            logger.info("Anime detail %s from AniList (fallback)", id_)
-            return _denormalize_anilist_detail(media.get("Media", {}))
+            data = await jikan_client.get_anime_full(id_)
+            logger.info("Anime detail %s from Jikan (fallback)", id_)
+            return data.get("data", data)
         except Exception as e2:
-            logger.warning("AniList detail failed (%s), falling back to Jikan", e2)
-            try:
-                data = await jikan_client.get_anime_full(id_)
-                logger.info("Anime detail %s from Jikan (fallback)", id_)
-                return data.get("data", data)
-            except Exception as e3:
-                logger.error("All detail sources failed for %s: %s", id_, e3)
-                raise
+            logger.error("All detail sources failed for %s: %s", id_, e2)
+            raise
 
 
 @cached("agg:top", ttl=settings.CACHE_TTL_MEDIUM)
@@ -372,7 +381,8 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
 
 @cached("agg:recommendations", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_recommendations(anime_id: int, page: int = 1) -> list[dict]:
-    """Get recommendations for an anime: Jikan (primary) → MAL → AniList."""
+    """Get recommendations for an anime: Jikan (primary) → AniList (secondary).
+    MAL has no recommendations endpoint, so we skip it entirely."""
     try:
         data = await jikan_client.get_anime_recommendations(anime_id)
         results = [
@@ -383,24 +393,9 @@ async def get_recommendations(anime_id: int, page: int = 1) -> list[dict]:
         if results:
             logger.info("Recommendations for %s from Jikan: %d results", anime_id, len(results))
             return results
-        logger.warning("Jikan recommendations empty for %s, trying MAL", anime_id)
+        logger.warning("Jikan recommendations empty for %s, trying AniList", anime_id)
     except Exception as e:
-        logger.warning("Jikan recommendations failed (%s), trying MAL", e)
-    try:
-        data = await mal_client.get_anime_recommendations(anime_id)
-        results = []
-        for x in data.get("data", []):
-            node = x.get("node", x)
-            anime_node = node.get("anime", {})
-            anime = anime_node.get("node", anime_node)
-            if anime and anime.get("id"):
-                results.append(_normalize_mal(anime))
-        if results:
-            logger.info("Recommendations for %s from MAL: %d results", anime_id, len(results))
-            return results
-        logger.warning("MAL recommendations empty for %s, trying AniList", anime_id)
-    except Exception as e:
-        logger.warning("MAL recommendations failed (%s), trying AniList", e)
+        logger.warning("Jikan recommendations failed (%s), trying AniList", e)
     try:
         data = await anilist_client.get_recommendations(anime_id, page=page)
         results = [
@@ -408,16 +403,18 @@ async def get_recommendations(anime_id: int, page: int = 1) -> list[dict]:
             for x in data.get("Media", {}).get("recommendations", {}).get("nodes", [])
             if x.get("mediaRecommendation")
         ]
-        logger.info("Recommendations for %s from AniList: %d results", anime_id, len(results))
-        return results
+        if results:
+            logger.info("Recommendations for %s from AniList: %d results", anime_id, len(results))
+            return results
     except Exception as e2:
-        logger.error("All recommendation sources failed for %s: %s", anime_id, e2)
-        return []
+        logger.warning("AniList recommendations failed for %s: %s", anime_id, e2)
+    return []
 
 
 @cached("agg:characters", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_characters(anime_id: int) -> dict:
-    """Get characters for an anime: Jikan (primary) → MAL (fallback)."""
+    """Get characters for an anime: Jikan (primary) → MAL (fallback).
+    Returns empty if no source provides usable data (names/images)."""
     try:
         data = await jikan_client.get_anime_characters(anime_id)
         results = data.get("data", [])
@@ -430,7 +427,7 @@ async def get_characters(anime_id: int) -> dict:
     try:
         data = await mal_client.get_anime_characters(anime_id)
         results = data.get("data", [])
-        if results and any(c.get("node", {}).get("character", {}).get("name") for c in results):
+        if results and any(c.get("node", {}).get("name") for c in results):
             logger.info("Characters for %s from MAL", anime_id)
             return data
         logger.warning("MAL characters returned incomplete data for %s", anime_id)

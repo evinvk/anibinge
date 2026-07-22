@@ -79,12 +79,15 @@ async def search_anime(query: str, page: int = 1, limit: int = 10) -> dict:
     Search for anime by title using MyAnimeList API.
 
     Returns paginated search results with basic anime information.
+    MAL requires at least 3 characters for the q parameter.
     """
+    if len(query.strip()) < 3:
+        raise ValueError("MAL search requires at least 3 characters")
     try:
         offset = (page - 1) * limit
         params = {
             "q": query,
-            "limit": min(limit, 100),  # MAL max limit is 100
+            "limit": min(limit, 100),
             "offset": offset,
             "fields": "id,title,main_picture,alternative_titles,start_date,end_date,"
             "synopsis,mean,rank,popularity,num_list_users,media_type,status,"
@@ -126,7 +129,7 @@ async def get_anime_characters(anime_id: int) -> dict:
     Get main characters for an anime.
     """
     try:
-        params = {"limit": 20, "fields": "characters"}
+        params = {"limit": 20}
         result = await _get(f"/anime/{anime_id}/characters", params=params)
         return result
     except Exception as e:
@@ -166,15 +169,10 @@ async def get_anime_reviews(anime_id: int, page: int = 1, limit: int = 10) -> di
 @cached("mal:recommendations", ttl=settings.CACHE_TTL_LONG)
 async def get_anime_recommendations(anime_id: int) -> dict:
     """
-    Get recommended anime similar to the given anime.
+    MAL API v2 does NOT have a recommendations endpoint.
+    Always raises so callers fall through to the next source.
     """
-    try:
-        params = {"limit": 20}
-        result = await _get(f"/anime/{anime_id}/recommendations", params=params)
-        return result
-    except Exception as e:
-        logger.error("MAL recommendations failed for id %s: %s", anime_id, e)
-        raise
+    raise NotImplementedError("MAL API has no /anime/{id}/recommendations endpoint")
 
 
 @cached("mal:ranking", ttl=settings.CACHE_TTL_MEDIUM)
