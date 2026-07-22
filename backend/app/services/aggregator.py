@@ -435,8 +435,9 @@ async def get_upcoming(page: int = 1) -> list[dict]:
     """Get upcoming (not yet aired) anime: AnimeSchedule → MAL → AniList → Jikan."""
     if settings.ANIMESCHEDULE_API_TOKEN:
         try:
-            data = await animeschedule_client.animeschedule.get_upcoming(page=page)
-            items = data if isinstance(data, list) else data.get("timetableAnime", data.get("data", []))
+            items = await animeschedule_client.animeschedule.get_anime_list(
+                airing_statuses="upcoming", page=page, per_page=25
+            )
             results = [_normalize_animeschedule(x) for x in items]
             if _is_valid_results(results):
                 logger.info("Upcoming from AnimeSchedule: %d results", len(results))
@@ -560,27 +561,32 @@ async def get_weekly_schedule() -> dict:
     DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     grouped: dict[str, list[dict]] = {d: [] for d in DAYS}
 
-    # --- 1. AnimeSchedule: use days field to group ---
+    # --- 1. AnimeSchedule: group ongoing anime by subTime day-of-week ---
     if settings.ANIMESCHEDULE_API_TOKEN:
         try:
-            data = await animeschedule_client.animeschedule.get_timetable("all")
-            items = data if isinstance(data, list) else data.get("timetableAnime", data.get("data", []))
-            logger.info("AnimeSchedule timetable returned %d items, type=%s", len(items), type(items).__name__)
-            if items:
-                logger.info("Sample item keys: %s", list(items[0].keys()) if isinstance(items[0], dict) else "not dict")
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                days_obj = item.get("days") or {}
-                anime = _normalize_animeschedule_timetable(item)
-                for day_name in DAYS:
-                    if days_obj.get(day_name):
-                        grouped[day_name].append(anime)
+            for pg in range(1, 4):
+                items = await animeschedule_client.animeschedule.get_anime_list(
+                    airing_statuses="ongoing", page=pg, per_page=50
+                )
+                if not items:
+                    break
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    sub_time = item.get("subTime") or item.get("jpnTime") or ""
+                    if not sub_time or len(sub_time) < 10:
+                        continue
+                    try:
+                        dt = datetime.fromisoformat(sub_time.replace("Z", "+00:00"))
+                        day_name = DAYS[dt.weekday()]
+                        grouped[day_name].append(_normalize_animeschedule_timetable(item))
+                    except (ValueError, IndexError):
+                        continue
             counts = {d: len(v) for d, v in grouped.items() if v}
             if counts:
                 logger.info("Weekly schedule from AnimeSchedule: %s", counts)
                 return {"data": grouped}
-            logger.warning("AnimeSchedule timetable returned no day-grouped data, trying AniList")
+            logger.warning("AnimeSchedule returned no day-grouped data, trying AniList")
         except Exception as e:
             logger.warning("AnimeSchedule weekly schedule failed (%s), trying AniList", e)
 
@@ -641,16 +647,29 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     Fallback 2: Jikan per-day filter.
     """
     if day:
-        # --- 1. AnimeSchedule: filter timetable by day ---
+        # --- 1. AnimeSchedule: filter ongoing anime by subTime day-of-week ---
         if settings.ANIMESCHEDULE_API_TOKEN:
             try:
-                data = await animeschedule_client.animeschedule.get_timetable("all")
-                items = data if isinstance(data, list) else data.get("timetableAnime", [])
-                day_items = []
-                for item in items:
-                    days_obj = item.get("days") or {}
-                    if days_obj.get(day):
-                        day_items.append(_normalize_animeschedule_timetable(item))
+                from datetime import datetime as _dt, timezone as _tz
+                _DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+                for pg in range(1, 4):
+                    items = await animeschedule_client.animeschedule.get_anime_list(
+                        airing_statuses="ongoing", page=pg, per_page=50
+                    )
+                    if not items:
+                        break
+                    for item in items:
+                        if not isinstance(item, dict):
+                            continue
+                        sub_time = item.get("subTime") or item.get("jpnTime") or ""
+                        if not sub_time or len(sub_time) < 10:
+                            continue
+                        try:
+                            dt = _dt.fromisoformat(sub_time.replace("Z", "+00:00"))
+                            if _DAYS[dt.weekday()] == day:
+                                day_items.append(_normalize_animeschedule_timetable(item))
+                        except (ValueError, IndexError):
+                            continue
                 if day_items:
                     logger.info("Schedule for %s from AnimeSchedule: %d results", day, len(day_items))
                     return {"data": day_items}

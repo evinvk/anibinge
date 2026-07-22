@@ -1,6 +1,6 @@
 """
 AnimeSchedule.net API v3 client.
-Fetches upcoming anime via the timetable endpoint with airing-statuses=upcoming filter.
+Uses the /anime endpoint with airing-statuses filter for schedule and upcoming data.
 Requires an Application Token from animeschedule.net account settings.
 """
 import logging
@@ -32,36 +32,27 @@ class AnimeScheduleClient:
         wait=wait_exponential(multiplier=1, min=1, max=5),
         retry=retry_if_not_exception_type(httpx.HTTPStatusError),
     )
-    async def get_upcoming(self, page: int = 1, per_page: int = 25) -> dict[str, Any]:
-        """Fetch upcoming anime from the timetable endpoint."""
+    async def get_anime_list(
+        self,
+        airing_statuses: str = "ongoing",
+        page: int = 1,
+        per_page: int = 25,
+    ) -> list[dict[str, Any]]:
+        """Fetch anime list filtered by airing status."""
         try:
             response = await self.client.get(
-                f"{BASE_URL}/timetables/all",
+                f"{BASE_URL}/anime",
                 params={
-                    "airing-statuses": "upcoming",
+                    "airing-statuses": airing_statuses,
                     "page": page,
                     "perPage": per_page,
                 },
             )
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            return data if isinstance(data, list) else data.get("data", [])
         except httpx.HTTPStatusError as e:
             logger.error("AnimeSchedule HTTP error: %s", e)
-            raise
-
-    @retry(
-        stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=1, max=5),
-        retry=retry_if_not_exception_type(httpx.HTTPStatusError),
-    )
-    async def get_timetable(self, air_type: str = "all") -> dict[str, Any]:
-        """Fetch the full timetable (ongoing anime with broadcast days)."""
-        try:
-            response = await self.client.get(f"{BASE_URL}/timetables/{air_type}")
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPStatusError as e:
-            logger.error("AnimeSchedule timetable HTTP error: %s", e)
             raise
 
     @retry(
