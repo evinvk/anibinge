@@ -16,6 +16,7 @@ export interface AnimeSummary {
   year: number | null;
   season: string | null;
   format: string | null;
+  start_date: string | null;
 }
 
 export class ApiError extends Error {

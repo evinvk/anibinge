@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Star } from "lucide-react";
+import { Star, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AnimeSummary } from "@/lib/api";
 
@@ -12,8 +12,29 @@ interface AnimeCardProps {
   priority?: boolean;
 }
 
+function formatDate(dateStr: string | null): string | null {
+  if (!dateStr) return null;
+  try {
+    const d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  } catch {
+    return null;
+  }
+}
+
 export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
   const isAiring = anime.status === "Currently Airing" || anime.status === "RELEASING";
+  const isUpcoming = anime.status === "Not yet aired" || anime.status === "NOT_YET_RELEASED";
+  const releaseDate = formatDate(anime.start_date);
+
+  const metaLine = [
+    anime.format,
+    anime.episodes ? `${anime.episodes} eps` : null,
+    isUpcoming && releaseDate ? releaseDate : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <Link
@@ -50,6 +71,13 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             </div>
           )}
 
+          {isUpcoming && (
+            <div className="absolute left-2 top-2 flex items-center gap-1.5 rounded-full bg-primary-600/80 px-2 py-1 backdrop-blur-md">
+              <Clock className="h-3 w-3 text-white" />
+              <span className="font-mono text-[10px] uppercase tracking-wide text-white">Upcoming</span>
+            </div>
+          )}
+
           {anime.score ? (
             <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-void/70 px-2 py-1 backdrop-blur-md">
               <Star className="h-3 w-3 fill-primary-400 text-primary-400" />
@@ -63,7 +91,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             {anime.title_english || anime.title}
           </h3>
           <p className="mt-1 truncate text-xs text-mist">
-            {[anime.format, anime.episodes ? `${anime.episodes} eps` : null].filter(Boolean).join(" · ")}
+            {metaLine || "\u00A0"}
           </p>
         </div>
       </motion.div>

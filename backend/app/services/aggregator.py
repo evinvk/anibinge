@@ -44,12 +44,21 @@ def _normalize_mal(item: dict) -> dict:
         "year": int(item.get("start_date", "")[:4]) if item.get("start_date") else None,
         "season": item.get("season"),
         "format": item.get("media_type"),
+        "start_date": item.get("start_date"),
     }
 
 
 def _normalize_anilist(item: dict) -> dict:
     """Normalize AniList response to standard schema."""
     title = item.get("title", {})
+    start = item.get("startDate") or {}
+    start_date = None
+    if start.get("year") and start.get("month") and start.get("day"):
+        start_date = f"{start['year']}-{start['month']:02d}-{start['day']:02d}"
+    elif start.get("year") and start.get("month"):
+        start_date = f"{start['year']}-{start['month']:02d}"
+    elif start.get("year"):
+        start_date = str(start["year"])
     return {
         "id": item.get("id"),
         "source": "anilist",
@@ -66,11 +75,13 @@ def _normalize_anilist(item: dict) -> dict:
         "year": item.get("seasonYear"),
         "season": item.get("season"),
         "format": item.get("format"),
+        "start_date": start_date,
     }
 
 
 def _normalize_jikan(item: dict) -> dict:
     """Normalize Jikan response to standard schema."""
+    aired = item.get("aired") or {}
     return {
         "id": item.get("mal_id"),
         "source": "jikan",
@@ -88,6 +99,7 @@ def _normalize_jikan(item: dict) -> dict:
         "season": item.get("season"),
         "format": item.get("type"),
         "broadcast": item.get("broadcast"),
+        "start_date": aired.get("string", "").split(" to ")[0].strip() if aired.get("string") else None,
     }
 
 
@@ -339,6 +351,63 @@ async def get_top(page: int = 1) -> list[dict]:
         return results
     except Exception as e3:
         logger.error("All top sources failed: %s", e3)
+        return []
+
+
+@cached("agg:upcoming", ttl=settings.CACHE_TTL_MEDIUM)
+async def get_upcoming(page: int = 1) -> list[dict]:
+    """Get upcoming (not yet aired) anime: MAL → AniList → Jikan."""
+    try:
+        data = await mal_client.get_anime_ranking(ranking_type="upcoming", page=page)
+        results = [_normalize_mal(x) for x in data.get("data", [])]
+        if _is_valid_results(results):
+            logger.info("Upcoming from MAL: %d results", len(results))
+            return results
+        logger.warning("MAL upcoming returned invalid data, falling back to AniList")
+    except Exception as e:
+        logger.warning("MAL upcoming failed (%s), falling back to AniList", e)
+    try:
+        query = """
+        query($page:Int,$perPage:Int){
+          Page(page:$page,perPage:$perPage){
+            media(
+              type:ANIME,
+              status:NOT_YET_RELEASED,
+              sort:START_DATE_DESC
+            ){
+              id
+              title{ romaji english native }
+              coverImage{ extraLarge large }
+              bannerImage
+              averageScore
+              popularity
+              episodes
+              status
+              startDate{ year month day }
+              season
+              seasonYear
+              genres
+              format
+              description
+            }
+          }
+        }
+        """
+        data = await anilist_client._query(query, {"page": page, "perPage": 25})
+        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
+        if _is_valid_results(results):
+            logger.info("Upcoming from AniList: %d results", len(results))
+            return results
+        logger.warning("AniList upcoming returned invalid data, falling back to Jikan")
+    except Exception as e2:
+        logger.warning("AniList upcoming failed (%s), falling back to Jikan", e2)
+    try:
+        data = await jikan_client.get_top_anime(page=page, filter_type="upcoming")
+        results = [_normalize_jikan(x) for x in data.get("data", [])]
+        logger.info("Upcoming from Jikan: %d results", len(results))
+        return results
+    except Exception as e3:
+        logger.error("All upcoming sources failed: %s", e3)
         return []
 
 

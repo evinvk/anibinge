@@ -43,10 +43,9 @@ async def currently_airing(page: int = Query(1, ge=1)):
 
 @router.get("/upcoming")
 async def upcoming(page: int = Query(1, ge=1)):
-    """Get upcoming anime."""
+    """Get upcoming anime (not yet aired) with release dates."""
     try:
-        from app.services import aggregator
-        data = await aggregator.get_top(page=page)
+        data = await aggregator.get_upcoming(page=page)
         return {"data": data}
     except Exception as e:
         logger.error("Upcoming error: %s", e)
