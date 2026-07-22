@@ -1,127 +1,160 @@
 """
-Client for the AnimeNewsNetwork API.
-Provides access to anime-related news, reviews, and information.
+Client for AnimeNewsNetwork news via RSS feeds.
 
-ANN uses RSS feeds for news, which we'll parse to provide structured data.
-No API key required, but requests should be respectful (reasonable rate limiting).
+ANN doesn't have a public JSON API — it publishes RSS feeds which we
+parse server-side into structured dicts.  No API key required; we use
+the public RSS endpoints and cache aggressively to stay respectful.
 """
 import asyncio
+import logging
+import re
+import xml.etree.ElementTree as ET
+from html import unescape
 from typing import Any
-from datetime import datetime
 
 import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
 
+logger = logging.getLogger("anibinge.ann")
 settings = get_settings()
 
-# AnimeNewsNetwork API and RSS endpoints
-_client = httpx.AsyncClient(base_url="https://www.animenewsnetwork.com", timeout=10.0)
+_client = httpx.AsyncClient(
+    base_url="https://www.animenewsnetwork.com",
+    timeout=15.0,
+    headers={"User-Agent": "Anibinge/1.0 (anime tracker)"},
+)
+
+# ANN RSS feed URLs
+_RSS_NEWS = "/news/feature"
+_RSS_REVIEWS = "/reviews.xml"
 
 
-async def _get(path: str, params: dict | None = None, retries: int = 2) -> dict[str, Any]:
-    """Make HTTP GET request with retry logic for rate limits."""
+async def _fetch_rss(path: str, retries: int = 2) -> str:
+    """Fetch raw XML text from an ANN RSS endpoint."""
     for attempt in range(retries + 1):
-        resp = await _client.get(path, params=params or {})
+        resp = await _client.get(path)
         if resp.status_code == 429 and attempt < retries:
-            await asyncio.sleep(1.2 * (attempt + 1))  # backoff on rate limit
+            await asyncio.sleep(1.5 * (attempt + 1))
             continue
         resp.raise_for_status()
-        return resp.json()
+        return resp.text
     resp.raise_for_status()
-    return {}
+    return ""
+
+
+def _strip_html(text: str) -> str:
+    """Remove HTML tags and decode entities."""
+    clean = re.sub(r"<[^>]+>", "", text)
+    return unescape(clean).strip()
+
+
+def _extract_image(item_elem: ET.Element) -> str | None:
+    """Try to pull an image URL from RSS <item> or its <media:content>."""
+    # media:content
+    ns = {"media": "http://search.yahoo.com/mrss/"}
+    for media in item_elem.findall("media:content", ns):
+        url = media.get("url")
+        if url:
+            return url
+    # enclosure
+    enc = item_elem.find("enclosure")
+    if enc is not None:
+        url = enc.get("url", "")
+        if url and ("image" in enc.get("type", "") or url.lower().endswith((".jpg", ".png", ".webp"))):
+            return url
+    # <img> inside description/description_html
+    for tag in ("description", "description_html"):
+        node = item_elem.find(tag)
+        if node is not None and node.text:
+            m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', node.text)
+            if m:
+                return m.group(1)
+    return None
+
+
+def _parse_rss_items(xml_text: str) -> list[dict]:
+    """Parse ANN RSS XML into a list of normalised article dicts."""
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError as e:
+        logger.error("Failed to parse ANN RSS XML: %s", e)
+        return []
+
+    items: list[dict] = []
+    for item in root.iter("item"):
+        title_node = item.find("title")
+        title = (title_node.text or "").strip() if title_node is not None else ""
+        if not title:
+            continue
+
+        link_node = item.find("link")
+        link = (link_node.text or "").strip() if link_node is not None else ""
+
+        desc_node = item.find("description")
+        description = _strip_html(desc_node.text or "") if desc_node is not None else ""
+
+        pub_node = item.find("pubDate")
+        published = (pub_node.text or "").strip() if pub_node is not None else ""
+
+        cat_node = item.find("category")
+        category = (cat_node.text or "news").strip().lower() if cat_node is not None else "news"
+
+        image = _extract_image(item)
+
+        items.append({
+            "id": link or title,
+            "title": title,
+            "url": link,
+            "summary": description[:300] if description else "",
+            "image": image,
+            "category": category,
+            "published_at": published,
+        })
+
+    return items
 
 
 @cached("ann:news", ttl=settings.CACHE_TTL_SHORT)
 async def get_anime_news(page: int = 1, limit: int = 20) -> dict:
-    """
-    Get latest anime news from ANN.
-    
-    Returns structured news data with title, description, link, and publication date.
-    """
+    """Fetch the latest anime news articles from ANN RSS."""
     try:
-        # ANN provides an API endpoint for news
-        params = {"page": page, "limit": limit}
-        result = await _get("/api/v1/news", params=params)
-        return result
+        xml = await _fetch_rss(_RSS_NEWS)
+        all_items = _parse_rss_items(xml)
+        total = len(all_items)
+        start = (page - 1) * limit
+        page_items = all_items[start : start + limit]
+        return {"data": page_items, "total": total, "page": page, "limit": limit}
     except Exception as e:
-        # Fallback: return empty news list on error
-        return {"articles": [], "error": str(e)}
+        logger.error("ANN news fetch failed: %s", e)
+        return {"data": [], "total": 0, "page": page, "limit": limit}
 
 
 @cached("ann:reviews", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_anime_reviews(anime_id: str | None = None, page: int = 1) -> dict:
-    """
-    Get anime reviews from ANN.
-    
-    If anime_id is provided, get reviews for that specific anime.
-    Otherwise, get the latest reviews across all anime.
-    """
+    """Fetch anime reviews from ANN RSS."""
     try:
+        xml = await _fetch_rss(_RSS_REVIEWS)
+        all_items = _parse_rss_items(xml)
         if anime_id:
-            # Get reviews for specific anime
-            result = await _get(f"/api/v1/reviews/anime/{anime_id}", {"page": page})
-        else:
-            # Get latest reviews
-            result = await _get("/api/v1/reviews", {"page": page})
-        return result
+            all_items = [i for i in all_items if anime_id in i.get("url", "")]
+        total = len(all_items)
+        start = (page - 1) * 20
+        page_items = all_items[start : start + 20]
+        return {"data": page_items, "total": total, "page": page}
     except Exception as e:
-        return {"reviews": [], "error": str(e)}
-
-
-@cached("ann:encyclopedia", ttl=settings.CACHE_TTL_LONG)
-async def search_encyclopedia(query: str, type_filter: str | None = None) -> dict:
-    """
-    Search ANN's encyclopedia database for anime, people, companies, etc.
-    
-    type_filter can be: "anime", "manga", "people", "companies", etc.
-    """
-    try:
-        params = {"q": query}
-        if type_filter:
-            params["type"] = type_filter
-        result = await _get("/api/v1/encyclopedia/search", params=params)
-        return result
-    except Exception as e:
-        return {"results": [], "error": str(e)}
-
-
-@cached("ann:encyclopedia_detail", ttl=settings.CACHE_TTL_LONG)
-async def get_encyclopedia_entry(entry_id: str, entry_type: str = "anime") -> dict:
-    """
-    Get detailed information about an encyclopedia entry.
-    
-    entry_type: "anime", "manga", "people", "companies", etc.
-    """
-    try:
-        result = await _get(f"/api/v1/encyclopedia/{entry_type}/{entry_id}")
-        return result
-    except Exception as e:
-        return {"error": str(e)}
+        logger.error("ANN reviews fetch failed: %s", e)
+        return {"data": [], "total": 0, "page": page}
 
 
 @cached("ann:featured", ttl=settings.CACHE_TTL_SHORT)
 async def get_featured_content() -> dict:
-    """
-    Get featured articles and content from ANN's homepage.
-    """
+    """Fetch featured content from ANN RSS (same as latest news, top 5)."""
     try:
-        result = await _get("/api/v1/featured")
-        return result
+        xml = await _fetch_rss(_RSS_NEWS)
+        all_items = _parse_rss_items(xml)
+        return {"data": all_items[:5]}
     except Exception as e:
-        return {"featured": [], "error": str(e)}
-
-
-@cached("ann:rankings", ttl=settings.CACHE_TTL_MEDIUM)
-async def get_rankings(ranking_type: str = "top-anime") -> dict:
-    """
-    Get ANN rankings.
-    
-    ranking_type can be: "top-anime", "top-manga", "most-popular", etc.
-    """
-    try:
-        result = await _get(f"/api/v1/rankings/{ranking_type}")
-        return result
-    except Exception as e:
-        return {"rankings": [], "error": str(e)}
+        logger.error("ANN featured fetch failed: %s", e)
+        return {"data": []}

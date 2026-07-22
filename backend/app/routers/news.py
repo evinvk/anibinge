@@ -1,5 +1,5 @@
 """
-News router — aggregates anime news from AnimeNewsNetwork and other sources.
+News router — anime news from AnimeNewsNetwork RSS feeds.
 """
 from fastapi import APIRouter, Query, Request
 from slowapi import Limiter
@@ -15,14 +15,10 @@ limiter = Limiter(key_func=get_remote_address)
 @limiter.limit("30/minute")
 async def get_news(
     request: Request,
-    page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(20, ge=1, le=50, description="Results per page"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=50),
 ):
-    """
-    Get latest anime news from AnimeNewsNetwork.
-    
-    Returns a paginated list of news articles with title, description, link, and publication date.
-    """
+    """Latest anime news articles from AnimeNewsNetwork."""
     return await ann_client.get_anime_news(page=page, limit=limit)
 
 
@@ -30,66 +26,15 @@ async def get_news(
 @limiter.limit("30/minute")
 async def get_reviews(
     request: Request,
-    anime_id: str | None = Query(None, description="Optional anime ID to filter reviews"),
-    page: int = Query(1, ge=1, description="Page number"),
+    anime_id: str | None = Query(None),
+    page: int = Query(1, ge=1),
 ):
-    """
-    Get anime reviews from AnimeNewsNetwork.
-    
-    If anime_id is provided, returns reviews for that specific anime.
-    Otherwise returns the latest reviews across all anime.
-    """
+    """Anime reviews from AnimeNewsNetwork."""
     return await ann_client.get_anime_reviews(anime_id=anime_id, page=page)
 
 
 @router.get("/featured")
 @limiter.limit("30/minute")
 async def get_featured(request: Request):
-    """
-    Get featured articles and content from AnimeNewsNetwork's homepage.
-    """
+    """Top featured articles from AnimeNewsNetwork."""
     return await ann_client.get_featured_content()
-
-
-@router.get("/rankings/{ranking_type}")
-@limiter.limit("30/minute")
-async def get_rankings(
-    request: Request,
-    ranking_type: str,
-):
-    """
-    Get ANN rankings by type.
-    
-    Supported types: top-anime, top-manga, most-popular, most-recommended, etc.
-    """
-    return await ann_client.get_rankings(ranking_type=ranking_type)
-
-
-@router.get("/encyclopedia/search")
-@limiter.limit("30/minute")
-async def search_encyclopedia(
-    request: Request,
-    q: str = Query(..., description="Search query"),
-    type_filter: str | None = Query(None, description="Filter by type: anime, manga, people, companies, etc."),
-):
-    """
-    Search AnimeNewsNetwork's encyclopedia database.
-    
-    Returns results matching the query, optionally filtered by type.
-    """
-    return await ann_client.search_encyclopedia(query=q, type_filter=type_filter)
-
-
-@router.get("/encyclopedia/{entry_type}/{entry_id}")
-@limiter.limit("30/minute")
-async def get_encyclopedia_entry(
-    request: Request,
-    entry_type: str,
-    entry_id: str,
-):
-    """
-    Get detailed information about an encyclopedia entry.
-    
-    entry_type: anime, manga, people, companies, studios, etc.
-    """
-    return await ann_client.get_encyclopedia_entry(entry_id=entry_id, entry_type=entry_type)
