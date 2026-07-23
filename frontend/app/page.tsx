@@ -10,15 +10,13 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();
   } catch (err) {
-    console.error("Home page row fetch failed:", err);
     return null;
   }
 }
 
-async function TrendingRow() {
-  const res = await safeFetch(() => api.trending());
-  if (!res) return null;
-  return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={res.data} />;
+async function TrendingRow({ data }: { data: any }) {
+  if (!data) return null;
+  return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
 }
 
 async function AiringRow() {
@@ -46,15 +44,16 @@ async function SeasonalRow() {
 }
 
 export default async function HomePage() {
-  const heroRes = await safeFetch(() => api.trending());
-  const heroAnime = heroRes?.data?.[0];
+  const trendingRes = await safeFetch(() => api.trending());
+  const trendingData = trendingRes?.data;
+  const heroAnime = trendingData?.[0];
 
   return (
     <>
       {heroAnime && <HeroBanner anime={heroAnime} />}
 
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
-        <TrendingRow />
+        <TrendingRow data={trendingData} />
       </Suspense>
       <Suspense fallback={<CarouselRow title="Currently Airing" loading />}>
         <AiringRow />

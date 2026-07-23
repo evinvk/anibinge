@@ -81,6 +81,7 @@ export function ScheduleGrid({ data }: { data: Record<string, any> }) {
                         src={item.image}
                         alt={item.title}
                         fill
+                        sizes="48px"
                         className="object-cover"
                       />
                     )}

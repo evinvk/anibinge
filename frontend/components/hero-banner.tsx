@@ -1,9 +1,6 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
-import { Play, Plus } from "lucide-react";
+import { Play } from "lucide-react";
 import type { AnimeSummary } from "@/lib/api";
 
 export function HeroBanner({ anime }: { anime: AnimeSummary }) {
@@ -15,6 +12,7 @@ export function HeroBanner({ anime }: { anime: AnimeSummary }) {
           alt={anime.title_english || anime.title}
           fill
           priority
+          sizes="100vw"
           className="object-cover"
         />
       ) : null}
@@ -22,12 +20,7 @@ export function HeroBanner({ anime }: { anime: AnimeSummary }) {
       <div className="absolute inset-0 bg-gradient-to-r from-void/90 via-void/20 to-transparent" />
 
       <div className="relative mx-auto flex h-full max-w-7xl flex-col justify-end px-6 pb-16">
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: "easeOut" }}
-          className="max-w-2xl"
-        >
+        <div className="max-w-2xl animate-[fadeInUp_0.6s_ease-out]">
           <span className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-primary-600/20 px-3 py-1 font-mono text-xs uppercase tracking-wider text-primary-400">
             <span className="live-dot" /> This Season's #1
           </span>
@@ -44,11 +37,8 @@ export function HeroBanner({ anime }: { anime: AnimeSummary }) {
             >
               <Play className="h-4 w-4 fill-white" /> View Details
             </Link>
-            <button className="flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-6 py-3 font-medium text-white backdrop-blur-md transition-colors hover:bg-white/10">
-              <Plus className="h-4 w-4" /> Add to Watchlist
-            </button>
           </div>
-        </motion.div>
+        </div>
       </div>
     </section>
   );

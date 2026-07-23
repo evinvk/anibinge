@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { AnimeCard, AnimeCardSkeleton, AnimeGrid } from "@/components/anime-card";
 import type { AnimeSummary } from "@/lib/api";
 
@@ -20,11 +20,13 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
   const [isVisible, setIsVisible] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+
   useEffect(() => {
     setItems(initialItems);
     setPage(1);
     setHasMore(initialItems.length > 0);
-  }, [initialItems, query, JSON.stringify(filters)]);
+  }, [initialItems, query, filtersKey]);
 
   const loadMore = useCallback(async () => {
     setLoading(true);

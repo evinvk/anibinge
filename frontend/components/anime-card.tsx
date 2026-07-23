@@ -1,8 +1,5 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { Star, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AnimeSummary } from "@/lib/api";
@@ -41,11 +38,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
       href={anime.source === "anilist" ? `/anime/${anime.id}?source=anilist` : `/anime/${anime.id}`}
       className="group block"
     >
-      <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ type: "spring", stiffness: 300, damping: 24 }}
-        className="glass-card aura-border w-full"
-      >
+      <div className="glass-card aura-border w-full transition-transform duration-200 group-hover:-translate-y-1">
         <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-xl2">
           {anime.image ? (
             <Image
@@ -100,7 +93,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             </p>
           )}
         </div>
-      </motion.div>
+      </div>
     </Link>
   );
 }

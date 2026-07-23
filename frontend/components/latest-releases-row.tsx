@@ -1,8 +1,5 @@
-"use client";
-
 import Image from "next/image";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { ChevronRight, Play } from "lucide-react";
 import type { GogoAnimeItem } from "@/lib/api";
 
@@ -29,11 +26,7 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
 
   return (
     <Link href={`/watch/${item.slug}`} className="group block">
-      <motion.div
-        whileHover={{ y: -4 }}
-        transition={{ type: "spring", stiffness: 300, damping: 24 }}
-        className="glass-card aura-border w-full"
-      >
+      <div className="glass-card aura-border w-full transition-transform duration-200 group-hover:-translate-y-1">
         <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-xl2">
           {item.poster ? (
             <Image
@@ -83,7 +76,7 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
             {[item.type, epLabel].filter(Boolean).join(" · ") || "\u00A0"}
           </p>
         </div>
-      </motion.div>
+      </div>
     </Link>
   );
 }

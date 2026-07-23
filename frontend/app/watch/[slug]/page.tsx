@@ -27,8 +27,7 @@ export default function WatchPage({ params }: PageProps) {
       let resolvedTitle: string | null = null;
       try {
         const res = await fetch(
-          `${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`,
-          { next: { revalidate: 300 } }
+          `${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`
         );
         const data = await res.json();
         const match = data.data?.find((a: any) => a.slug === slug);

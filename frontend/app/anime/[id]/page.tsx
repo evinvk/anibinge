@@ -1,10 +1,15 @@
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
-import { StreamingPlayer } from "@/components/streaming-player";
+
+const StreamingPlayer = dynamic(
+  () => import("@/components/streaming-player").then((m) => m.StreamingPlayer),
+  { ssr: false, loading: () => <div className="aspect-video w-full animate-pulse rounded-xl2 bg-surface-hi" /> }
+);
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +90,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
       {/* Banner */}
       <div className="relative h-72 w-full overflow-hidden sm:h-96">
         {detail.trailer?.images?.maximum_image_url && (
-          <Image src={detail.trailer.images.maximum_image_url} alt="" fill className="object-cover blur-sm brightness-50" />
+          <Image src={detail.trailer.images.maximum_image_url} alt="" fill sizes="100vw" className="object-cover blur-sm brightness-50" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-void to-transparent" />
       </div>
@@ -152,6 +157,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
                         src={c.character.images?.jpg?.image_url || c.character.main_picture?.large}
                         alt={c.character.name}
                         fill
+                        sizes="80px"
                         className="object-cover"
                       />
                     )}
