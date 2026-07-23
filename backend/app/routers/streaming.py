@@ -292,13 +292,42 @@ async def gogoanime_health(request: Request):
 
 @router.get("/gogoanime/latest")
 @limiter.limit("30/minute")
-async def gogoanime_latest_releases(request: Request):
-    """Return ongoing anime from GogoAnime catalog, sorted by latest episode."""
+async def gogoanime_latest_releases(request: Request, day: str | None = Query(None, description="Filter by day of week (monday-sunday). Omit for all ongoing.")):
+    """Return ongoing anime from GogoAnime catalog. If day is provided, only return anime airing on that day."""
     try:
         catalog = gogoanime_client.get_catalog()
         if not catalog:
             return {"data": []}
         ongoing = [a for a in catalog if a.get("status") == "Ongoing"]
+
+        if day:
+            day_lower = day.lower().strip()
+            # Cross-reference with today's schedule to find which titles air today
+            from app.services import aggregator
+            try:
+                schedule_result = await aggregator.get_schedule(day=day_lower)
+                schedule_titles = {
+                    (item.get("title") or "").lower().strip()
+                    for item in schedule_result.get("data", [])
+                }
+                schedule_titles_jp = {
+                    (item.get("title_japanese") or "").lower().strip()
+                    for item in schedule_result.get("data", [])
+                }
+                # Filter ongoing to only those airing today
+                today_items = []
+                for a in ongoing:
+                    t = (a.get("title") or "").lower().strip()
+                    t_en = (a.get("title_english") or "").lower().strip()
+                    t_jp = (a.get("title_japanese") or "").lower().strip()
+                    if t in schedule_titles or t_en in schedule_titles or t_jp in schedule_titles_jp or t in schedule_titles_jp:
+                        today_items.append(a)
+                if today_items:
+                    today_items.sort(key=lambda x: x.get("latest_episode", 0) or 0, reverse=True)
+                    return {"data": today_items[:30], "day": day_lower}
+            except Exception as e:
+                logger.warning("Schedule cross-reference failed for day=%s: %s", day_lower, e)
+
         ongoing.sort(key=lambda x: x.get("latest_episode", 0) or 0, reverse=True)
         return {"data": ongoing[:30]}
     except Exception as e:

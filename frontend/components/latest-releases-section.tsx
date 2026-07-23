@@ -5,13 +5,16 @@ import { api } from "@/lib/api";
 import { LatestReleasesRow } from "@/components/latest-releases-row";
 import type { GogoAnimeItem } from "@/lib/api";
 
+const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
 export function LatestReleasesSection() {
   const [items, setItems] = useState<GogoAnimeItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const today = DAYS[new Date().getDay()];
     api
-      .gogoanimeLatest()
+      .gogoanimeLatest(today)
       .then((res) => setItems(res.data || []))
       .catch(() => setItems([]))
       .finally(() => setLoading(false));

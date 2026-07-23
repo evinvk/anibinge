@@ -199,8 +199,11 @@ export const api = {
     request<{ data: { master_m3u8: string; qualities: { quality: string; url: string }[] } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}&audio=${audio}`, 60),
   gogoanimeMaster: (slug: string, ep: number, audio: string = "sub") =>
     `${API_BASE}/api/v1/streaming/gogoanime/${slug}/master?ep=${ep}&audio=${audio}`,
-  gogoanimeLatest: () =>
-    request<{ data: GogoAnimeItem[] }>(`/api/v1/streaming/gogoanime/latest`, 300),
+  gogoanimeLatest: (day?: string) =>
+    request<{ data: GogoAnimeItem[]; day?: string }>(
+      `/api/v1/streaming/gogoanime/latest${day ? `?day=${day}` : ""}`,
+      300
+    ),
   gogoanimeHealth: () =>
     request<{ healthy: boolean; reason?: string }>(`/api/v1/streaming/gogoanime/health`, 120),
 
