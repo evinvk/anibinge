@@ -78,7 +78,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle]);
 
   const onFatalError = useCallback(async (errorType: string) => {
-    if (player.sourceRef.current === "gogoanime" && !player.fallbackAttemptedRef.current) {
+    console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: player.fallbackAttemptedRef.current });
+    if (!player.fallbackAttemptedRef.current) {
       player.fallbackAttemptedRef.current = true;
       player.destroyHls();
       player.setLoadingStream(true);
@@ -104,6 +105,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setLoadingStream(false);
       }
     } else {
+      console.error("[onFatalError] fallback already attempted, showing error");
       player.setError("Playback error: " + errorType);
     }
   }, [loadAnivexaFallback]);
