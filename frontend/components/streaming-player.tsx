@@ -66,10 +66,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
           return { ...s, file: proxyUrl };
         }));
+        const proxyUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
         player.sourceRef.current = "anivexa";
-        player.setReferer(res.referer || "");
-        player.setMasterUrl(res.stream_url);
-        player.setStreamData({ qualities: [{ quality: "auto", url: res.stream_url }] });
+        player.setMasterUrl(proxyUrl);
+        player.setStreamData({ qualities: [{ quality: "auto", url: proxyUrl }] });
         player.setLoadingStream(false);
         return true;
       }
@@ -157,7 +157,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
-    player.setReferer("");
     player.fallbackAttemptedRef.current = false;
 
     let aid = resolvedAnilistRef.current;

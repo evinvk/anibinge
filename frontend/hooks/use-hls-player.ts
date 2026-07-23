@@ -24,7 +24,6 @@ export function useHlsPlayer(
   const hlsRef = useRef<any>(null);
   const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
   const fallbackAttemptedRef = useRef(false);
-  const refererRef = useRef("");
   const onFatalErrorRef = useRef(onFatalError);
   const onLoadSubtitlesRef = useRef(onLoadSubtitles);
   const loadGenRef = useRef(0);
@@ -45,18 +44,9 @@ export function useHlsPlayer(
     if (gen !== loadGenRef.current) return;
 
     if (Hls.isSupported()) {
-      const referer = refererRef.current;
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
-        ...(referer ? {
-          xhrSetup: (xhr: XMLHttpRequest) => {
-            xhr.setRequestHeader("Referer", referer);
-          },
-          fetchSetup: (context: any, init: RequestInit) => {
-            return new Request(context.url, { ...init, headers: { ...init.headers, Referer: referer } });
-          },
-        } : {}),
       });
       hlsRef.current = hls;
 
@@ -94,10 +84,6 @@ export function useHlsPlayer(
     }
   }
 
-  function setReferer(r: string) {
-    refererRef.current = r;
-  }
-
   function destroyHls() {
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -128,7 +114,6 @@ export function useHlsPlayer(
     sourceRef,
     fallbackAttemptedRef,
     loadPlayer,
-    setReferer,
     setQuality,
     resetPlayer,
     destroyHls,
