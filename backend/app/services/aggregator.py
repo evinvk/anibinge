@@ -583,100 +583,51 @@ def _extract_day(item: dict) -> str | None:
     return _DAY_MAP.get(day_str)
 
 
-@cached("agg:weekly_schedule:v4", ttl=settings.CACHE_TTL_SHORT)
+@cached("agg:weekly_schedule:v5", ttl=settings.CACHE_TTL_SHORT)
 async def get_weekly_schedule() -> dict:
     """Fetch the weekly schedule grouped by broadcast day.
 
-    Primary: AnimeSchedule timetable (has per-day broadcast info).
-    Fallback 1: AniList RELEASING anime with nextAiringEpisode.airingAt.
-    Fallback 2: Jikan per-day filter.
+    Uses AnimeSchedule timetable only.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
     grouped: dict[str, list[dict]] = {d: [] for d in DAYS}
 
-    # --- 1. AnimeSchedule: group ongoing anime by subTime day-of-week ---
-    if settings.ANIMESCHEDULE_API_TOKEN:
-        try:
-            for pg in range(1, 4):
-                items = await animeschedule_client.animeschedule.get_anime_list(
-                    airing_statuses="ongoing", page=pg, per_page=50
-                )
-                if not items:
-                    break
-                for item in items:
-                    if not isinstance(item, dict):
-                        continue
-                    sub_time = item.get("subTime") or item.get("jpnTime") or ""
-                    if not sub_time or len(sub_time) < 10:
-                        continue
-                    try:
-                        dt = datetime.fromisoformat(sub_time.replace("Z", "+00:00"))
-                        day_name = DAYS[dt.weekday()]
-                        grouped[day_name].append(_normalize_animeschedule_timetable(item))
-                    except (ValueError, IndexError):
-                        continue
-            counts = {d: len(v) for d, v in grouped.items() if v}
-            if counts:
-                all_items = [item for v in grouped.values() for item in v]
-                enriched = await _enrich_images_anilist(all_items)
-                enriched_grouped = {d: [] for d in grouped}
-                idx = 0
-                for d in grouped:
-                    for _ in grouped[d]:
-                        enriched_grouped[d].append(enriched[idx])
-                        idx += 1
-                logger.info("Weekly schedule from AnimeSchedule: %s", counts)
-                return {"data": enriched_grouped}
-            logger.warning("AnimeSchedule returned no day-grouped data, trying AniList")
-        except Exception as e:
-            logger.warning("AnimeSchedule weekly schedule failed (%s), trying AniList", e)
+    if not settings.ANIMESCHEDULE_API_TOKEN:
+        raise ValueError("ANIMESCHEDULE_API_TOKEN not configured")
 
-    # --- 2. AniList: group by nextAiringEpisode.airingAt day-of-week ---
-    try:
-        pages_fetched = 0
-        max_pages = 3  # up to 150 anime
-        for pg in range(1, max_pages + 1):
-            data = await anilist_client.get_schedule(page=pg, per_page=50)
-            media_list = data.get("Page", {}).get("media", [])
-            if not media_list:
-                break
-            for item in media_list:
-                next_ep = item.get("nextAiringEpisode")
-                if not next_ep or not next_ep.get("airingAt"):
-                    continue
-                dt = datetime.fromtimestamp(next_ep["airingAt"], tz=timezone.utc)
-                day_name = DAYS[dt.weekday()]  # 0=monday..6=sunday
-                grouped[day_name].append(_normalize_anilist(item))
-            pages_fetched += 1
-
-        counts = {d: len(v) for d, v in grouped.items() if v}
-        if counts:
-            logger.info("Weekly schedule from AniList (by airAt): %s", counts)
-            return {"data": grouped}
-        logger.warning("AniList schedule returned no date-grouped data, trying Jikan")
-    except Exception as e:
-        logger.warning("AniList weekly schedule failed (%s), trying Jikan", e)
-
-    # --- 3. Jikan: per-day filter in parallel batches ---
-    async def _fetch_day(day: str):
-        try:
-            data = await jikan_client.get_schedule(day)
-            items = data.get("data", [])
-            if items:
-                grouped[day] = [_normalize_jikan(x) for x in items]
-        except Exception as e:
-            logger.warning("Jikan schedule failed for %s: %s", day, e)
-
-    await asyncio.gather(*[_fetch_day(d) for d in DAYS[:3]])
-    await asyncio.sleep(1.0)
-    await asyncio.gather(*[_fetch_day(d) for d in DAYS[3:]])
+    for pg in range(1, 4):
+        items = await animeschedule_client.animeschedule.get_anime_list(
+            airing_statuses="ongoing", page=pg, per_page=50
+        )
+        if not items:
+            break
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            sub_time = item.get("subTime") or item.get("jpnTime") or ""
+            if not sub_time or len(sub_time) < 10:
+                continue
+            try:
+                dt = datetime.fromisoformat(sub_time.replace("Z", "+00:00"))
+                day_name = DAYS[dt.weekday()]
+                grouped[day_name].append(_normalize_animeschedule_timetable(item))
+            except (ValueError, IndexError):
+                continue
 
     counts = {d: len(v) for d, v in grouped.items() if v}
     if counts:
-        logger.info("Weekly schedule from Jikan (per-day): %s", counts)
-        return {"data": grouped}
+        all_items = [item for v in grouped.values() for item in v]
+        enriched = await _enrich_images_anilist(all_items)
+        enriched_grouped = {d: [] for d in grouped}
+        idx = 0
+        for d in grouped:
+            for _ in grouped[d]:
+                enriched_grouped[d].append(enriched[idx])
+                idx += 1
+        logger.info("Weekly schedule from AnimeSchedule: %s", counts)
+        return {"data": enriched_grouped}
 
     return {"data": grouped}
 
