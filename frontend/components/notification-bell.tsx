@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Bell, BellOff, Check } from "lucide-react";
+import { Bell, BellOff, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/lib/notifications-context";
 import { useAuth } from "@/lib/auth-context";
 
 export function NotificationBell() {
-  const { unreadCount, latestArticles, markAsRead, enablePush, disablePush, pushEnabled } = useNotifications();
+  const { unreadCount, latestArticles, markAsRead, enablePush, disablePush, requestPermission, pushEnabled, pushPermission } = useNotifications();
   const { token } = useAuth();
   const [open, setOpen] = useState(false);
   const [toggling, setToggling] = useState(false);
+  const [pushError, setPushError] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function NotificationBell() {
 
   const handleOpen = () => {
     setOpen((v) => !v);
+    setPushError(null);
   };
 
   const handleMarkRead = () => {
@@ -33,18 +35,44 @@ export function NotificationBell() {
   };
 
   const handleTogglePush = async () => {
+    // If permission is default, trigger the browser prompt FIRST (synchronous click handler)
+    if (pushPermission === "default") {
+      requestPermission();
+      // Give the browser a moment to register the permission, then try to enable
+      setTimeout(async () => {
+        setToggling(true);
+        setPushError(null);
+        try {
+          const success = await enablePush();
+          if (!success) {
+            setPushError("Tap the bell again after allowing notifications.");
+          }
+        } catch {
+          setPushError("Something went wrong.");
+        } finally {
+          setToggling(false);
+        }
+      }, 500);
+      return;
+    }
+
     setToggling(true);
+    setPushError(null);
     try {
       if (pushEnabled) {
         await disablePush();
       } else {
         const success = await enablePush();
         if (!success) {
-          console.warn("Push enable returned false — check console for details");
+          if (pushPermission === "denied") {
+            setPushError("Notifications blocked. Enable in browser settings.");
+          } else {
+            setPushError("Could not enable notifications.");
+          }
         }
       }
-    } catch (err) {
-      console.error("Toggle push error:", err);
+    } catch {
+      setPushError("Something went wrong.");
     } finally {
       setToggling(false);
     }
@@ -83,27 +111,40 @@ export function NotificationBell() {
 
           {/* Push notification toggle */}
           {token && (
-            <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
-              <span className="text-xs text-mist">Push notifications</span>
-              <button
-                onClick={handleTogglePush}
-                disabled={toggling}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                  pushEnabled
-                    ? "bg-primary-600/20 text-primary-400 hover:bg-primary-600/30"
-                    : "bg-white/5 text-mist hover:bg-white/10"
-                )}
-              >
-                {toggling ? (
-                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                ) : pushEnabled ? (
-                  <Check className="h-3 w-3" />
-                ) : (
-                  <BellOff className="h-3 w-3" />
-                )}
-                {pushEnabled ? "On" : "Off"}
-              </button>
+            <div className="border-b border-white/5 px-4 py-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-mist">Push notifications</span>
+                <button
+                  onClick={handleTogglePush}
+                  disabled={toggling || pushPermission === "denied" || pushPermission === "unsupported"}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                    pushEnabled
+                      ? "bg-primary-600/20 text-primary-400 hover:bg-primary-600/30"
+                      : "bg-white/5 text-mist hover:bg-white/10",
+                    permissionDenied && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {toggling ? (
+                    <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  ) : pushEnabled ? (
+                    <Check className="h-3 w-3" />
+                  ) : (
+                    <BellOff className="h-3 w-3" />
+                  )}
+                  {pushPermission === "denied" ? "Blocked" : pushPermission === "unsupported" ? "N/A" : pushEnabled ? "On" : "Off"}
+                </button>
+              </div>
+              {pushError && (
+                <p className="mt-1.5 flex items-center gap-1 text-[11px] text-red-400">
+                  <AlertCircle className="h-3 w-3 flex-shrink-0" /> {pushError}
+                </p>
+              )}
+              {pushPermission === "denied" && (
+                <p className="mt-1.5 text-[11px] text-red-400">
+                  Notifications blocked. Enable in browser settings.
+                </p>
+              )}
             </div>
           )}
 

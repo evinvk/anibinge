@@ -28,7 +28,9 @@ interface NotificationsState {
   markAsRead: () => void;
   enablePush: () => Promise<boolean>;
   disablePush: () => Promise<void>;
+  requestPermission: () => void;
   pushEnabled: boolean;
+  pushPermission: NotificationPermission | "unsupported";
 }
 
 const STORAGE_KEY = "anibinge:lastSeenNews";
@@ -42,7 +44,9 @@ const NotificationsContext = createContext<NotificationsState>({
   markAsRead: () => {},
   enablePush: async () => false,
   disablePush: async () => {},
+  requestPermission: () => {},
   pushEnabled: false,
+  pushPermission: "unsupported",
 });
 
 export function useNotifications() {
@@ -84,18 +88,25 @@ function clearStoredSub() {
   localStorage.removeItem(PUSH_SUB_KEY);
 }
 
+function getPermissionState(): NotificationPermission | "unsupported" {
+  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
+  return Notification.permission;
+}
+
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
   const { token } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestArticles, setLatestArticles] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission | "unsupported">("unsupported");
   const lastSeenRef = useRef<number | null>(null);
 
   useEffect(() => {
     lastSeenRef.current = getLastSeen();
-    // Check if push is actually enabled (permission + subscription exists)
-    if ("Notification" in window && "serviceWorker" in navigator) {
+    setPushPermission(getPermissionState());
+
+    if ("serviceWorker" in navigator) {
       navigator.serviceWorker.ready.then((reg) => {
         reg.pushManager.getSubscription().then((sub) => {
           setPushEnabled(Notification.permission === "granted" && sub !== null);
@@ -143,24 +154,42 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setUnreadCount(0);
   }, []);
 
+  // Must be called directly from a click handler (synchronous), NOT from async code.
+  // On mobile, calling requestPermission() inside async code blocks the main thread.
+  const requestPermission = useCallback(() => {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "default") {
+      // This MUST be a direct synchronous call from a user gesture
+      Notification.requestPermission().then((perm) => {
+        setPushPermission(perm);
+      });
+    }
+  }, []);
+
   const enablePush = useCallback(async (): Promise<boolean> => {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
       console.warn("Push notifications not supported");
       return false;
     }
 
     try {
-      if (Notification.permission === "denied") {
-        console.warn("Notifications blocked by browser");
+      const perm = getPermissionState();
+      if (perm === "denied") {
+        console.warn("Notifications blocked by user");
+        return false;
+      }
+      if (perm !== "granted") {
+        console.warn("Permission not yet granted:", perm);
         return false;
       }
 
-      // Register service worker
+      // Get or register service worker
       let reg = await navigator.serviceWorker.getRegistration("/");
       if (!reg) {
-        reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        reg = await navigator.serviceWorker.register("/sw.js");
       }
 
+      // Wait for active state
       if (reg.installing || reg.waiting) {
         await new Promise<void>((resolve) => {
           const sw = reg!.installing || reg!.waiting;
@@ -173,37 +202,26 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         reg = await navigator.serviceWorker.getRegistration("/") || reg;
       }
 
-      if (!reg.active) return false;
+      if (!reg?.active) {
+        console.error("No active service worker");
+        return false;
+      }
 
-      // Check for existing subscription
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
-        // Get VAPID key
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 10000);
-        const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`, { signal: ctrl.signal });
-        clearTimeout(t);
+        // Fetch VAPID key
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+        if (!API_BASE) {
+          console.error("NEXT_PUBLIC_API_URL not set");
+          return false;
+        }
+        const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`);
         if (!res.ok) throw new Error(`VAPID key failed: ${res.status}`);
         const { public_key } = await res.json();
         const applicationServerKey = urlBase64ToUint8Array(public_key);
 
-        // subscribe() will prompt for permission automatically on desktop.
-        // On mobile, it may throw if permission hasn't been granted yet.
-        try {
-          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-        } catch (subErr: any) {
-          // If blocked, try requesting permission first then subscribing
-          if (Notification.permission === "default" && typeof Notification.requestPermission === "function") {
-            // On desktop this works; on mobile this may hang — wrap with page visibility
-            const perm = await Notification.requestPermission();
-            if (perm !== "granted") return false;
-            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-          } else {
-            throw subErr;
-          }
-        }
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
       }
 
       const subJson = sub.toJSON();
@@ -211,20 +229,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const auth = (subJson as any).keys?.auth || "";
 
       if (token) {
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-        const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 15000);
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+        if (!API_BASE) throw new Error("API URL not configured");
         const subRes = await fetch(`${API_BASE}/api/v1/notifications/subscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
-          signal: ctrl.signal,
         });
-        clearTimeout(t);
         if (!subRes.ok) {
           const body = await subRes.json().catch(() => ({}));
-          console.error("Subscribe API error:", body);
-          throw new Error(`Subscribe failed: ${subRes.status}`);
+          throw new Error(`Subscribe API ${subRes.status}: ${JSON.stringify(body)}`);
         }
       }
 
@@ -241,7 +255,14 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     try {
       const sub = getStoredSub();
       if (sub && token) {
-        await api.unsubscribePush(token, sub);
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+        if (API_BASE) {
+          await fetch(`${API_BASE}/api/v1/notifications/unsubscribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(sub),
+          });
+        }
       }
 
       if ("serviceWorker" in navigator) {
@@ -259,7 +280,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   return (
     <NotificationsContext.Provider
-      value={{ unreadCount, latestArticles, loading, markAsRead, enablePush, disablePush, pushEnabled }}
+      value={{ unreadCount, latestArticles, loading, markAsRead, enablePush, disablePush, requestPermission, pushEnabled, pushPermission }}
     >
       {children}
     </NotificationsContext.Provider>
