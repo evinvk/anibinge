@@ -28,6 +28,7 @@ interface Subtitle {
   kind: string;
   default: boolean;
   source: string;
+  referer: string;
 }
 
 interface StreamData {
@@ -100,11 +101,12 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         return r.json();
       });
       if (res && res.stream_url) {
-        // Proxy subtitles through our backend for CORS
-        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => ({
-          ...s,
-          file: `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`,
-        }));
+        // Proxy subtitles through our backend for CORS, with referer
+        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
+          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`;
+          if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
+          return { ...s, file: proxyUrl };
+        });
         setSubtitles(proxiedSubs);
         const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}`;
         setSource("anivexa");

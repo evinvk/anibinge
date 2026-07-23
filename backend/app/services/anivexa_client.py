@@ -80,18 +80,27 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
             m3u8_url = s["url"]
             break
 
-    # Extract subtitles
+    # Extract subtitles with referer from matching stream source
     subtitles = []
     raw_subs = ssub.get("subtitles", []) or data.get("subtitles", [])
+    # Build source→referer map from streams
+    source_referer: dict[str, str] = {}
+    for s in streams:
+        srv = s.get("server", "").replace("-embed", "")
+        if srv and s.get("referer"):
+            source_referer[srv] = s["referer"]
     for sub in raw_subs:
         if sub.get("file"):
+            sub_source = sub.get("source", "")
+            referer = source_referer.get(sub_source, "")
             subtitles.append({
                 "file": sub["file"],
                 "label": sub.get("label", "Unknown"),
                 "language": sub.get("language", "en"),
                 "kind": sub.get("kind", "captions"),
                 "default": sub.get("default", False),
-                "source": sub.get("source", ""),
+                "source": sub_source,
+                "referer": referer,
             })
 
     return m3u8_url, subtitles

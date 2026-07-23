@@ -512,6 +512,7 @@ async def anivexa_stream(
 async def anivexa_subtitle_proxy(
     request: Request,
     url: str = Query(..., description="URL of the VTT subtitle file"),
+    referer: str = Query("", description="Referer header for upstream request"),
 ):
     """CORS proxy for Anivexa subtitle files (VTT)."""
     try:
@@ -519,8 +520,12 @@ async def anivexa_subtitle_proxy(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid subtitle URL encoding")
 
+    headers = {**_PROXY_HEADERS}
+    if referer:
+        headers["Referer"] = referer
+
     try:
-        async with _httpx.AsyncClient(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True) as client:
+        async with _httpx.AsyncClient(timeout=_PROXY_TIMEOUT, headers=headers, follow_redirects=True) as client:
             resp = await client.get(decoded_url)
             resp.raise_for_status()
             return Response(

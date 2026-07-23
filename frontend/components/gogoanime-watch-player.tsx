@@ -17,6 +17,7 @@ interface Subtitle {
   kind: string;
   default: boolean;
   source: string;
+  referer: string;
 }
 
 interface StreamData {
@@ -87,10 +88,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         return r.json();
       });
       if (res && res.stream_url) {
-        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => ({
-          ...s,
-          file: `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`,
-        }));
+        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
+          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`;
+          if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
+          return { ...s, file: proxyUrl };
+        });
         setSubtitles(proxiedSubs);
         const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}`;
         setSource("anivexa");
