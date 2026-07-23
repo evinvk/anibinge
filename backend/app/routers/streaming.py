@@ -284,7 +284,7 @@ async def gogoanime_health(request: Request):
 async def gogoanime_latest_releases(request: Request):
     """Return ongoing anime from GogoAnime catalog, sorted by latest episode."""
     try:
-        catalog = await gogoanime_client.get_catalog()
+        catalog = gogoanime_client.get_catalog()
         if not catalog:
             return {"data": []}
         ongoing = [a for a in catalog if a.get("status") == "Ongoing"]
