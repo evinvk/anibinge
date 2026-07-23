@@ -28,7 +28,6 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
   const metaLine = [
     anime.format,
     anime.episodes ? `${anime.episodes} eps` : null,
-    isUpcoming && releaseDate ? releaseDate : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -36,7 +35,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
   return (
     <Link
       href={anime.source === "anilist" ? `/anime/${anime.id}?source=anilist` : `/anime/${anime.id}`}
-      className="group block"
+      className="group block h-full"
     >
       <div className="glass-card aura-border flex h-full flex-col transition-transform duration-200 group-hover:-translate-y-1">
         <div className="relative aspect-[2/3] w-full shrink-0 overflow-hidden rounded-t-xl2">
@@ -79,19 +78,20 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
           ) : null}
         </div>
 
-        <div className="flex min-h-[5.5rem] flex-col justify-start p-3">
+        <div className="flex h-28 flex-col justify-start p-3">
           <h3 className="line-clamp-2 font-display text-sm font-semibold leading-snug text-paper">
             {anime.title_english || anime.title}
           </h3>
           <p className="mt-1 truncate text-xs text-mist">
             {metaLine || "\u00A0"}
           </p>
-          {isUpcoming && releaseDate && (
-            <p className="mt-1.5 flex items-center gap-1 text-xs font-medium text-primary-400">
+          {releaseDate ? (
+            <p className="mt-auto flex items-center gap-1 text-xs font-medium text-primary-400">
               <Clock className="h-3 w-3 shrink-0" />
               {releaseDate}
-              {anime.air_time && ` at ${anime.air_time}`}
             </p>
+          ) : (
+            <p className="mt-auto text-xs">&nbsp;</p>
           )}
         </div>
       </div>
