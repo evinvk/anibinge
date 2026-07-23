@@ -57,6 +57,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
+  const [audio, setAudio] = useState<"sub" | "dub">("sub");
 
   useEffect(() => {
     currentEpRef.current = currentEp;
@@ -85,7 +86,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     if (currentEp) {
       loadStream(slug, currentEp);
     }
-  }, [slug, currentEp]);
+  }, [slug, currentEp, audio]);
 
   // Resolve AniList ID if not provided
   useEffect(() => {
@@ -134,7 +135,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     if (!aid) return false;
     try {
       const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}`
+        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`
       ).then(r => {
         if (!r.ok) throw new Error("not ok");
         return r.json();
@@ -147,7 +148,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         });
         subtitlesRef.current = proxiedSubs;
         setSubtitles(proxiedSubs);
-        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}`;
+        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}&audio=${audio}`;
         setSource("anivexa");
         sourceRef.current = "anivexa";
         setMasterUrl(masterUrlFull);
@@ -157,7 +158,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       }
     } catch { /* fallback failed */ }
     return false;
-  }, [title]);
+  }, [title, audio]);
 
   const loadStream = useCallback(async (s: string, ep: number) => {
     setLoadingStream(true);
@@ -184,13 +185,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
 
     // Fetch subtitles and GogoAnime stream in parallel
     const subsPromise = aid
-      ? fetch(`${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}`)
+      ? fetch(`${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`)
           .then(r => r.ok ? r.json() : null)
           .catch(() => null)
       : Promise.resolve(null);
 
     const [gogoRes, subsData] = await Promise.all([
-      api.gogoanimeStream(s, ep).catch(() => null),
+      api.gogoanimeStream(s, ep, audio).catch(() => null),
       subsPromise,
     ]);
 
@@ -210,7 +211,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       setSource("gogoanime");
       sourceRef.current = "gogoanime";
       setStreamData({ qualities: data.qualities });
-      setMasterUrl(api.gogoanimeMaster(s, ep));
+      setMasterUrl(api.gogoanimeMaster(s, ep, audio));
       setLoadingStream(false);
       return;
     }
@@ -222,7 +223,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       setError("No streaming sources available for this episode");
       setLoadingStream(false);
     }
-  }, [title, loadAnivexaFallback]);
+  }, [title, loadAnivexaFallback, audio]);
 
   function parseVttTime(time: string): number {
     const parts = time.trim().split(":");
@@ -476,6 +477,28 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
           ))}
         </div>
       )}
+
+      <div className="mt-3 flex gap-2">
+        {(["sub", "dub"] as const).map((opt) => (
+          <button
+            key={opt}
+            onClick={() => {
+              if (opt !== audio) {
+                setAudio(opt);
+                setError(null);
+              }
+            }}
+            className={clsx(
+              "rounded-md px-3 py-1.5 text-xs font-medium transition",
+              audio === opt
+                ? "bg-primary-600 text-white"
+                : "bg-white/5 text-mist hover:bg-white/10"
+            )}
+          >
+            {opt === "sub" ? "Sub" : "Dub"}
+          </button>
+        ))}
+      </div>
 
       {totalEps && totalEps > 1 && (
         <div className="mt-3">
