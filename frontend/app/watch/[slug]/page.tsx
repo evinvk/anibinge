@@ -34,10 +34,10 @@ export default function WatchPage({ params }: PageProps) {
         const match = data.data?.find((a: any) => a.slug === slug);
         if (match) {
           resolvedTitle = match.title;
-          setTotalEps(match.episodes_count || null);
+          setTotalEps(match.episodes_count || match.actual_episodes_count || match.latest_episode || null);
         } else if (data.data?.length > 0) {
           resolvedTitle = data.data[0].title;
-          setTotalEps(data.data[0].episodes_count || null);
+          setTotalEps(data.data[0].episodes_count || data.data[0].actual_episodes_count || data.data[0].latest_episode || null);
         } else {
           setError("Anime not found");
         }

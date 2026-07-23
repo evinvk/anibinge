@@ -224,7 +224,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       setResults(res.data || []);
       if (res.data?.length > 0) {
         setSelectedSlug(res.data[0].slug);
-        setTotalEps(res.data[0].episodes_count || null);
+        const epCount = res.data[0].episodes_count || res.data[0].actual_episodes_count || res.data[0].latest_episode || null;
+        setTotalEps(epCount);
       } else {
         setError("This anime is not available for streaming");
       }
