@@ -38,8 +38,8 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
       href={anime.source === "anilist" ? `/anime/${anime.id}?source=anilist` : `/anime/${anime.id}`}
       className="group block"
     >
-      <div className="glass-card aura-border w-full transition-transform duration-200 group-hover:-translate-y-1">
-        <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-xl2">
+      <div className="glass-card aura-border flex h-full flex-col transition-transform duration-200 group-hover:-translate-y-1">
+        <div className="relative aspect-[2/3] w-full shrink-0 overflow-hidden rounded-t-xl2">
           {anime.image ? (
             <Image
               src={anime.image}
@@ -79,7 +79,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
           ) : null}
         </div>
 
-        <div className="p-3">
+        <div className="flex min-h-[5.5rem] flex-col justify-start p-3">
           <h3 className="line-clamp-2 font-display text-sm font-semibold leading-snug text-paper">
             {anime.title_english || anime.title}
           </h3>
@@ -115,7 +115,7 @@ export function AnimeGrid({ children, className }: { children: React.ReactNode; 
   return (
     <div
       className={cn(
-        "grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
+        "grid grid-cols-2 items-stretch gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6",
         className
       )}
     >
