@@ -1,15 +1,10 @@
-import dynamic from "next/dynamic";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
-
-const StreamingPlayer = dynamic(
-  () => import("@/components/streaming-player").then((m) => m.StreamingPlayer),
-  { ssr: false, loading: () => <div className="aspect-video w-full animate-pulse rounded-xl2 bg-surface-hi" /> }
-);
+import { LazyStreamingPlayer } from "@/components/lazy-streaming-player";
 
 export const revalidate = 0;
 
@@ -171,7 +166,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         )}
 
         {/* GogoAnime Streaming Player */}
-        <StreamingPlayer
+        <LazyStreamingPlayer
           animeTitle={detail.title_english || detail.title}
           anilistId={detail.anilist_id || detail.id}
         />
