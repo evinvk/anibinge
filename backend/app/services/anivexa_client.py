@@ -68,7 +68,7 @@ async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "
     return {}
 
 
-def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]]:
+def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict], str | None]:
     """Extract M3U8 URL and subtitles from provider response."""
     # anikoto returns {ssub: {streams: [...], subtitles: [...]}}
     ssub = data.get(audio) or data.get("ssub") or data.get("sub") or {}
