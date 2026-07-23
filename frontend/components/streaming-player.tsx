@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, ChevronLeft, ChevronRight, Loader2, AlertTriangle, Monitor } from "lucide-react";
+import { Play, ChevronLeft, ChevronRight, ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -99,6 +99,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const [source, setSource] = useState<"gogoanime" | "anivexa" | null>(null);
   const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
+  const [showEpisodes, setShowEpisodes] = useState(false);
   const fallbackAttemptedRef = useRef(false);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
@@ -471,36 +472,36 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       )}
 
       {totalEps && totalEps > 1 && (
-        <div className="mt-3 flex items-center justify-center gap-3">
+        <div className="mt-3">
           <button
-            onClick={() => setCurrentEp((p) => Math.max(1, p - 1))}
-            disabled={currentEp <= 1}
-            className={clsx(
-              "flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-              currentEp <= 1
-                ? "cursor-not-allowed text-mist/40"
-                : "bg-white/5 text-mist hover:bg-white/10"
-            )}
+            onClick={() => setShowEpisodes((p) => !p)}
+            className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10"
           >
-            <ChevronLeft className="h-3 w-3" />
-            Prev
+            Episode {currentEp} / {totalEps}
+            <ChevronDown className={clsx("h-3.5 w-3.5 transition-transform", showEpisodes && "rotate-180")} />
           </button>
-          <span className="text-sm font-mono text-mist">
-            Ep {currentEp} / {totalEps}
-          </span>
-          <button
-            onClick={() => setCurrentEp((p) => Math.min(totalEps, p + 1))}
-            disabled={currentEp >= totalEps}
-            className={clsx(
-              "flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-              currentEp >= totalEps
-                ? "cursor-not-allowed text-mist/40"
-                : "bg-white/5 text-mist hover:bg-white/10"
-            )}
-          >
-            Next
-            <ChevronRight className="h-3 w-3" />
-          </button>
+
+          {showEpisodes && (
+            <div className="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg bg-void/80 p-2 scrollbar-thin">
+              {Array.from({ length: totalEps }, (_, i) => i + 1).map((ep) => (
+                <button
+                  key={ep}
+                  onClick={() => {
+                    setCurrentEp(ep);
+                    setShowEpisodes(false);
+                  }}
+                  className={clsx(
+                    "flex h-8 min-w-[2rem] items-center justify-center rounded-md px-2 text-xs font-mono font-medium transition",
+                    ep === currentEp
+                      ? "bg-primary-600 text-white"
+                      : "bg-white/5 text-mist hover:bg-white/10"
+                  )}
+                >
+                  {ep}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
