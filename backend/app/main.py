@@ -129,6 +129,20 @@ async def startup_event():
         except Exception:
             pass
 
+    # Promote ADMIN_EMAIL env var user to admin (one-time bootstrap)
+    admin_email = settings.ADMIN_EMAIL
+    if admin_email:
+        from sqlalchemy import update as sa_update
+        from app.models.models import User
+        from app.core.db import AsyncSessionLocal
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                sa_update(User).where(User.email == admin_email, User.is_admin == False).values(is_admin=True)
+            )
+            await session.commit()
+            if result.rowcount:
+                logger.info("Promoted %s to admin", admin_email)
+
     # Pre-load GogoAnime catalog in background (non-blocking)
     from app.services import gogoanime_client
     import asyncio

@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     # AnimeSchedule (upcoming anime primary source)
     ANIMESCHEDULE_API_TOKEN: str = ""
 
+    # Admin bootstrap — promote this email to admin on startup
+    ADMIN_EMAIL: str = ""
+
     # Optional data sources
     TMDB_API_KEY: str = ""
     TMDB_BASE_URL: str = "https://api.themoviedb.org/3"
