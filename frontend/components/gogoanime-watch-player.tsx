@@ -37,7 +37,62 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
 
   const subs = useSubtitles(videoRef);
-  const player = useHlsPlayer(videoRef, subs.loadSubtitles);
+
+  const loadAnivexaFallback = useCallback(async (ep: number) => {
+    let aid = resolvedAnilistRef.current;
+    if (!aid) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
+        ).then(r => r.json());
+        if (res.anilist_id) {
+          aid = res.anilist_id;
+          resolvedAnilistRef.current = aid;
+        }
+      } catch { /* not critical */ }
+    }
+    if (!aid) return false;
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`
+      ).then(r => {
+        if (!r.ok) throw new Error("not ok");
+        return r.json();
+      });
+      if (res && res.stream_url) {
+        subs.setSubs((res.subtitles || []).map((s: any) => {
+          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
+          if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
+          return { ...s, file: proxyUrl };
+        }));
+        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}&audio=${audio}`;
+        player.sourceRef.current = "anivexa";
+        player.setMasterUrl(masterUrlFull);
+        player.setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+        player.setLoadingStream(false);
+        return true;
+      }
+    } catch { /* fallback failed */ }
+    return false;
+  }, [title, audio]);
+
+  const onFatalError = useCallback(async (errorType: string) => {
+    if (player.sourceRef.current === "gogoanime" && !player.fallbackAttemptedRef.current && resolvedAnilistRef.current) {
+      player.fallbackAttemptedRef.current = true;
+      player.destroyHls();
+      player.setLoadingStream(true);
+      player.setError(null);
+      const ok = await loadAnivexaFallback(currentEpRef.current);
+      if (!ok) {
+        player.setError("Streaming unavailable from all providers");
+        player.setLoadingStream(false);
+      }
+    } else {
+      player.setError("Playback error: " + errorType);
+    }
+  }, [loadAnivexaFallback]);
+
+  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
   useEffect(() => {
     currentEpRef.current = currentEp;
@@ -86,44 +141,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       subs.loadSubtitles();
     }
   }, [subs.subtitles]);
-
-  const loadAnivexaFallback = useCallback(async (ep: number) => {
-    let aid = resolvedAnilistRef.current;
-    if (!aid) {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
-        ).then(r => r.json());
-        if (res.anilist_id) {
-          aid = res.anilist_id;
-          resolvedAnilistRef.current = aid;
-        }
-      } catch { /* not critical */ }
-    }
-    if (!aid) return false;
-    try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`
-      ).then(r => {
-        if (!r.ok) throw new Error("not ok");
-        return r.json();
-      });
-      if (res && res.stream_url) {
-        subs.setSubs((res.subtitles || []).map((s: any) => {
-          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
-          if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
-          return { ...s, file: proxyUrl };
-        }));
-        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}&audio=${audio}`;
-        player.sourceRef.current = "anivexa";
-        player.setMasterUrl(masterUrlFull);
-        player.setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
-        player.setLoadingStream(false);
-        return true;
-      }
-    } catch { /* fallback failed */ }
-    return false;
-  }, [title, audio]);
 
   const loadStream = useCallback(async (s: string, ep: number) => {
     player.setLoadingStream(true);

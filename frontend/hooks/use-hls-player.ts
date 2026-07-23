@@ -14,6 +14,7 @@ interface StreamData {
 export function useHlsPlayer(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   onLoadSubtitles: () => void,
+  onFatalError?: (errorType: string) => void,
 ) {
   const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
@@ -23,6 +24,10 @@ export function useHlsPlayer(
   const hlsRef = useRef<any>(null);
   const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
   const fallbackAttemptedRef = useRef(false);
+  const onFatalErrorRef = useRef(onFatalError);
+  const onLoadSubtitlesRef = useRef(onLoadSubtitles);
+  onFatalErrorRef.current = onFatalError;
+  onLoadSubtitlesRef.current = onLoadSubtitles;
 
   const loadPlayer = useCallback(async (url: string) => {
     if (hlsRef.current) {
@@ -50,15 +55,24 @@ export function useHlsPlayer(
         }
         video.play().catch(() => {});
       });
-      onLoadSubtitles();
+      onLoadSubtitlesRef.current();
+      hls.on(Hls.Events.ERROR, (_: any, data: any) => {
+        if (data.fatal) {
+          if (onFatalErrorRef.current) {
+            onFatalErrorRef.current(data.type);
+          } else {
+            setError("Playback error: " + data.type);
+          }
+        }
+      });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
-      onLoadSubtitles();
+      onLoadSubtitlesRef.current();
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");
     }
-  }, [videoRef, onLoadSubtitles]);
+  }, [videoRef]);
 
   function setQuality(index: number) {
     setSelectedQuality(index);

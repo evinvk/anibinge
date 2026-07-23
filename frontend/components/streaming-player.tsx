@@ -33,35 +33,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [showEpisodes, setShowEpisodes] = useState(false);
 
   const subs = useSubtitles(videoRef);
-  const player = useHlsPlayer(videoRef, subs.loadSubtitles);
-
-  useEffect(() => {
-    searchAnime();
-    return () => player.destroyHls();
-  }, [animeTitle]);
-
-  useEffect(() => {
-    if (selectedSlug) {
-      setCurrentEp(1);
-      const match = results.find((r) => r.slug === selectedSlug);
-      if (match?.episodes_count) {
-        setTotalEps(match.episodes_count);
-      }
-    }
-  }, [selectedSlug]);
-
-  useEffect(() => {
-    if (player.masterUrl && videoRef.current) {
-      player.loadPlayer(player.masterUrl);
-    }
-    return () => player.destroyHls();
-  }, [player.masterUrl]);
-
-  useEffect(() => {
-    if (subs.subtitles.length > 0 && videoRef.current) {
-      subs.loadSubtitles();
-    }
-  }, [subs.subtitles]);
+  const currentEpRef = useRef(1);
+  currentEpRef.current = currentEp;
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     let aid = resolvedAnilistRef.current;
@@ -100,6 +73,52 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     } catch { /* fallback failed */ }
     return false;
   }, [animeTitle]);
+
+  const onFatalError = useCallback(async (errorType: string) => {
+    if (player.sourceRef.current === "gogoanime" && !player.fallbackAttemptedRef.current && resolvedAnilistRef.current) {
+      player.fallbackAttemptedRef.current = true;
+      player.destroyHls();
+      player.setLoadingStream(true);
+      player.setError(null);
+      const ok = await loadAnivexaFallback(currentEpRef.current);
+      if (!ok) {
+        player.setError("Streaming unavailable from all providers");
+        player.setLoadingStream(false);
+      }
+    } else {
+      player.setError("Playback error: " + errorType);
+    }
+  }, [loadAnivexaFallback]);
+
+  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
+
+  useEffect(() => {
+    searchAnime();
+    return () => player.destroyHls();
+  }, [animeTitle]);
+
+  useEffect(() => {
+    if (selectedSlug) {
+      setCurrentEp(1);
+      const match = results.find((r) => r.slug === selectedSlug);
+      if (match?.episodes_count) {
+        setTotalEps(match.episodes_count);
+      }
+    }
+  }, [selectedSlug]);
+
+  useEffect(() => {
+    if (player.masterUrl && videoRef.current) {
+      player.loadPlayer(player.masterUrl);
+    }
+    return () => player.destroyHls();
+  }, [player.masterUrl]);
+
+  useEffect(() => {
+    if (subs.subtitles.length > 0 && videoRef.current) {
+      subs.loadSubtitles();
+    }
+  }, [subs.subtitles]);
 
   const loadStream = useCallback(async (slug: string, ep: number) => {
     player.setLoadingStream(true);
