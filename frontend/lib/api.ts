@@ -200,7 +200,7 @@ export const api = {
   anivexaMaster: (anilistId: number, ep: number, audio = "sub") =>
     `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}&audio=${audio}`,
   anivexaSubtitleProxy: (url: string) =>
-    `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(url)}`,
+    `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(url))}`,
 
   // Fallback (tries GogoAnime, then Anivexa)
   fallbackSearch: (q: string) =>

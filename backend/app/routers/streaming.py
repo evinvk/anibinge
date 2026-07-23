@@ -8,11 +8,14 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 import base64 as _b64
 import httpx as _httpx
+import logging
 
 from app.core.config import get_settings
 from app.services import wibu_client
 from app.services import gogoanime_client
 from app.services import anivexa_client
+
+logger = logging.getLogger("anibinge.streaming")
 
 router = APIRouter(prefix="/api/v1/streaming", tags=["streaming"])
 limiter = Limiter(key_func=get_remote_address)

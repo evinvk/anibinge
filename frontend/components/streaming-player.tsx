@@ -89,7 +89,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     };
   }, [masterUrl]);
 
+  // Separate effect: load subtitles when they change and video is ready
+  useEffect(() => {
+    if (subtitles.length > 0 && videoRef.current) {
+      console.log("[Subtitles] useEffect: subtitles changed, loading onto video. Count:", subtitles.length);
+      loadSubtitlesOntoVideo(videoRef.current, subtitles);
+    }
+  }, [subtitles]);
+
   const [source, setSource] = useState<"gogoanime" | "anivexa" | null>(null);
+  const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
   const fallbackAttemptedRef = useRef(false);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
@@ -116,7 +125,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       });
       if (res && res.stream_url) {
         const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
-          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`;
+          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
           return { ...s, file: proxyUrl };
         });
@@ -124,6 +133,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         setSubtitles(proxiedSubs);
         const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}`;
         setSource("anivexa");
+        sourceRef.current = "anivexa";
         setMasterUrl(masterUrlFull);
         setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
         setLoadingStream(false);
@@ -172,7 +182,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     // Store subtitles before player loads
     if (subsData?.subtitles?.length) {
       const proxiedSubs: Subtitle[] = subsData.subtitles.map((s: Subtitle) => {
-        let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`;
+        let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
         if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
         return { ...s, file: proxyUrl };
       });
@@ -183,6 +193,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     const data = gogoRes?.data;
     if (data?.qualities) {
       setSource("gogoanime");
+      sourceRef.current = "gogoanime";
       setStreamData({ qualities: data.qualities });
       setMasterUrl(api.gogoanimeMaster(slug, ep));
       setLoadingStream(false);
@@ -248,15 +259,25 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }
 
   async function loadSubtitlesOntoVideo(video: HTMLVideoElement, subs: Subtitle[]) {
-    if (!subs.length) return;
+    console.log("[Subtitles] loadSubtitlesOntoVideo called with", subs.length, "subs");
+    if (!subs.length) {
+      console.warn("[Subtitles] No subtitles to load");
+      return;
+    }
     for (const sub of subs) {
       try {
+        console.log("[Subtitles] Fetching:", sub.file);
         const resp = await fetch(sub.file);
-        if (!resp.ok) continue;
+        if (!resp.ok) {
+          console.error("[Subtitles] Fetch failed:", resp.status, resp.statusText, "for", sub.file);
+          continue;
+        }
         const vttText = await resp.text();
+        console.log("[Subtitles] Got VTT text, length:", vttText.length, "preview:", vttText.slice(0, 200));
         const track = video.addTextTrack("captions", sub.label, sub.language);
         // Parse VTT: split into cue blocks separated by blank lines
         const blocks = vttText.split(/\r?\n\r?\n/);
+        let cueCount = 0;
         for (const block of blocks) {
           const lines = block.trim().split(/\r?\n/);
           const timeLine = lines.find((l) => l.includes("-->"));
@@ -270,28 +291,38 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           const text = cueLines.join("\n").replace(/<[^>]+>/g, "");
           const cue = new VTTCue(parseVttTime(startStr), parseVttTime(endStr), text);
           track.addCue(cue);
+          cueCount++;
         }
+        console.log("[Subtitles] Added", cueCount, "cues for track:", sub.label, "mode:", track.mode);
         if (sub.default) track.mode = "showing";
-      } catch {
-        // Subtitle failed to load — skip silently
+      } catch (e) {
+        console.error("[Subtitles] Failed to load subtitle:", sub.label, e);
       }
     }
     // Enable all text tracks that have cues
+    console.log("[Subtitles] Total text tracks on video:", video.textTracks.length);
     for (let i = 0; i < video.textTracks.length; i++) {
-      if (video.textTracks[i].cues && video.textTracks[i].cues!.length > 0) {
-        video.textTracks[i].mode = "showing";
+      const t = video.textTracks[i];
+      console.log("[Subtitles] Track", i, ":", t.label, "cues:", t.cues?.length ?? 0, "mode:", t.mode);
+      if (t.cues && t.cues!.length > 0) {
+        t.mode = "showing";
+        console.log("[Subtitles] Set track", i, "to showing");
       }
     }
   }
 
   async function loadPlayer(url: string) {
+    console.log("[Player] loadPlayer called with url:", url, "subs:", subtitlesRef.current.length);
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
     const video = videoRef.current;
-    if (!video) return;
+    if (!video) {
+      console.warn("[Player] videoRef.current is null, aborting");
+      return;
+    }
 
     const Hls = (await import("hls.js")).default;
 
@@ -305,15 +336,17 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
+        console.log("[Player] MANIFEST_PARSED, levels:", data.levels?.length);
         if (data.levels?.length > 1) {
           hls.currentLevel = 0;
         }
         video.play().catch(() => {});
       });
       // Add external subtitles: fetch VTT content, create Blob URLs to bypass MSE CORS issues
+      console.log("[Player] Calling loadSubtitlesOntoVideo with", subtitlesRef.current.length, "subs");
       loadSubtitlesOntoVideo(video, subtitlesRef.current);
       hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
-        if (data.fatal && source === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
+        if (data.fatal && sourceRef.current === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
           // GogoAnime CDN is broken — try Anivexa fallback
           fallbackAttemptedRef.current = true;
           hls.destroy();
