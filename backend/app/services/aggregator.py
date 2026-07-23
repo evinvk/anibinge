@@ -511,72 +511,17 @@ async def get_top(page: int = 1) -> list[dict]:
 
 @cached("agg:upcoming", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_upcoming(page: int = 1) -> list[dict]:
-    """Get upcoming (not yet aired) anime: AnimeSchedule → MAL → AniList → Jikan."""
-    if settings.ANIMESCHEDULE_API_TOKEN:
-        try:
-            items = await animeschedule_client.animeschedule.get_anime_list(
-                airing_statuses="upcoming", page=page, per_page=25
-            )
-            results = [_normalize_animeschedule(x) for x in items]
-            if _is_valid_results(results):
-                results = await _enrich_images_anilist(results)
-                logger.info("Upcoming from AnimeSchedule: %d results", len(results))
-                return results
-            logger.warning("AnimeSchedule upcoming returned invalid data, falling back to MAL")
-        except Exception as e:
-            logger.warning("AnimeSchedule upcoming failed (%s), falling back to MAL", e)
-    try:
-        data = await mal_client.get_anime_ranking(ranking_type="upcoming", page=page)
-        results = [_normalize_mal(x) for x in data.get("data", [])]
-        if _is_valid_results(results):
-            logger.info("Upcoming from MAL: %d results", len(results))
-            return results
-        logger.warning("MAL upcoming returned invalid data, falling back to AniList")
-    except Exception as e:
-        logger.warning("MAL upcoming failed (%s), falling back to AniList", e)
-    try:
-        query = """
-        query($page:Int,$perPage:Int){
-          Page(page:$page,perPage:$perPage){
-            media(
-              type:ANIME,
-              status:NOT_YET_RELEASED,
-              sort:START_DATE_DESC
-            ){
-              id
-              title{ romaji english native }
-              coverImage{ extraLarge large }
-              bannerImage
-              averageScore
-              popularity
-              episodes
-              status
-              startDate{ year month day }
-              season
-              seasonYear
-              genres
-              format
-              description
-            }
-          }
-        }
-        """
-        data = await anilist_client._query(query, {"page": page, "perPage": 25})
-        results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
-        if _is_valid_results(results):
-            logger.info("Upcoming from AniList: %d results", len(results))
-            return results
-        logger.warning("AniList upcoming returned invalid data, falling back to Jikan")
-    except Exception as e2:
-        logger.warning("AniList upcoming failed (%s), falling back to Jikan", e2)
-    try:
-        data = await jikan_client.get_top_anime(page=page, filter_type="upcoming")
-        results = [_normalize_jikan(x) for x in data.get("data", [])]
-        logger.info("Upcoming from Jikan: %d results", len(results))
-        return results
-    except Exception as e3:
-        logger.error("All upcoming sources failed: %s", e3)
+    """Get upcoming (not yet aired) anime: AnimeSchedule only."""
+    if not settings.ANIMESCHEDULE_API_TOKEN:
+        logger.error("AnimeSchedule API token not configured")
         return []
+    items = await animeschedule_client.animeschedule.get_anime_list(
+        airing_statuses="upcoming", page=page, per_page=25
+    )
+    results = [_normalize_animeschedule(x) for x in items]
+    results = await _enrich_images_anilist(results)
+    logger.info("Upcoming from AnimeSchedule: %d results", len(results))
+    return results
 
 
 @cached("agg:seasonal", ttl=settings.CACHE_TTL_MEDIUM)
