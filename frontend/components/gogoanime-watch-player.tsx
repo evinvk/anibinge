@@ -205,42 +205,36 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     const video = videoRef.current;
     if (!video) return;
 
-    // Remove any existing subtitle tracks
-    while (video.firstChild) {
-      video.removeChild(video.firstChild);
-    }
-
     const Hls = (await import("hls.js")).default;
 
     if (Hls.isSupported()) {
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
+        renderTextTracksNatively: false,
       });
       hlsRef.current = hls;
 
-      // Add subtitle tracks BEFORE attachMedia so hls.js picks them up
-      const currentSubs = subtitlesRef.current;
-      if (currentSubs.length > 0) {
-        currentSubs.forEach((sub: Subtitle) => {
-          const track = document.createElement("track");
-          track.kind = sub.kind || "captions";
-          track.label = sub.label;
-          track.srclang = sub.language;
-          track.src = sub.file;
-          if (sub.default) track.default = true;
-          video.appendChild(track);
-        });
-      }
-
       hls.loadSource(url);
       hls.attachMedia(video);
+
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
         if (data.levels?.length > 1) {
           hls.currentLevel = 0;
         }
-        // Enable all subtitle tracks
-        if (video.textTracks) {
+        // Add external subtitle tracks as DOM elements (hls.js won't interfere with renderTextTracksNatively: false)
+        const currentSubs = subtitlesRef.current;
+        if (currentSubs.length > 0) {
+          currentSubs.forEach((sub: Subtitle) => {
+            const track = document.createElement("track");
+            track.kind = sub.kind || "captions";
+            track.label = sub.label;
+            track.srclang = sub.language;
+            track.src = sub.file;
+            if (sub.default) track.default = true;
+            video.appendChild(track);
+          });
+          // Enable all subtitle tracks so they show by default
           for (let i = 0; i < video.textTracks.length; i++) {
             video.textTracks[i].mode = "showing";
           }
@@ -265,7 +259,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
-      // Add subtitle tracks for native HLS
+      // Native HLS (Safari) — DOM <track> elements work here
       const currentSubs = subtitlesRef.current;
       if (currentSubs.length > 0) {
         currentSubs.forEach((sub) => {
