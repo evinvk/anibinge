@@ -23,16 +23,6 @@ export default function AdminDashboardPage() {
     fetch(`${API_BASE}/api/v1/admin/api-monitoring`, { headers }).then((r) => r.json()).then(setMonitoring);
   }, [isAdmin]);
 
-  async function invalidateCache(prefix: string) {
-    setBusyPrefix(prefix);
-    const token = localStorage.getItem("anibinge_token");
-    await fetch(`${API_BASE}/api/v1/admin/cache/invalidate/${prefix}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    setBusyPrefix(null);
-  }
-
   if (authLoading) {
     return <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 text-mist">Loading…</div>;
   }
