@@ -53,8 +53,8 @@ export function useHlsPlayer(
           xhrSetup: (xhr: XMLHttpRequest) => {
             xhr.setRequestHeader("Referer", referer);
           },
-          fetchSetup: (init: RequestInit) => {
-            return new Request(init.url, { ...init, headers: { ...init.headers, Referer: referer } });
+          fetchSetup: (context: any, init: RequestInit) => {
+            return new Request(context.url, { ...init, headers: { ...init.headers, Referer: referer } });
           },
         } : {}),
       });
