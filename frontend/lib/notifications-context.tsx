@@ -156,38 +156,47 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         return false;
       }
 
-      // Ensure service worker is registered first
+      // Ensure service worker is registered and active
       let reg = await navigator.serviceWorker.getRegistration("/");
       if (!reg) {
         reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       }
 
-      // Wait for service worker to be active, with timeout
-      if (!reg.active) {
-        await Promise.race([
-          new Promise<void>((resolve) => {
-            if (reg!.active) return resolve();
-            reg!.addEventListener("updatefound", () => {
-              const sw = reg!.installing;
-              if (sw) {
-                sw.addEventListener("statechange", () => {
-                  if (sw.state === "activated") resolve();
-                });
-              }
-            });
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Service worker activation timeout")), 10000)),
-        ]);
+      if (reg.installing || reg.waiting) {
+        // Wait for SW to become active
+        await new Promise<void>((resolve, reject) => {
+          const sw = reg!.installing || reg!.waiting;
+          const timeout = setTimeout(() => reject(new Error("SW activation timeout")), 10000);
+          if (!sw) return resolve();
+          sw.addEventListener("statechange", () => {
+            if (sw.state === "activated") {
+              clearTimeout(timeout);
+              resolve();
+            }
+          });
+        });
+        reg = await navigator.serviceWorker.getRegistration("/") || reg;
       }
 
-      // Re-fetch registration after activation
-      reg = await navigator.serviceWorker.getRegistration("/") || reg;
+      if (!reg.active) {
+        console.error("Service worker not active");
+        return false;
+      }
 
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
-        const res = await api.getVapidKey();
-        const applicationServerKey = urlBase64ToUint8Array(res.public_key);
+        // Fetch VAPID key directly (not via request helper which uses server-side options)
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
+        const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`, {
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`VAPID key fetch failed: ${res.status}`);
+        const { public_key } = await res.json();
+        const applicationServerKey = urlBase64ToUint8Array(public_key);
 
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
@@ -200,11 +209,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       const auth = (subJson as any).keys?.auth || "";
 
       if (token) {
-        await api.subscribePush(token, {
-          endpoint: sub.endpoint,
-          p256dh,
-          auth,
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const subRes = await fetch(`${API_BASE}/api/v1/notifications/subscribe`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
         });
+        if (!subRes.ok) {
+          const body = await subRes.json().catch(() => ({}));
+          console.error("Subscribe API error:", body);
+          throw new Error(`Subscribe failed: ${subRes.status}`);
+        }
       }
 
       storeSub({ endpoint: sub.endpoint, p256dh, auth });
