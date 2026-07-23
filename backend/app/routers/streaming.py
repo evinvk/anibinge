@@ -462,8 +462,7 @@ async def resolve_anilist_id(
     try:
         from app.services import anilist_client
         result = await anilist_client.search_anime(q, per_page=5)
-        pages = result.get("data", {}).get("Page", {})
-        media = pages.get("media", [])
+        media = result.get("Page", {}).get("media", [])
         if media:
             return {"anilist_id": media[0]["id"], "title": media[0].get("title", {})}
         return {"anilist_id": None, "title": None}
