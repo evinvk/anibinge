@@ -55,30 +55,51 @@ class AniListClient:
         search: str,
         page: int = 1,
         per_page: int = 20,
+        status: str | None = None,
+        type: str | None = None,
+        genres: str | None = None,
+        order_by: str | None = None,
+        sort: str | None = None,
     ) -> dict:
-        """Search anime by title."""
-        query = """
-        query ($search:String,$page:Int,$perPage:Int){
-          Page(page:$page,perPage:$perPage){
-            pageInfo{
-              total
-              currentPage
-              hasNextPage
-            }
-            media(
-              search:$search,
-              type:ANIME
-            ){
+        """Search anime by title with optional filters."""
+        # Map frontend status values to AniList status enums
+        STATUS_MAP = {"airing": "RELEASING", "complete": "FINISHED", "upcoming": "NOT_YET_RELEASED"}
+        TYPE_MAP = {"tv": "TV", "movie": "MOVIE", "ova": "OVA", "ona": "ONA", "special": "SPECIAL"}
+        SORT_MAP = {
+            "score": "SCORE", "popularity": "POPULARITY",
+            "title": "TITLE_ROMAJI", "start_date": "START_DATE",
+        }
+
+        status_in = [STATUS_MAP[status]] if status and status in STATUS_MAP else None
+        format_in = [TYPE_MAP[type]] if type and type in TYPE_MAP else None
+        genre_in = genres.split(",") if genres else None
+        sort_by = [SORT_MAP.get(order_by, "POPULARITY")]
+        # AniList defaults to ascending; add _DESC for descending (highest/newest first)
+        if sort != "asc" and sort_by[0] not in ("TITLE_ROMAJI",):
+            sort_by = [sort_by[0] + "_DESC"]
+
+        # Build dynamic filter string
+        media_filters = "type:ANIME"
+        variables = {"search": search, "page": page, "perPage": per_page}
+
+        if status_in:
+            media_filters += ",status_in:$status_in"
+            variables["status_in"] = status_in
+        if format_in:
+            media_filters += ",format_in:$format_in"
+            variables["format_in"] = format_in
+        if genre_in:
+            media_filters += ",genre_in:$genre_in"
+            variables["genre_in"] = genre_in
+
+        query = f"""
+        query ($search:String,$page:Int,$perPage:Int,$status_in:[MediaStatus],$format_in:[MediaFormat],$genre_in:[String]){{
+          Page(page:$page,perPage:$perPage){{
+            pageInfo{{total currentPage hasNextPage}}
+            media(search:$search,{media_filters},sort:{sort_by[0]}){{
               id
-              title{
-                romaji
-                english
-                native
-              }
-              coverImage{
-                extraLarge
-                large
-              }
+              title{{romaji english native}}
+              coverImage{{extraLarge large}}
               bannerImage
               description
               averageScore
@@ -90,18 +111,11 @@ class AniListClient:
               seasonYear
               genres
               format
-            }
-          }
-        }
+            }}
+          }}
+        }}
         """
-        return await self._query(
-            query,
-            {
-                "search": search,
-                "page": page,
-                "perPage": per_page,
-            },
-        )
+        return await self._query(query, variables)
 
     async def get_trending(
         self,

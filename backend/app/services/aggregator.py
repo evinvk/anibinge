@@ -325,7 +325,14 @@ async def search(query: str, page: int = 1, **filters) -> list[dict]:
     except Exception as e:
         logger.warning("MAL search failed (%s), falling back to AniList", e)
     try:
-        data = await anilist_client.search_anime(query, page=page)
+        data = await anilist_client.search_anime(
+            query, page=page,
+            status=filters.get("status"),
+            type=filters.get("type"),
+            genres=filters.get("genres"),
+            order_by=filters.get("order_by"),
+            sort=filters.get("sort"),
+        )
         results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
         if _is_valid_results(results):
             logger.info("Search '%s' from AniList: %d results", query, len(results))
