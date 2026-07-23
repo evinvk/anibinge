@@ -315,15 +315,18 @@ async def get_trending(page: int = 1) -> list[dict]:
 @cached("agg:search", ttl=settings.CACHE_TTL_SHORT)
 async def search(query: str, page: int = 1, **filters) -> list[dict]:
     """Search anime: MAL (primary) → AniList → Jikan → GogoAnime (fallback chain)."""
-    try:
-        data = await mal_client.search_anime(query, page=page)
-        results = [_normalize_mal(x) for x in data.get("data", [])]
-        if _is_valid_results(results):
-            logger.info("Search '%s' from MAL: %d results", query, len(results))
-            return results
-        logger.warning("MAL search returned invalid data for '%s', falling back to AniList", query)
-    except Exception as e:
-        logger.warning("MAL search failed (%s), falling back to AniList", e)
+    has_filters = any(v for k, v in filters.items() if v is not None)
+
+    if not has_filters:
+        try:
+            data = await mal_client.search_anime(query, page=page)
+            results = [_normalize_mal(x) for x in data.get("data", [])]
+            if _is_valid_results(results):
+                logger.info("Search '%s' from MAL: %d results", query, len(results))
+                return results
+            logger.warning("MAL search returned invalid data for '%s', falling back to AniList", query)
+        except Exception as e:
+            logger.warning("MAL search failed (%s), falling back to AniList", e)
     try:
         data = await anilist_client.search_anime(
             query, page=page,
