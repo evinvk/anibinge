@@ -641,6 +641,7 @@ async def get_schedule(day: str | None = None, page: int = 1) -> dict:
     Fallback 2: Jikan per-day filter.
     """
     if day:
+        day_items: list[dict] = []
         # --- 1. AnimeSchedule: filter ongoing anime by subTime day-of-week ---
         if settings.ANIMESCHEDULE_API_TOKEN:
             try:

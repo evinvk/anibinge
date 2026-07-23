@@ -11,7 +11,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "Anibinge API"
     ENV: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = False
 
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://anibinge:anibinge@localhost:5432/anibinge"
@@ -74,6 +74,8 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "https://anibinge-nine.vercel.app",
         "https://anibinge.app",
+        "https://www.anibinge.fun",
+        "https://anibinge.fun",
     ]
 
 

@@ -27,9 +27,13 @@ export default function WatchPage({ params }: PageProps) {
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
       let resolvedTitle: string | null = null;
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 12000);
         const res = await fetch(
-          `${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`
+          `${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`,
+          { signal: controller.signal }
         );
+        clearTimeout(timeout);
         const data = await res.json();
         const match = data.data?.find((a: any) => a.slug === slug);
         if (match) {

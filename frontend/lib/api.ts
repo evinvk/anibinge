@@ -39,12 +39,27 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, revalidateSeconds = 60): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    next: { revalidate: revalidateSeconds },
-  });
-  if (!res.ok) throw new ApiError(res.status, `Request to ${path} failed: ${res.status}`);
-  return res.json();
+async function request<T>(path: string, revalidateSeconds = 60, retries = 1): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`${API_BASE}${path}`, {
+        next: { revalidate: revalidateSeconds },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!res.ok) throw new ApiError(res.status, `Request to ${path} failed: ${res.status}`);
+      return res.json();
+    } catch (err: any) {
+      if (attempt < retries && (err?.name === "AbortError" || err?.code === "ECONNREFUSED")) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Request failed");
 }
 
 async function authedRequest<T>(
