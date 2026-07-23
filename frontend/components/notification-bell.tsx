@@ -35,25 +35,21 @@ export function NotificationBell() {
   };
 
   const handleTogglePush = async () => {
-    // If permission is default, trigger the browser prompt FIRST (synchronous click handler)
+    // If permission is default, trigger the browser prompt from this synchronous click handler
     if (pushPermission === "default") {
-      requestPermission();
-      // Give the browser a moment to register the permission, then try to enable
-      setTimeout(async () => {
-        setToggling(true);
-        setPushError(null);
-        try {
-          const success = await enablePush();
-          if (!success) {
-            setPushError("Tap the bell again after allowing notifications.");
-          }
-        } catch {
-          setPushError("Something went wrong.");
-        } finally {
-          setToggling(false);
+      try {
+        const result = await requestPermission();
+        if (result === "granted") {
+          setPushPermission("granted");
+        } else {
+          setPushPermission(result as NotificationPermission);
+          setPushError("Permission not granted.");
+          return;
         }
-      }, 500);
-      return;
+      } catch {
+        setPushError("Permission request failed.");
+        return;
+      }
     }
 
     setToggling(true);
@@ -64,7 +60,8 @@ export function NotificationBell() {
       } else {
         const success = await enablePush();
         if (!success) {
-          if (pushPermission === "denied") {
+          const perm = typeof Notification !== "undefined" ? Notification.permission : "unknown";
+          if (perm === "denied") {
             setPushError("Notifications blocked. Enable in browser settings.");
           } else {
             setPushError("Could not enable notifications.");

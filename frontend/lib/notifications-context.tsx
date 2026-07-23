@@ -154,16 +154,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setUnreadCount(0);
   }, []);
 
-  // Must be called directly from a click handler (synchronous), NOT from async code.
-  // On mobile, calling requestPermission() inside async code blocks the main thread.
+  // Returns a promise that resolves when the browser permission dialog is answered.
+  // Must be called from a synchronous click handler.
   const requestPermission = useCallback(() => {
-    if (typeof Notification === "undefined") return;
-    if (Notification.permission === "default") {
-      // This MUST be a direct synchronous call from a user gesture
-      Notification.requestPermission().then((perm) => {
-        setPushPermission(perm);
-      });
-    }
+    if (typeof Notification === "undefined") return Promise.resolve("unsupported" as const);
+    if (Notification.permission === "granted") return Promise.resolve("granted" as const);
+    if (Notification.permission === "denied") return Promise.resolve("denied" as const);
+    return Notification.requestPermission();
   }, []);
 
   const enablePush = useCallback(async (): Promise<boolean> => {
