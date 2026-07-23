@@ -21,6 +21,15 @@ interface StreamSource {
   url: string;
 }
 
+interface Subtitle {
+  file: string;
+  label: string;
+  language: string;
+  kind: string;
+  default: boolean;
+  source: string;
+}
+
 interface StreamData {
   qualities: StreamSource[];
 }
@@ -41,6 +50,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [loading, setLoading] = useState(false);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
 
@@ -82,27 +92,26 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     if (!anilistId) return false;
     try {
-      const params = new URLSearchParams({ ep: String(ep), anilist_id: String(anilistId) });
-      const res = await fetch(`${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?${params}`).then(r => {
+      // Use the backend's built-in fallback that tries multiple providers
+      const res = await fetch(
+        `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}`
+      ).then(r => {
         if (!r.ok) throw new Error("not ok");
         return r.json();
       });
-      // Try each provider
-      for (const prov of ["anikoto", "animegg", "anineko"]) {
-        try {
-          const provRes = await fetch(`${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}&provider=${prov}`).then(r => {
-            if (!r.ok) throw new Error("not ok");
-            return r.json();
-          });
-          if (provRes && !provRes.error) {
-            const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}&provider=${prov}`;
-            setSource("anivexa");
-            setMasterUrl(masterUrlFull);
-            setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
-            setLoadingStream(false);
-            return true;
-          }
-        } catch { /* try next provider */ }
+      if (res && res.stream_url) {
+        // Proxy subtitles through our backend for CORS
+        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => ({
+          ...s,
+          file: `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`,
+        }));
+        setSubtitles(proxiedSubs);
+        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}`;
+        setSource("anivexa");
+        setMasterUrl(masterUrlFull);
+        setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+        setLoadingStream(false);
+        return true;
       }
     } catch { /* fallback failed */ }
     return false;
@@ -114,6 +123,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(0);
+    setSubtitles([]);
     fallbackAttemptedRef.current = false;
     try {
       const res = await api.gogoanimeStream(slug, ep);
@@ -172,6 +182,11 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     const video = videoRef.current;
     if (!video) return;
 
+    // Remove any existing subtitle tracks
+    while (video.firstChild) {
+      video.removeChild(video.firstChild);
+    }
+
     const Hls = (await import("hls.js")).default;
 
     if (Hls.isSupported()) {
@@ -185,6 +200,18 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
         if (data.levels?.length > 1) {
           hls.currentLevel = 0;
+        }
+        // Add subtitle tracks from Anivexa
+        if (subtitles.length > 0) {
+          subtitles.forEach((sub) => {
+            const track = document.createElement("track");
+            track.kind = sub.kind || "captions";
+            track.label = sub.label;
+            track.srclang = sub.language;
+            track.src = sub.file;
+            if (sub.default) track.default = true;
+            video.appendChild(track);
+          });
         }
         video.play().catch(() => {});
       });
@@ -207,6 +234,18 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
+      // Add subtitle tracks for native HLS
+      if (subtitles.length > 0) {
+        subtitles.forEach((sub) => {
+          const track = document.createElement("track");
+          track.kind = sub.kind || "captions";
+          track.label = sub.label;
+          track.srclang = sub.language;
+          track.src = sub.file;
+          if (sub.default) track.default = true;
+          video.appendChild(track);
+        });
+      }
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");

@@ -194,13 +194,20 @@ export const api = {
   anivexaEpisodes: (anilistId: number) =>
     request<any>(`/api/v1/streaming/anivexa/${anilistId}/episodes`, 300),
   anivexaStream: (anilistId: number, ep: number, audio = "sub") =>
-    request<any>(`/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}&audio=${audio}`, 60),
+    request<{ stream_url: string; subtitles: any[]; provider: string }>(
+      `/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}&audio=${audio}`, 60
+    ),
   anivexaMaster: (anilistId: number, ep: number, audio = "sub") =>
     `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}&audio=${audio}`,
+  anivexaSubtitleProxy: (url: string) =>
+    `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(url)}`,
 
   // Fallback (tries GogoAnime, then Anivexa)
   fallbackSearch: (q: string) =>
     request<{ data: any[]; source: string }>(`/api/v1/streaming/fallback/search?q=${encodeURIComponent(q)}`, 300),
-  fallbackStream: (q: string, ep: number, audio = "sub") =>
-    request<any>(`/api/v1/streaming/fallback/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`, 60),
+  fallbackStream: (q: string, ep: number, audio = "sub", anilistId?: number) => {
+    let path = `/api/v1/streaming/fallback/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`;
+    if (anilistId) path += `&anilist_id=${anilistId}`;
+    return request<any>(path, 60);
+  },
 };

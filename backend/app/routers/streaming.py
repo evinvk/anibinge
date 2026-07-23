@@ -458,12 +458,8 @@ async def search_anivexa(
     request: Request,
     q: str = Query(..., min_length=2, description="Search query"),
 ):
-    """Search for anime on Anivexa (Reanime provider)."""
-    try:
-        results = await anivexa_client.search_anime(q)
-        return {"data": results}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail="Anivexa search unavailable")
+    """Anivexa search not available — returns empty (Anivexa uses AniList IDs only)."""
+    return {"data": []}
 
 
 @router.get("/anivexa/{anilist_id}/episodes")
@@ -494,16 +490,48 @@ async def anivexa_stream(
     audio: str = Query("sub", description="Audio type: sub or dub"),
     provider: str = Query("anikoto", description="Provider: anikoto, animegg, anizone"),
 ):
-    """Get streaming URL from Anivexa for a specific episode."""
+    """Get streaming URL + subtitles from Anivexa for a specific episode."""
     try:
         data = await anivexa_client.get_stream_data(anilist_id, ep, provider, audio)
         if not data or data.get("error"):
             raise HTTPException(status_code=404, detail="Stream not available on Anivexa")
-        return data
+        m3u8_url, subtitles = anivexa_client._extract_stream_info(data, audio)
+        return {
+            "stream_url": m3u8_url,
+            "subtitles": subtitles,
+            "provider": provider,
+        }
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail="Anivexa stream unavailable")
+
+
+@router.get("/anivexa/subtitle")
+@limiter.limit("120/minute")
+async def anivexa_subtitle_proxy(
+    request: Request,
+    url: str = Query(..., description="URL of the VTT subtitle file"),
+):
+    """CORS proxy for Anivexa subtitle files (VTT)."""
+    try:
+        decoded_url = _b64.urlsafe_b64decode(url.encode()).decode()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid subtitle URL encoding")
+
+    try:
+        async with _httpx.AsyncClient(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True) as client:
+            resp = await client.get(decoded_url)
+            resp.raise_for_status()
+            return Response(
+                content=resp.text,
+                media_type="text/vtt",
+                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=3600"},
+            )
+    except _httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Subtitle proxy request failed")
 
 
 @router.get("/anivexa/{anilist_id}/master")
@@ -646,14 +674,6 @@ async def fallback_search(
     except Exception:
         pass
 
-    # Fallback to Anivexa
-    try:
-        results = await anivexa_client.search_anime(q)
-        if results:
-            return {"data": results, "source": "anivexa"}
-    except Exception:
-        pass
-
     return {"data": [], "source": "none"}
 
 
@@ -709,6 +729,7 @@ async def fallback_stream(
                     "provider": result.get("provider", "anikoto"),
                     "master_url": master_path,
                     "stream_url": result["stream_url"],
+                    "subtitles": result.get("subtitles", []),
                     "anilist_id": anilist_id,
                 }
         except Exception:

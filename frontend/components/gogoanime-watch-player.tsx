@@ -10,6 +10,15 @@ interface StreamSource {
   url: string;
 }
 
+interface Subtitle {
+  file: string;
+  label: string;
+  language: string;
+  kind: string;
+  default: boolean;
+  source: string;
+}
+
 interface StreamData {
   qualities: StreamSource[];
 }
@@ -31,6 +40,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [source, setSource] = useState<"gogoanime" | "anivexa" | null>(null);
+  const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
   const fallbackAttemptedRef = useRef(false);
@@ -69,24 +79,27 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     if (!anilistId) return false;
-    for (const prov of ["anikoto", "animegg", "anineko"]) {
-      try {
-        const provRes = await fetch(
-          `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}&provider=${prov}`
-        ).then(r => {
-          if (!r.ok) throw new Error("not ok");
-          return r.json();
-        });
-        if (provRes && !provRes.error) {
-          const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}&provider=${prov}`;
-          setSource("anivexa");
-          setMasterUrl(masterUrlFull);
-          setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
-          setLoadingStream(false);
-          return true;
-        }
-      } catch { /* try next provider */ }
-    }
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}`
+      ).then(r => {
+        if (!r.ok) throw new Error("not ok");
+        return r.json();
+      });
+      if (res && res.stream_url) {
+        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => ({
+          ...s,
+          file: `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`,
+        }));
+        setSubtitles(proxiedSubs);
+        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}`;
+        setSource("anivexa");
+        setMasterUrl(masterUrlFull);
+        setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+        setLoadingStream(false);
+        return true;
+      }
+    } catch { /* fallback failed */ }
     return false;
   }, [anilistId]);
 
@@ -96,6 +109,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(0);
+    setSubtitles([]);
     fallbackAttemptedRef.current = false;
 
     // Try GogoAnime first
@@ -131,6 +145,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     const video = videoRef.current;
     if (!video) return;
 
+    // Remove any existing subtitle tracks
+    while (video.firstChild) {
+      video.removeChild(video.firstChild);
+    }
+
     const Hls = (await import("hls.js")).default;
 
     if (Hls.isSupported()) {
@@ -144,6 +163,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
         if (data.levels?.length > 1) {
           hls.currentLevel = 0;
+        }
+        // Add subtitle tracks from Anivexa
+        if (subtitles.length > 0) {
+          subtitles.forEach((sub) => {
+            const track = document.createElement("track");
+            track.kind = sub.kind || "captions";
+            track.label = sub.label;
+            track.srclang = sub.language;
+            track.src = sub.file;
+            if (sub.default) track.default = true;
+            video.appendChild(track);
+          });
         }
         video.play().catch(() => {});
       });
@@ -165,6 +196,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
+      // Add subtitle tracks for native HLS
+      if (subtitles.length > 0) {
+        subtitles.forEach((sub) => {
+          const track = document.createElement("track");
+          track.kind = sub.kind || "captions";
+          track.label = sub.label;
+          track.srclang = sub.language;
+          track.src = sub.file;
+          if (sub.default) track.default = true;
+          video.appendChild(track);
+        });
+      }
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");

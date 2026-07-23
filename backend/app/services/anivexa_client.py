@@ -50,38 +50,51 @@ async def get_stream_data(anilist_id: int, episode: int, provider: str = "anikot
 
 
 async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "sub") -> dict[str, Any]:
-    """Try multiple providers until one returns a stream."""
+    """Try multiple providers until one returns a stream. Returns stream URL + subtitles."""
     for provider in _PROVIDERS:
         data = await get_stream_data(anilist_id, episode, provider, audio)
         if data and not data.get("error"):
-            # Extract M3U8 URL from the provider response
-            m3u8_url = _extract_m3u8(data, audio)
+            m3u8_url, subtitles = _extract_stream_info(data, audio)
             if m3u8_url:
                 return {
                     "source": "anivexa",
                     "provider": provider,
                     "stream_url": m3u8_url,
-                    "raw": data,
+                    "subtitles": subtitles,
                 }
     return {}
 
 
-def _extract_m3u8(data: dict, audio: str) -> str | None:
-    """Extract the first M3U8 URL from provider response."""
-    # Different providers return different structures
-    # anikoto returns {audio: {streams: [{url, type}]}}
+def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]]:
+    """Extract M3U8 URL and subtitles from provider response."""
+    # anikoto returns {ssub: {streams: [...], subtitles: [...]}}
     ssub = data.get(audio) or data.get("ssub") or data.get("sub") or {}
-    if isinstance(ssub, dict):
-        streams = ssub.get("streams", [])
-        for s in streams:
-            if s.get("type") == "hls" and s.get("url"):
-                return s["url"]
-    # anizone returns {streams: [...]}
-    streams = data.get("streams", [])
+    if not isinstance(ssub, dict):
+        # anizone returns {streams: [...], subtitles: [...]}
+        ssub = data
+
+    m3u8_url = None
+    streams = ssub.get("streams", [])
     for s in streams:
         if s.get("type") == "hls" and s.get("url"):
-            return s["url"]
-    return None
+            m3u8_url = s["url"]
+            break
+
+    # Extract subtitles
+    subtitles = []
+    raw_subs = ssub.get("subtitles", []) or data.get("subtitles", [])
+    for sub in raw_subs:
+        if sub.get("file"):
+            subtitles.append({
+                "file": sub["file"],
+                "label": sub.get("label", "Unknown"),
+                "language": sub.get("language", "en"),
+                "kind": sub.get("kind", "captions"),
+                "default": sub.get("default", False),
+                "source": sub.get("source", ""),
+            })
+
+    return m3u8_url, subtitles
 
 
 async def health_check() -> bool:
