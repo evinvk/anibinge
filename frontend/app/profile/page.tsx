@@ -59,6 +59,14 @@ export default function ProfilePage() {
         >
           My Watchlist
         </Link>
+        {user.is_admin && (
+          <Link
+            href="/admin"
+            className="rounded-full border border-amber-400/40 bg-amber-500/10 px-5 py-2 text-sm font-medium text-amber-400 hover:bg-amber-500/20"
+          >
+            Admin Dashboard
+          </Link>
+        )}
         <button
           onClick={logout}
           className="rounded-full border border-white/10 px-5 py-2 text-sm text-mist hover:text-paper"
