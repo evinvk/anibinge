@@ -145,112 +145,96 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const enablePush = useCallback(async (): Promise<boolean> => {
     if (!("Notification" in window) || !("serviceWorker" in navigator)) {
-      console.warn("Push notifications not supported by this browser");
+      console.warn("Push notifications not supported");
       return false;
     }
 
-    // Global safety timeout — always resolve so spinner stops
-    const globalTimeout = new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 30000));
-
-    const doEnable = async (): Promise<boolean> => {
-      try {
-        // Check if already granted
-        let perm = Notification.permission;
-        if (perm === "default") {
-          perm = await Promise.race([
-            Notification.requestPermission(),
-            new Promise<"default">((resolve) => setTimeout(() => resolve("default"), 15000)),
-          ]);
-        }
-        if (perm !== "granted") {
-          console.warn("Notification permission not granted:", perm);
-          return false;
-        }
-
-        // Ensure service worker is registered
-        let reg = await navigator.serviceWorker.getRegistration("/");
-        if (!reg) {
-          reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-        }
-
-        if (reg.installing || reg.waiting) {
-          await new Promise<void>((resolve, reject) => {
-            const sw = reg!.installing || reg!.waiting;
-            const timeout = setTimeout(() => { clearTimeout(timeout); resolve(); }, 10000);
-            if (!sw) { clearTimeout(timeout); return resolve(); }
-            sw.addEventListener("statechange", () => {
-              if (sw.state === "activated") {
-                clearTimeout(timeout);
-                resolve();
-              }
-            });
-          });
-          reg = await navigator.serviceWorker.getRegistration("/") || reg;
-        }
-
-        if (!reg.active) {
-          console.error("Service worker not active");
-          return false;
-        }
-
-        let sub = await reg.pushManager.getSubscription();
-
-        if (!sub) {
-          const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 10000);
-          const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`, {
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          if (!res.ok) throw new Error(`VAPID key fetch failed: ${res.status}`);
-          const { public_key } = await res.json();
-          const applicationServerKey = urlBase64ToUint8Array(public_key);
-
-          sub = await Promise.race([
-            reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey,
-            }),
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Push subscribe timeout")), 15000)),
-          ]);
-        }
-
-        const subJson = sub.toJSON();
-        const p256dh = (subJson as any).keys?.p256dh || "";
-        const auth = (subJson as any).keys?.auth || "";
-
-        if (token) {
-          const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 15000);
-          const subRes = await fetch(`${API_BASE}/api/v1/notifications/subscribe`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          if (!subRes.ok) {
-            const body = await subRes.json().catch(() => ({}));
-            console.error("Subscribe API error:", body);
-            throw new Error(`Subscribe failed: ${subRes.status}`);
-          }
-        }
-
-        storeSub({ endpoint: sub.endpoint, p256dh, auth });
-        setPushEnabled(true);
-        return true;
-      } catch (err) {
-        console.error("Failed to enable push:", err);
+    try {
+      if (Notification.permission === "denied") {
+        console.warn("Notifications blocked by browser");
         return false;
       }
-    };
 
-    return Promise.race([doEnable(), globalTimeout]);
+      // Register service worker
+      let reg = await navigator.serviceWorker.getRegistration("/");
+      if (!reg) {
+        reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      }
+
+      if (reg.installing || reg.waiting) {
+        await new Promise<void>((resolve) => {
+          const sw = reg!.installing || reg!.waiting;
+          const timeout = setTimeout(resolve, 8000);
+          if (!sw) { clearTimeout(timeout); return resolve(); }
+          sw.addEventListener("statechange", () => {
+            if (sw.state === "activated") { clearTimeout(timeout); resolve(); }
+          });
+        });
+        reg = await navigator.serviceWorker.getRegistration("/") || reg;
+      }
+
+      if (!reg.active) return false;
+
+      // Check for existing subscription
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        // Get VAPID key
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 10000);
+        const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`, { signal: ctrl.signal });
+        clearTimeout(t);
+        if (!res.ok) throw new Error(`VAPID key failed: ${res.status}`);
+        const { public_key } = await res.json();
+        const applicationServerKey = urlBase64ToUint8Array(public_key);
+
+        // subscribe() will prompt for permission automatically on desktop.
+        // On mobile, it may throw if permission hasn't been granted yet.
+        try {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+        } catch (subErr: any) {
+          // If blocked, try requesting permission first then subscribing
+          if (Notification.permission === "default" && typeof Notification.requestPermission === "function") {
+            // On desktop this works; on mobile this may hang — wrap with page visibility
+            const perm = await Notification.requestPermission();
+            if (perm !== "granted") return false;
+            sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+          } else {
+            throw subErr;
+          }
+        }
+      }
+
+      const subJson = sub.toJSON();
+      const p256dh = (subJson as any).keys?.p256dh || "";
+      const auth = (subJson as any).keys?.auth || "";
+
+      if (token) {
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 15000);
+        const subRes = await fetch(`${API_BASE}/api/v1/notifications/subscribe`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(t);
+        if (!subRes.ok) {
+          const body = await subRes.json().catch(() => ({}));
+          console.error("Subscribe API error:", body);
+          throw new Error(`Subscribe failed: ${subRes.status}`);
+        }
+      }
+
+      storeSub({ endpoint: sub.endpoint, p256dh, auth });
+      setPushEnabled(true);
+      return true;
+    } catch (err) {
+      console.error("Failed to enable push:", err);
+      return false;
+    }
   }, [token]);
 
   const disablePush = useCallback(async () => {
