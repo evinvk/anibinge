@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
 import clsx from "clsx";
@@ -54,10 +55,22 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const cuesRef = useRef<{ start: number; end: number; text: string }[]>([]);
   const [selectedSub, setSelectedSub] = useState<number>(0);
   const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const fsTargetRef = useRef<Element | null>(null);
 
   useEffect(() => {
     currentEpRef.current = currentEp;
   }, [currentEp]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const el = document.fullscreenElement;
+      setIsFullscreen(!!el);
+      fsTargetRef.current = el;
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -377,7 +390,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
               ))}
             </video>
             {activeCues.length > 0 && (
-              <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none">
+              <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-10">
                 {activeCues.map((text, i) => (
                   <span
                     key={i}
@@ -387,6 +400,19 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
                   </span>
                 ))}
               </div>
+            )}
+            {activeCues.length > 0 && isFullscreen && fsTargetRef.current && createPortal(
+              <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-50">
+                {activeCues.map((text, i) => (
+                  <span
+                    key={i}
+                    className="rounded bg-black/70 px-3 py-1 text-center text-base font-medium text-white shadow-lg md:text-lg"
+                  >
+                    {text}
+                  </span>
+                ))}
+              </div>,
+              fsTargetRef.current
             )}
           </>
         ) : error ? (
