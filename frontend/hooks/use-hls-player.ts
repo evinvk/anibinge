@@ -26,6 +26,7 @@ export function useHlsPlayer(
   const fallbackAttemptedRef = useRef(false);
   const onFatalErrorRef = useRef(onFatalError);
   const onLoadSubtitlesRef = useRef(onLoadSubtitles);
+  const loadGenRef = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
 
@@ -38,7 +39,9 @@ export function useHlsPlayer(
     const video = videoRef.current;
     if (!video) return;
 
+    const gen = ++loadGenRef.current;
     const Hls = (await import("hls.js")).default;
+    if (gen !== loadGenRef.current) return;
 
     if (Hls.isSupported()) {
       const hls = new Hls({
