@@ -20,12 +20,6 @@ async function TrendingRow({ data }: { data: any }) {
   return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
 }
 
-async function AiringRow() {
-  const res = await safeFetch(() => api.airing());
-  if (!res) return null;
-  return <CarouselRow title="Currently Airing" href="/browse?status=airing" items={res.data} />;
-}
-
 async function UpcomingRow() {
   const res = await safeFetch(() => api.upcoming());
   if (!res) return null;
@@ -36,12 +30,6 @@ async function TopRatedRow() {
   const res = await safeFetch(() => api.topRated());
   if (!res) return null;
   return <CarouselRow title="Top Rated" href="/browse?sort=score" items={res.data} />;
-}
-
-async function SeasonalRow() {
-  const res = await safeFetch(() => api.currentSeason());
-  if (!res) return null;
-  return <CarouselRow title="This Season" href="/seasonal" items={res.data} />;
 }
 
 export default async function HomePage() {
@@ -56,12 +44,9 @@ export default async function HomePage() {
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
         <TrendingRow data={trendingData} />
       </Suspense>
-      <Suspense fallback={<CarouselRow title="Currently Airing" loading />}>
-        <AiringRow />
-      </Suspense>
-      <Suspense fallback={<CarouselRow title="This Season" loading />}>
-        <SeasonalRow />
-      </Suspense>
+
+      <LatestReleasesSection />
+
       <Suspense fallback={<CarouselRow title="Top Rated" loading />}>
         <TopRatedRow />
       </Suspense>
@@ -73,8 +58,6 @@ export default async function HomePage() {
       <Suspense fallback={<CarouselRow title="Upcoming Anime" loading />}>
         <UpcomingRow />
       </Suspense>
-
-      <LatestReleasesSection />
     </>
   );
 }
