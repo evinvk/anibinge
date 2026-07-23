@@ -28,7 +28,7 @@ interface NotificationsState {
   markAsRead: () => void;
   enablePush: () => Promise<boolean>;
   disablePush: () => Promise<void>;
-  requestPermission: () => void;
+  requestPermission: () => Promise<NotificationPermission | "unsupported">;
   pushEnabled: boolean;
   pushPermission: NotificationPermission | "unsupported";
 }
@@ -44,7 +44,7 @@ const NotificationsContext = createContext<NotificationsState>({
   markAsRead: () => {},
   enablePush: async () => false,
   disablePush: async () => {},
-  requestPermission: () => {},
+  requestPermission: async () => "unsupported",
   pushEnabled: false,
   pushPermission: "unsupported",
 });
