@@ -10,7 +10,7 @@ const nextConfig = {
   reactStrictMode: true,
   output: "standalone", // required for the multi-stage Docker build
   images: {
-    formats: ["image/avif", "image/webp"],
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "cdn.myanimelist.net" },
       { protocol: "https", hostname: "s4.anilist.co" },
