@@ -54,9 +54,12 @@ export async function GET(req: NextRequest) {
       const baseUrl = url.substring(0, url.lastIndexOf("/") + 1);
 
       text = text.replace(/^(?!#)(\S+)$/gm, (line) => {
-        if (line.startsWith("http://") || line.startsWith("https://")) return line;
         try {
-          const absolute = new URL(line, baseUrl).href;
+          const absolute = line.startsWith("http://") || line.startsWith("https://")
+            ? line
+            : new URL(line, baseUrl).href;
+          const host = new URL(absolute).hostname;
+          if (!ALLOWED_HOSTS.includes(host)) return line;
           return proxyUrl(absolute, referer);
         } catch {
           return line;
@@ -64,9 +67,12 @@ export async function GET(req: NextRequest) {
       });
 
       text = text.replace(/URI="([^"]+)"/g, (_match, uri: string) => {
-        if (uri.startsWith("http://") || uri.startsWith("https://")) return _match;
         try {
-          const absolute = new URL(uri, baseUrl).href;
+          const absolute = uri.startsWith("http://") || uri.startsWith("https://")
+            ? uri
+            : new URL(uri, baseUrl).href;
+          const host = new URL(absolute).hostname;
+          if (!ALLOWED_HOSTS.includes(host)) return _match;
           return `URI="${proxyUrl(absolute, referer)}"`;
         } catch {
           return _match;

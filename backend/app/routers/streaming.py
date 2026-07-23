@@ -445,6 +445,7 @@ _PROXY_ALLOWED_HOSTS = {
     "gogocdn.net", "gogostream.com", "gogohd.net",
     "vidstreaming.io", "gogoservers.mema",
     "anivexa-api-eight.vercel.app",
+    "megap.kotocdn.site", "fxpy7.watching.onl", "lostproject.club",
 }
 
 
