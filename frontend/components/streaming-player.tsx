@@ -78,13 +78,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle]);
 
   const onFatalError = useCallback(async (errorType: string) => {
-    if (player.sourceRef.current === "gogoanime" && !player.fallbackAttemptedRef.current && resolvedAnilistRef.current) {
+    if (player.sourceRef.current === "gogoanime" && !player.fallbackAttemptedRef.current) {
       player.fallbackAttemptedRef.current = true;
       player.destroyHls();
       player.setLoadingStream(true);
       player.setError(null);
-      const ok = await loadAnivexaFallback(currentEpRef.current);
-      if (!ok) {
+
+      if (!resolvedAnilistRef.current) {
+        try {
+          const res = await fetch(
+            `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
+          ).then(r => r.json());
+          if (res.anilist_id) resolvedAnilistRef.current = res.anilist_id;
+        } catch {}
+      }
+
+      if (resolvedAnilistRef.current) {
+        const ok = await loadAnivexaFallback(currentEpRef.current);
+        if (!ok) {
+          player.setError("Streaming unavailable from all providers");
+          player.setLoadingStream(false);
+        }
+      } else {
         player.setError("Streaming unavailable from all providers");
         player.setLoadingStream(false);
       }
