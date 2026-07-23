@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Play, ChevronLeft, ChevronRight, ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
+import { Play, ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -92,8 +92,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   // Separate effect: load subtitles when they change and video is ready
   useEffect(() => {
     if (subtitles.length > 0 && videoRef.current) {
-      console.log("[Subtitles] useEffect: subtitles changed, loading onto video. Count:", subtitles.length);
-      loadSubtitlesOntoVideo(videoRef.current, subtitles);
+      loadSubtitles();
     }
   }, [subtitles]);
 
@@ -101,6 +100,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
   const [showEpisodes, setShowEpisodes] = useState(false);
   const fallbackAttemptedRef = useRef(false);
+  const [activeCues, setActiveCues] = useState<string[]>([]);
+  const cuesRef = useRef<{ start: number; end: number; text: string }[]>([]);
+  const [selectedSub, setSelectedSub] = useState<number>(0);
+  const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     let aid = resolvedAnilistRef.current;
@@ -273,71 +276,83 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     return parseFloat(parts[0]) || 0;
   }
 
-  async function loadSubtitlesOntoVideo(video: HTMLVideoElement, subs: Subtitle[]) {
-    console.log("[Subtitles] loadSubtitlesOntoVideo called with", subs.length, "subs");
-    if (!subs.length) {
-      console.warn("[Subtitles] No subtitles to load");
-      return;
+  function parseVtt(vttText: string): { start: number; end: number; text: string }[] {
+    const cues: { start: number; end: number; text: string }[] = [];
+    const blocks = vttText.split(/\r?\n\r?\n/);
+    for (const block of blocks) {
+      const lines = block.trim().split(/\r?\n/);
+      const timeLine = lines.find((l) => l.includes("-->"));
+      if (!timeLine) continue;
+      const timeMatch = timeLine.match(
+        /(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}\s*-->\s*(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}/
+      );
+      if (!timeMatch) continue;
+      const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
+      const cueLines = lines.filter((l) => l !== timeLine && !l.match(/^\d+$/));
+      const text = cueLines.join("\n").replace(/<[^>]+>/g, "");
+      cues.push({ start: parseVttTime(startStr), end: parseVttTime(endStr), text });
     }
-    for (const sub of subs) {
+    return cues;
+  }
+
+  async function loadSubtitles() {
+    const subs = subtitlesRef.current;
+    if (!subs.length) return;
+    parsedSubsRef.current.clear();
+
+    for (let i = 0; i < subs.length; i++) {
       try {
-        console.log("[Subtitles] Fetching:", sub.file);
-        const resp = await fetch(sub.file);
-        if (!resp.ok) {
-          console.error("[Subtitles] Fetch failed:", resp.status, resp.statusText, "for", sub.file);
-          continue;
-        }
+        const resp = await fetch(subs[i].file);
+        if (!resp.ok) continue;
         const vttText = await resp.text();
-        console.log("[Subtitles] Got VTT text, length:", vttText.length, "preview:", vttText.slice(0, 200));
-        const track = video.addTextTrack("captions", sub.label, sub.language);
-        // Parse VTT: split into cue blocks separated by blank lines
-        const blocks = vttText.split(/\r?\n\r?\n/);
-        let cueCount = 0;
-        for (const block of blocks) {
-          const lines = block.trim().split(/\r?\n/);
-          const timeLine = lines.find((l) => l.includes("-->"));
-          if (!timeLine) continue;
-          const timeMatch = timeLine.match(
-            /(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}\s*-->\s*(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}/
-          );
-          if (!timeMatch) continue;
-          const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
-          const cueLines = lines.filter((l) => l !== timeLine && !l.match(/^\d+$/));
-          const text = cueLines.join("\n").replace(/<[^>]+>/g, "");
-          const cue = new VTTCue(parseVttTime(startStr), parseVttTime(endStr), text);
-          track.addCue(cue);
-          cueCount++;
+        const cues = parseVtt(vttText);
+        if (cues.length > 0) {
+          parsedSubsRef.current.set(i, cues);
         }
-        console.log("[Subtitles] Added", cueCount, "cues for track:", sub.label, "mode:", track.mode);
-        if (sub.default) track.mode = "showing";
-      } catch (e) {
-        console.error("[Subtitles] Failed to load subtitle:", sub.label, e);
+      } catch {
+        // subtitle failed
       }
     }
-    // Enable all text tracks that have cues
-    console.log("[Subtitles] Total text tracks on video:", video.textTracks.length);
-    for (let i = 0; i < video.textTracks.length; i++) {
-      const t = video.textTracks[i];
-      console.log("[Subtitles] Track", i, ":", t.label, "cues:", t.cues?.length ?? 0, "mode:", t.mode);
-      if (t.cues && t.cues!.length > 0) {
-        t.mode = "showing";
-        console.log("[Subtitles] Set track", i, "to showing");
-      }
+
+    // Auto-select default track or first available
+    const defaultIdx = subs.findIndex((s) => s.default);
+    const firstAvailable = Array.from(parsedSubsRef.current.keys())[0];
+    const idx = defaultIdx >= 0 && parsedSubsRef.current.has(defaultIdx) ? defaultIdx : firstAvailable;
+    if (idx !== undefined) {
+      setSelectedSub(idx);
+      cuesRef.current = parsedSubsRef.current.get(idx) || [];
     }
   }
 
+  function switchSub(idx: number) {
+    setSelectedSub(idx);
+    cuesRef.current = parsedSubsRef.current.get(idx) || [];
+    setActiveCues([]);
+  }
+
+  // Listen to video timeupdate to show/hide cues
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onTime = () => {
+      const t = video.currentTime;
+      const active = cuesRef.current
+        .filter((c) => t >= c.start && t <= c.end)
+        .map((c) => c.text);
+      setActiveCues(active);
+    };
+    video.addEventListener("timeupdate", onTime);
+    return () => video.removeEventListener("timeupdate", onTime);
+  });
+
   async function loadPlayer(url: string) {
-    console.log("[Player] loadPlayer called with url:", url, "subs:", subtitlesRef.current.length);
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
 
     const video = videoRef.current;
-    if (!video) {
-      console.warn("[Player] videoRef.current is null, aborting");
-      return;
-    }
+    if (!video) return;
 
     const Hls = (await import("hls.js")).default;
 
@@ -351,18 +366,14 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       hls.loadSource(url);
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-        console.log("[Player] MANIFEST_PARSED, levels:", data.levels?.length);
         if (data.levels?.length > 1) {
           hls.currentLevel = 0;
         }
         video.play().catch(() => {});
       });
-      // Add external subtitles: fetch VTT content, create Blob URLs to bypass MSE CORS issues
-      console.log("[Player] Calling loadSubtitlesOntoVideo with", subtitlesRef.current.length, "subs");
-      loadSubtitlesOntoVideo(video, subtitlesRef.current);
+      loadSubtitles();
       hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
         if (data.fatal && sourceRef.current === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
-          // GogoAnime CDN is broken — try Anivexa fallback
           fallbackAttemptedRef.current = true;
           hls.destroy();
           hlsRef.current = null;
@@ -379,7 +390,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
-      loadSubtitlesOntoVideo(video, subtitlesRef.current);
+      loadSubtitles();
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");
@@ -447,12 +458,26 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
             <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
           </div>
         ) : streamData ? (
-          <video
-            ref={videoRef}
-            className="h-full w-full"
-            controls
-            playsInline
-          />
+          <>
+            <video
+              ref={videoRef}
+              className="h-full w-full"
+              controls
+              playsInline
+            />
+            {activeCues.length > 0 && (
+              <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none">
+                {activeCues.map((text, i) => (
+                  <span
+                    key={i}
+                    className="rounded bg-black/70 px-2 py-0.5 text-center text-sm font-medium text-white shadow-lg sm:text-base"
+                  >
+                    {text}
+                  </span>
+                ))}
+              </div>
+            )}
+          </>
         ) : error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
@@ -464,6 +489,36 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           </div>
         )}
       </div>
+
+      {subtitles.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {subtitles.map((sub, i) => (
+            <button
+              key={i}
+              onClick={() => switchSub(i)}
+              className={clsx(
+                "rounded-md px-2 py-1 text-xs font-medium transition",
+                selectedSub === i
+                  ? "bg-primary-600 text-white"
+                  : "bg-white/5 text-mist hover:bg-white/10"
+              )}
+            >
+              {sub.label}
+            </button>
+          ))}
+          <button
+            onClick={() => { setSelectedSub(-1); cuesRef.current = []; setActiveCues([]); }}
+            className={clsx(
+              "rounded-md px-2 py-1 text-xs font-medium transition",
+              selectedSub === -1 || (subtitles.length > 0 && cuesRef.current.length === 0 && selectedSub === 0 && !subtitles[0]?.default)
+                ? "bg-primary-600 text-white"
+                : "bg-white/5 text-mist hover:bg-white/10"
+            )}
+          >
+            Off
+          </button>
+        </div>
+      )}
 
       {streamData && streamData.qualities.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
