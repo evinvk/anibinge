@@ -30,17 +30,20 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
       className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]"
     >
       <div className="relative w-full overflow-hidden aspect-[2/3]">
-        {item.poster ? (
+        {item.poster && item.poster.startsWith("http") ? (
           <Image
             src={item.poster}
             alt={title}
             fill
             loading="lazy"
-            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
+            sizes={isLarge ? "(max-width: 768px) 100vw, 50vw" : "(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"}
             className="object-cover transition-transform duration-500 group-hover:scale-110"
+            unoptimized={item.poster.includes("cdn.anipixcdn.co")}
           />
         ) : (
-          <div className="h-full w-full bg-surface-hi" />
+          <div className="flex h-full w-full items-center justify-center bg-surface-hi">
+            <span className="text-3xl font-bold text-mist/40">{title?.charAt(0)}</span>
+          </div>
         )}
 
         {/* Gradient overlay */}

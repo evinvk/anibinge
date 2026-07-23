@@ -20,6 +20,10 @@ function formatDate(dateStr: string | null): string | null {
   }
 }
 
+function hasValidImage(image: string | null | undefined): image is string {
+  return !!image && image.trim().length > 0 && image.startsWith("http");
+}
+
 export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
   const isAiring = anime.status === "Currently Airing" || anime.status === "RELEASING";
   const isUpcoming = anime.status === "Not yet aired" || anime.status === "NOT_YET_RELEASED" || anime.status === "Upcoming";
@@ -39,7 +43,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
     >
       <div className="glass-card aura-border flex h-full flex-col transition-transform duration-200 group-hover:-translate-y-1">
         <div className="relative aspect-[2/3] w-full shrink-0 overflow-hidden rounded-t-xl2">
-          {anime.image ? (
+          {hasValidImage(anime.image) ? (
             <Image
               src={anime.image}
               alt={anime.title_english || anime.title}
@@ -48,9 +52,12 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
               loading={priority ? "eager" : "lazy"}
               sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
+              unoptimized={anime.image.includes("cdn.anipixcdn.co")}
             />
           ) : (
-            <div className="h-full w-full bg-surface-hi" />
+            <div className="flex h-full w-full items-center justify-center bg-surface-hi">
+              <span className="text-2xl font-bold text-mist/40">{(anime.title_english || anime.title)?.charAt(0)}</span>
+            </div>
           )}
 
           {/* sheen sweep on hover */}
