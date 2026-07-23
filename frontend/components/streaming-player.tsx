@@ -93,7 +93,19 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const fallbackAttemptedRef = useRef(false);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
-    const aid = resolvedAnilistRef.current;
+    let aid = resolvedAnilistRef.current;
+    // If no ID yet, try to resolve now
+    if (!aid) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
+        ).then(r => r.json());
+        if (res.anilist_id) {
+          aid = res.anilist_id;
+          resolvedAnilistRef.current = aid;
+        }
+      } catch { /* not critical */ }
+    }
     if (!aid) return false;
     try {
       const res = await fetch(
@@ -119,7 +131,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       }
     } catch { /* fallback failed */ }
     return false;
-  }, []);
+  }, [animeTitle]);
 
   const loadStream = useCallback(async (slug: string, ep: number) => {
     setLoadingStream(true);
@@ -131,8 +143,21 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     subtitlesRef.current = [];
     fallbackAttemptedRef.current = false;
 
+    let aid = resolvedAnilistRef.current;
+    // If anilist ID not resolved yet, try to resolve it now
+    if (!aid) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
+        ).then(r => r.json());
+        if (res.anilist_id) {
+          aid = res.anilist_id;
+          resolvedAnilistRef.current = aid;
+        }
+      } catch { /* not critical */ }
+    }
+
     // Fetch subtitles and GogoAnime stream in parallel
-    const aid = resolvedAnilistRef.current;
     const subsPromise = aid
       ? fetch(`${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}`)
           .then(r => r.ok ? r.json() : null)
