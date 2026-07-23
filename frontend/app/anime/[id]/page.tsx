@@ -11,7 +11,7 @@ const StreamingPlayer = dynamic(
   { ssr: false, loading: () => <div className="aspect-video w-full animate-pulse rounded-xl2 bg-surface-hi" /> }
 );
 
-export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface PageProps {
   params: Promise<{ id: string }>;
