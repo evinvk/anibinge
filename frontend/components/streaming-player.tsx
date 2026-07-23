@@ -53,6 +53,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [error, setError] = useState<string | null>(null);
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const subtitlesRef = useRef<Subtitle[]>([]);
+  const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
 
@@ -92,17 +93,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const fallbackAttemptedRef = useRef(false);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
-    if (!anilistId) return false;
+    const aid = resolvedAnilistRef.current;
+    if (!aid) return false;
     try {
-      // Use the backend's built-in fallback that tries multiple providers
       const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}`
+        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}`
       ).then(r => {
         if (!r.ok) throw new Error("not ok");
         return r.json();
       });
       if (res && res.stream_url) {
-        // Proxy subtitles through our backend for CORS, with referer
         const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
           let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`;
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
@@ -110,7 +110,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         });
         subtitlesRef.current = proxiedSubs;
         setSubtitles(proxiedSubs);
-        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}`;
+        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}`;
         setSource("anivexa");
         setMasterUrl(masterUrlFull);
         setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
@@ -119,7 +119,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       }
     } catch { /* fallback failed */ }
     return false;
-  }, [anilistId]);
+  }, []);
 
   const loadStream = useCallback(async (slug: string, ep: number) => {
     setLoadingStream(true);
@@ -133,10 +133,11 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
     // Always try to fetch subtitles from Anivexa if we have anilistId
     const fetchSubs = async () => {
-      if (!anilistId) return;
+      const aid = resolvedAnilistRef.current;
+      if (!aid) return;
       try {
         const res = await fetch(
-          `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}`
+          `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}`
         ).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
@@ -189,7 +190,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       setError("No streaming sources available for this episode");
       setLoadingStream(false);
     }
-  }, [animeTitle, anilistId, loadAnivexaFallback]);
+  }, [animeTitle, loadAnivexaFallback]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {
@@ -213,6 +214,18 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       setError("Failed to search for streaming sources");
     } finally {
       setLoading(false);
+    }
+
+    // Resolve AniList ID if not provided
+    if (!resolvedAnilistRef.current) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
+        ).then(r => r.json());
+        if (res.anilist_id) {
+          resolvedAnilistRef.current = res.anilist_id;
+        }
+      } catch { /* not critical */ }
     }
   }
 
@@ -260,7 +273,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         video.play().catch(() => {});
       });
       hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
-        if (data.fatal && source === "gogoanime" && !fallbackAttemptedRef.current && anilistId) {
+        if (data.fatal && source === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
           // GogoAnime CDN is broken — try Anivexa fallback
           fallbackAttemptedRef.current = true;
           hls.destroy();

@@ -50,11 +50,11 @@ export default function WatchPage({ params }: PageProps) {
       try {
         const searchQ = resolvedTitle || slug.replace(/-/g, " ");
         const res = await fetch(
-          `${apiBase}/api/v1/anime/search?q=${encodeURIComponent(searchQ)}&source=anilist`
+          `${apiBase}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(searchQ)}`
         );
         const data = await res.json();
-        if (data.data?.[0]?.id) {
-          setAnilistId(data.data[0].id);
+        if (data.anilist_id) {
+          setAnilistId(data.anilist_id);
         }
       } catch {
         // Not critical

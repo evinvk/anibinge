@@ -452,6 +452,26 @@ async def gogoanime_proxy(
 # ── Anivexa fallback endpoints ──────────────────────────────────────
 
 
+@router.get("/anivexa/resolve")
+@limiter.limit("30/minute")
+async def resolve_anilist_id(
+    request: Request,
+    q: str = Query(..., min_length=2, description="Anime title to search"),
+):
+    """Search AniList by title and return the AniList ID for Anivexa streaming."""
+    try:
+        from app.services import anilist_client
+        result = await anilist_client.search_anime(q, per_page=5)
+        pages = result.get("data", {}).get("Page", {})
+        media = pages.get("media", [])
+        if media:
+            return {"anilist_id": media[0]["id"], "title": media[0].get("title", {})}
+        return {"anilist_id": None, "title": None}
+    except Exception as e:
+        logger.warning("AniList resolve failed for '%s': %s", q, e)
+        return {"anilist_id": None, "title": None}
+
+
 @router.get("/anivexa/search")
 @limiter.limit("30/minute")
 async def search_anivexa(
