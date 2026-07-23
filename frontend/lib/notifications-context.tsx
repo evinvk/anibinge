@@ -144,19 +144,50 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
   }, []);
 
   const enablePush = useCallback(async (): Promise<boolean> => {
-    if (!("Notification" in window) || !("serviceWorker" in navigator)) return false;
-
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") return false;
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+      console.warn("Push notifications not supported by this browser");
+      return false;
+    }
 
     try {
-      const reg = await navigator.serviceWorker.ready;
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        console.warn("Notification permission denied:", perm);
+        return false;
+      }
+
+      // Ensure service worker is registered first
+      let reg = await navigator.serviceWorker.getRegistration("/");
+      if (!reg) {
+        reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      }
+
+      // Wait for service worker to be active, with timeout
+      if (!reg.active) {
+        await Promise.race([
+          new Promise<void>((resolve) => {
+            if (reg!.active) return resolve();
+            reg!.addEventListener("updatefound", () => {
+              const sw = reg!.installing;
+              if (sw) {
+                sw.addEventListener("statechange", () => {
+                  if (sw.state === "activated") resolve();
+                });
+              }
+            });
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Service worker activation timeout")), 10000)),
+        ]);
+      }
+
+      // Re-fetch registration after activation
+      reg = await navigator.serviceWorker.getRegistration("/") || reg;
+
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
-        // Get VAPID key from backend
-        const { public_key } = await api.getVapidKey();
-        const applicationServerKey = urlBase64ToUint8Array(public_key);
+        const res = await api.getVapidKey();
+        const applicationServerKey = urlBase64ToUint8Array(res.public_key);
 
         sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
@@ -179,7 +210,8 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       storeSub({ endpoint: sub.endpoint, p256dh, auth });
       setPushEnabled(true);
       return true;
-    } catch {
+    } catch (err) {
+      console.error("Failed to enable push:", err);
       return false;
     }
   }, [token]);

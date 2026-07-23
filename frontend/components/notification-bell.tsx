@@ -38,8 +38,13 @@ export function NotificationBell() {
       if (pushEnabled) {
         await disablePush();
       } else {
-        await enablePush();
+        const success = await enablePush();
+        if (!success) {
+          console.warn("Push enable returned false — check console for details");
+        }
       }
+    } catch (err) {
+      console.error("Toggle push error:", err);
     } finally {
       setToggling(false);
     }
