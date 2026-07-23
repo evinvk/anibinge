@@ -52,6 +52,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
+  const subtitlesRef = useRef<Subtitle[]>([]);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<any>(null);
 
@@ -107,6 +108,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
           return { ...s, file: proxyUrl };
         });
+        subtitlesRef.current = proxiedSubs;
         setSubtitles(proxiedSubs);
         const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/master?ep=${ep}`;
         setSource("anivexa");
@@ -126,6 +128,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     setMasterUrl(null);
     setSelectedQuality(0);
     setSubtitles([]);
+    subtitlesRef.current = [];
     fallbackAttemptedRef.current = false;
     try {
       const res = await api.gogoanimeStream(slug, ep);
@@ -204,8 +207,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           hls.currentLevel = 0;
         }
         // Add subtitle tracks from Anivexa
-        if (subtitles.length > 0) {
-          subtitles.forEach((sub) => {
+        const currentSubs = subtitlesRef.current;
+        if (currentSubs.length > 0) {
+          currentSubs.forEach((sub) => {
             const track = document.createElement("track");
             track.kind = sub.kind || "captions";
             track.label = sub.label;
@@ -237,8 +241,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
       // Add subtitle tracks for native HLS
-      if (subtitles.length > 0) {
-        subtitles.forEach((sub) => {
+      const currentSubs = subtitlesRef.current;
+      if (currentSubs.length > 0) {
+        currentSubs.forEach((sub) => {
           const track = document.createElement("track");
           track.kind = sub.kind || "captions";
           track.label = sub.label;
