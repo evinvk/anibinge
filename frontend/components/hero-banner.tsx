@@ -5,7 +5,7 @@ import type { AnimeSummary } from "@/lib/api";
 
 export function HeroBanner({ anime }: { anime: AnimeSummary }) {
   return (
-    <section className="relative h-[70vh] min-h-[480px] w-full overflow-hidden">
+    <section className="relative h-[50vh] min-h-[320px] w-full overflow-hidden sm:h-[70vh] sm:min-h-[480px]">
       {anime.banner || anime.image ? (
         <Image
           src={anime.banner || anime.image!}
@@ -13,7 +13,7 @@ export function HeroBanner({ anime }: { anime: AnimeSummary }) {
           fill
           priority
           sizes="100vw"
-          className="object-cover"
+          className="object-cover object-top"
         />
       ) : null}
       <div className="absolute inset-0 bg-gradient-to-t from-void via-void/70 to-void/20" />
