@@ -196,6 +196,31 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     }
   }, [title, loadAnivexaFallback]);
 
+  async function loadSubtitlesOntoVideo(video: HTMLVideoElement, subs: Subtitle[]) {
+    if (!subs.length) return;
+    for (const sub of subs) {
+      try {
+        const resp = await fetch(sub.file);
+        if (!resp.ok) continue;
+        const vttText = await resp.text();
+        const blob = new Blob([vttText], { type: "text/vtt" });
+        const blobUrl = URL.createObjectURL(blob);
+        const trackEl = document.createElement("track");
+        trackEl.kind = sub.kind || "captions";
+        trackEl.label = sub.label;
+        trackEl.srclang = sub.language;
+        trackEl.src = blobUrl;
+        if (sub.default) trackEl.default = true;
+        video.appendChild(trackEl);
+      } catch {
+        // Subtitle failed to load — skip silently
+      }
+    }
+    for (let i = 0; i < video.textTracks.length; i++) {
+      video.textTracks[i].mode = "showing";
+    }
+  }
+
   async function loadPlayer(url: string) {
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -211,7 +236,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
-        renderTextTracksNatively: false,
       });
       hlsRef.current = hls;
 
@@ -222,25 +246,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         if (data.levels?.length > 1) {
           hls.currentLevel = 0;
         }
-        // Add external subtitle tracks as DOM elements (hls.js won't interfere with renderTextTracksNatively: false)
-        const currentSubs = subtitlesRef.current;
-        if (currentSubs.length > 0) {
-          currentSubs.forEach((sub: Subtitle) => {
-            const track = document.createElement("track");
-            track.kind = sub.kind || "captions";
-            track.label = sub.label;
-            track.srclang = sub.language;
-            track.src = sub.file;
-            if (sub.default) track.default = true;
-            video.appendChild(track);
-          });
-          // Enable all subtitle tracks so they show by default
-          for (let i = 0; i < video.textTracks.length; i++) {
-            video.textTracks[i].mode = "showing";
-          }
-        }
         video.play().catch(() => {});
       });
+      // Add external subtitles: fetch VTT content, create Blob URLs to bypass MSE CORS issues
+      loadSubtitlesOntoVideo(video, subtitlesRef.current);
       hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
         if (data.fatal && source === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
           fallbackAttemptedRef.current = true;
@@ -259,19 +268,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
-      // Native HLS (Safari) — DOM <track> elements work here
-      const currentSubs = subtitlesRef.current;
-      if (currentSubs.length > 0) {
-        currentSubs.forEach((sub) => {
-          const track = document.createElement("track");
-          track.kind = sub.kind || "captions";
-          track.label = sub.label;
-          track.srclang = sub.language;
-          track.src = sub.file;
-          if (sub.default) track.default = true;
-          video.appendChild(track);
-        });
-      }
+      loadSubtitlesOntoVideo(video, subtitlesRef.current);
       video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");
