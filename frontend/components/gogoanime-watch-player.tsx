@@ -65,10 +65,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
           return { ...s, file: proxyUrl };
         }));
-        const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}&audio=${audio}`;
         player.sourceRef.current = "anivexa";
-        player.setMasterUrl(masterUrlFull);
-        player.setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+        player.setReferer(res.referer || "");
+        player.setMasterUrl(res.stream_url);
+        player.setStreamData({ qualities: [{ quality: "auto", url: res.stream_url }] });
         player.setLoadingStream(false);
         return true;
       }
@@ -166,6 +166,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
+    player.setReferer("");
     player.fallbackAttemptedRef.current = false;
 
     let aid = resolvedAnilistRef.current;
