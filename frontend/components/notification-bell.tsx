@@ -122,7 +122,7 @@ export function NotificationBell() {
                     pushEnabled
                       ? "bg-primary-600/20 text-primary-400 hover:bg-primary-600/30"
                       : "bg-white/5 text-mist hover:bg-white/10",
-                    permissionDenied && "opacity-50 cursor-not-allowed"
+                    pushPermission === "denied" && "opacity-50 cursor-not-allowed"
                   )}
                 >
                   {toggling ? (
