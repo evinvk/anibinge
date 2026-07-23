@@ -36,7 +36,7 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
             alt={title}
             fill
             loading="lazy"
-            sizes={isLarge ? "(max-width: 768px) 100vw, 50vw" : "(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"}
+            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
             unoptimized={item.poster.includes("cdn.anipixcdn.co")}
           />
