@@ -191,8 +191,6 @@ def _normalize_animeschedule(item: dict) -> dict:
             mm = month_map.get(month, "01")
             start_date = f"{year}-{mm}-01"
     names = item.get("names") or {}
-    image_route = item.get("imageVersionRoute", "")
-    image = f"https://img.animeschedule.net/v3/img/{image_route}" if image_route else None
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
     sub_time = item.get("subTime") or item.get("jpnTime") or ""
@@ -212,7 +210,7 @@ def _normalize_animeschedule(item: dict) -> dict:
         "source": "mal" if mal_id else "animeschedule",
         "title": item.get("title") or names.get("romaji"),
         "title_english": names.get("english"),
-        "image": image,
+        "image": None,
         "banner": None,
         "score": (stats.get("averageScore") or 0) / 10 if stats.get("averageScore") else None,
         "popularity": stats.get("trackedCount"),
@@ -231,8 +229,6 @@ def _normalize_animeschedule(item: dict) -> dict:
 def _normalize_animeschedule_timetable(item: dict) -> dict:
     """Normalize AnimeSchedule /anime response (for schedule view)."""
     names = item.get("names") or {}
-    image_route = item.get("imageVersionRoute", "")
-    image = f"https://img.animeschedule.net/v3/img/{image_route}" if image_route else None
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
     premier = item.get("premier") or item.get("subPremier") or ""
@@ -265,7 +261,7 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
         "source": "mal" if mal_id else "animeschedule",
         "title": item.get("title") or names.get("romaji"),
         "title_english": names.get("english"),
-        "image": image,
+        "image": None,
         "banner": None,
         "score": (stats.get("averageScore") or 0) / 10 if stats.get("averageScore") else None,
         "popularity": stats.get("trackedCount"),

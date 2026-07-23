@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { cn, needsUnoptimized } from "@/lib/utils";
+import { cn, hasValidImageUrl } from "@/lib/utils";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
@@ -75,16 +75,19 @@ export function ScheduleGrid({ data }: { data: Record<string, any> }) {
                   href={`/anime/${item.id}`}
                   className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-white/5"
                 >
-                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded">
-                    {item.image && (
+                  <div className="relative h-16 w-12 shrink-0 overflow-hidden rounded bg-surface-hi">
+                    {hasValidImageUrl(item.image) ? (
                       <Image
                         src={item.image}
                         alt={item.title}
                         fill
                         sizes="48px"
                         className="object-cover"
-                        unoptimized={needsUnoptimized(item.image)}
                       />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <span className="text-sm font-bold text-mist/40">{item.title?.charAt(0)}</span>
+                      </div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">

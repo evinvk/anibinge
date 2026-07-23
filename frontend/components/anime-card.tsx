@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Star, Clock } from "lucide-react";
-import { cn, needsUnoptimized } from "@/lib/utils";
+import { cn, needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import type { AnimeSummary } from "@/lib/api";
 
 interface AnimeCardProps {
@@ -18,10 +18,6 @@ function formatDate(dateStr: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-function hasValidImage(image: string | null | undefined): image is string {
-  return !!image && image.trim().length > 0 && image.startsWith("http");
 }
 
 export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
@@ -43,7 +39,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
     >
       <div className="glass-card aura-border flex h-full flex-col transition-transform duration-200 group-hover:-translate-y-1">
         <div className="relative aspect-[2/3] w-full shrink-0 overflow-hidden rounded-t-xl2">
-          {hasValidImage(anime.image) ? (
+          {hasValidImageUrl(anime.image) ? (
             <Image
               src={anime.image}
               alt={anime.title_english || anime.title}

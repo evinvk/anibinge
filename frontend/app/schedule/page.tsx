@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { needsUnoptimized } from "@/lib/utils";
+import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import { ScheduleGrid } from "@/components/schedule-grid";
 import type { AnimeSummary } from "@/lib/api";
 
@@ -52,7 +52,7 @@ export default function SchedulePage() {
               >
                 <div className="glass-card overflow-hidden">
                   <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-xl2">
-                    {anime.image ? (
+                    {hasValidImageUrl(anime.image) ? (
                       <Image
                         src={anime.image}
                         alt={anime.title_english || anime.title}
@@ -63,7 +63,9 @@ export default function SchedulePage() {
                         unoptimized={needsUnoptimized(anime.image)}
                       />
                     ) : (
-                      <div className="h-full w-full bg-surface-hi" />
+                      <div className="flex h-full w-full items-center justify-center bg-surface-hi">
+                        <span className="text-2xl font-bold text-mist/40">{(anime.title_english || anime.title)?.charAt(0)}</span>
+                      </div>
                     )}
                   </div>
                   <div className="p-3">
