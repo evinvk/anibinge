@@ -268,7 +268,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
             onClick={() => { subs.setSelectedSub(-1); subs.cuesRef.current = []; subs.setActiveCues([]); }}
             className={clsx(
               "rounded-md px-2 py-1 text-xs font-medium transition",
-              subs.selectedSub === -1 || (subs.subtitles.length > 0 && subs.cuesRef.current.length === 0 && subs.selectedSub === 0 && !subs.subtitles[0]?.default)
+              subs.selectedSub === -1
                 ? "bg-primary-600 text-white"
                 : "bg-white/5 text-mist hover:bg-white/10"
             )}

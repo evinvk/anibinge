@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Play, ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
@@ -35,6 +36,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const subs = useSubtitles(videoRef);
   const currentEpRef = useRef(1);
   currentEpRef.current = currentEp;
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const fsTargetRef = useRef<Element | null>(null);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     let aid = resolvedAnilistRef.current;
@@ -96,6 +99,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     searchAnime();
     return () => player.destroyHls();
   }, [animeTitle]);
+
+  useEffect(() => {
+    const onFsChange = () => {
+      const el = document.fullscreenElement;
+      setIsFullscreen(!!el);
+      fsTargetRef.current = el;
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
 
   useEffect(() => {
     if (selectedSlug) {
@@ -294,6 +307,19 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
                   </span>
                 ))}
               </div>
+            )}
+            {subs.activeCues.length > 0 && isFullscreen && fsTargetRef.current && createPortal(
+              <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-50">
+                {subs.activeCues.map((text, i) => (
+                  <span
+                    key={i}
+                    className="rounded bg-black/70 px-3 py-1 text-center text-base font-medium text-white shadow-lg md:text-lg"
+                  >
+                    {text}
+                  </span>
+                ))}
+              </div>,
+              fsTargetRef.current
             )}
           </>
         ) : player.error ? (
