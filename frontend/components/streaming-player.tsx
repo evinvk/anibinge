@@ -130,6 +130,42 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     setSubtitles([]);
     subtitlesRef.current = [];
     fallbackAttemptedRef.current = false;
+
+    // Always try to fetch subtitles from Anivexa if we have anilistId
+    const fetchSubs = async () => {
+      if (!anilistId) return;
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/${anilistId}/stream?ep=${ep}`
+        ).then(r => {
+          if (!r.ok) throw new Error("not ok");
+          return r.json();
+        });
+        if (res?.subtitles?.length) {
+          const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
+            let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(s.file)}`;
+            if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
+            return { ...s, file: proxyUrl };
+          });
+          subtitlesRef.current = proxiedSubs;
+          setSubtitles(proxiedSubs);
+          // If video is already playing, add tracks now
+          const video = videoRef.current;
+          if (video && hlsRef.current) {
+            proxiedSubs.forEach((sub) => {
+              const track = document.createElement("track");
+              track.kind = sub.kind || "captions";
+              track.label = sub.label;
+              track.srclang = sub.language;
+              track.src = sub.file;
+              if (sub.default) track.default = true;
+              video.appendChild(track);
+            });
+          }
+        }
+      } catch { /* subtitle fetch failed, not critical */ }
+    };
+
     try {
       const res = await api.gogoanimeStream(slug, ep);
       const data = res.data;
@@ -138,6 +174,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         setStreamData({ qualities: data.qualities });
         setMasterUrl(api.gogoanimeMaster(slug, ep));
         setLoadingStream(false);
+        // Fetch subtitles in background
+        fetchSubs();
         return;
       }
     } catch {
