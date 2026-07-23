@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, needsUnoptimized } from "@/lib/utils";
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 
@@ -83,10 +83,11 @@ export function ScheduleGrid({ data }: { data: Record<string, any> }) {
                         fill
                         sizes="48px"
                         className="object-cover"
+                        unoptimized={needsUnoptimized(item.image)}
                       />
                     )}
                   </div>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{item.title}</p>
                     {item.air_time && (
                       <p className="font-mono text-xs text-primary-400">
@@ -102,7 +103,19 @@ export function ScheduleGrid({ data }: { data: Record<string, any> }) {
                         })()}
                       </p>
                     )}
+                    {item.genres && (
+                      <p className="mt-0.5 truncate text-[11px] text-mist/70">
+                        {Array.isArray(item.genres)
+                          ? item.genres.slice(0, 3).join(" · ")
+                          : item.genres.split(" ").slice(0, 3).join(" · ")}
+                      </p>
+                    )}
                   </div>
+                  {item.score ? (
+                    <span className="shrink-0 rounded-full bg-void/70 px-1.5 py-0.5 font-mono text-[10px] text-white backdrop-blur-md">
+                      ★ {item.score.toFixed(1)}
+                    </span>
+                  ) : null}
                 </Link>
               ))}
             </div>

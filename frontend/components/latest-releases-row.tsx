@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ChevronRight, Play, Sparkles } from "lucide-react";
+import { needsUnoptimized } from "@/lib/utils";
 import type { GogoAnimeItem } from "@/lib/api";
 
 interface LatestReleasesRowProps {
@@ -38,7 +39,7 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
             loading="lazy"
             sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
-            unoptimized={item.poster.includes("cdn.anipixcdn.co")}
+            unoptimized={needsUnoptimized(item.poster)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-surface-hi">

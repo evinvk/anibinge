@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Star, Clock } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, needsUnoptimized } from "@/lib/utils";
 import type { AnimeSummary } from "@/lib/api";
 
 interface AnimeCardProps {
@@ -52,7 +52,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
               loading={priority ? "eager" : "lazy"}
               sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
-              unoptimized={anime.image.includes("cdn.anipixcdn.co")}
+              unoptimized={needsUnoptimized(anime.image)}
             />
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-surface-hi">

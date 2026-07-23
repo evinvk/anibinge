@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { needsUnoptimized } from "@/lib/utils";
 import { ScheduleGrid } from "@/components/schedule-grid";
 import type { AnimeSummary } from "@/lib/api";
 
@@ -59,6 +60,7 @@ export default function SchedulePage() {
                         loading="lazy"
                         sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
                         className="object-cover transition-transform duration-500 group-hover:scale-105"
+                        unoptimized={needsUnoptimized(anime.image)}
                       />
                     ) : (
                       <div className="h-full w-full bg-surface-hi" />
