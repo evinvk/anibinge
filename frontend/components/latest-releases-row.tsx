@@ -20,26 +20,23 @@ function SkeletonCard() {
   );
 }
 
-function LatestCard({ item, index }: { item: GogoAnimeItem; index: number }) {
+function LatestCard({ item }: { item: GogoAnimeItem }) {
   const title = item.title_english || item.title;
   const epLabel = item.latest_episode ? `Ep ${item.latest_episode}` : null;
-  const isLarge = index === 0;
 
   return (
     <Link
       href={`/watch/${item.slug}`}
-      className={`group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)] ${
-        isLarge ? "col-span-2 row-span-2 md:col-span-2 md:row-span-2" : ""
-      }`}
+      className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]"
     >
-      <div className={`relative w-full overflow-hidden ${isLarge ? "aspect-[16/10]" : "aspect-[2/3]"}`}>
+      <div className="relative w-full overflow-hidden aspect-[2/3]">
         {item.poster ? (
           <Image
             src={item.poster}
             alt={title}
             fill
             loading="lazy"
-            sizes={isLarge ? "(max-width: 768px) 100vw, 50vw" : "(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"}
+            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
             className="object-cover transition-transform duration-500 group-hover:scale-110"
           />
         ) : (
@@ -77,9 +74,7 @@ function LatestCard({ item, index }: { item: GogoAnimeItem; index: number }) {
 
         {/* Title at bottom */}
         <div className="absolute inset-x-0 bottom-0 z-10 p-4">
-          <h3 className={`font-display font-bold leading-snug text-white line-clamp-2 group-hover:text-primary-300 transition-colors ${
-            isLarge ? "text-xl sm:text-2xl" : "text-sm"
-          }`}>
+          <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 group-hover:text-primary-300 transition-colors">
             {title}
           </h3>
           <div className="mt-1 flex items-center gap-2">
@@ -122,11 +117,9 @@ export function LatestReleasesRow({ items, loading }: LatestReleasesRowProps) {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
         {loading
           ? Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className={i === 0 ? "col-span-2 row-span-2" : ""}>
-                <SkeletonCard />
-              </div>
+              <SkeletonCard key={i} />
             ))
-          : items.map((item, i) => <LatestCard key={item.slug} item={item} index={i} />)}
+          : items.map((item) => <LatestCard key={item.slug} item={item} />)}
       </div>
     </section>
   );
