@@ -119,6 +119,16 @@ async def startup_event():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables ensured")
 
+    # Invalidate stale cache on startup
+    from app.core.cache import invalidate_prefix
+    for prefix in ["agg:upcoming", "agg:trending", "agg:airing", "agg:seasonal", "agg:schedule"]:
+        try:
+            n = await invalidate_prefix(prefix)
+            if n:
+                logger.info("Invalidated %d cache keys for %s", n, prefix)
+        except Exception:
+            pass
+
     # Pre-load GogoAnime catalog in background (non-blocking)
     from app.services import gogoanime_client
     import asyncio
