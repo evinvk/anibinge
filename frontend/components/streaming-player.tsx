@@ -62,14 +62,13 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       });
       if (res && res.stream_url) {
         subs.setSubs((res.subtitles || []).map((s: any) => {
-          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
-          if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
-          return { ...s, file: proxyUrl };
+          const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+          return { ...s, file: proxySubUrl };
         }));
-        const proxyUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
         player.sourceRef.current = "anivexa";
-        player.setMasterUrl(proxyUrl);
-        player.setStreamData({ qualities: [{ quality: "auto", url: proxyUrl }] });
+        player.setMasterUrl(hlsUrl);
+        player.setStreamData({ qualities: [{ quality: "Auto", url: hlsUrl }] });
         player.setLoadingStream(false);
         return true;
       }
@@ -185,9 +184,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
     if (subsData?.subtitles?.length) {
       subs.setSubs(subsData.subtitles.map((s: any) => {
-        let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
-        if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
-        return { ...s, file: proxyUrl };
+        const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+        return { ...s, file: proxySubUrl };
       }));
     }
 

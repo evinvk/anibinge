@@ -61,14 +61,42 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       });
       if (res && res.stream_url) {
         subs.setSubs((res.subtitles || []).map((s: any) => {
-          let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
-          if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
-          return { ...s, file: proxyUrl };
+          const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+          return { ...s, file: proxySubUrl };
         }));
         const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
         player.sourceRef.current = "anivexa";
+
+        let qualities = [{ quality: "Auto", url: hlsUrl }];
+        try {
+          const m3u8Resp = await fetch(hlsUrl);
+          if (m3u8Resp.ok) {
+            const m3u8Text = await m3u8Resp.text();
+            const parsed: { quality: string; url: string }[] = [];
+            const lines = m3u8Text.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                const bwMatch = line.match(/BANDWIDTH=(\d+)/);
+                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
+                const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
+                if (bwMatch && nextLine && !nextLine.startsWith("#")) {
+                  const bw = parseInt(bwMatch[1]);
+                  let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
+                  if (resMatch) label += ` (${resMatch[1]})`;
+                  const variantUrl = nextLine.startsWith("http")
+                    ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
+                    : nextLine.startsWith("/") ? nextLine : hlsUrl;
+                  parsed.push({ quality: label, url: variantUrl });
+                }
+              }
+            }
+            if (parsed.length > 1) qualities = parsed;
+          }
+        } catch { /* keep auto */ }
+
         player.setMasterUrl(hlsUrl);
-        player.setStreamData({ qualities: [{ quality: "auto", url: hlsUrl }] });
+        player.setStreamData({ qualities });
         player.setLoadingStream(false);
         return true;
       }
@@ -77,37 +105,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   }, [title, audio]);
 
   const onFatalError = useCallback(async (errorType: string) => {
-    console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: player.fallbackAttemptedRef.current });
-    if (!player.fallbackAttemptedRef.current) {
-      player.fallbackAttemptedRef.current = true;
-      player.destroyHls();
-      player.setLoadingStream(true);
-      player.setError(null);
-
-      if (!resolvedAnilistRef.current) {
-        try {
-          const res = await fetch(
-            `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
-          ).then(r => r.json());
-          if (res.anilist_id) resolvedAnilistRef.current = res.anilist_id;
-        } catch {}
-      }
-
-      if (resolvedAnilistRef.current) {
-        const ok = await loadAnivexaFallback(currentEpRef.current);
-        if (!ok) {
-          player.setError("Streaming unavailable from all providers");
-          player.setLoadingStream(false);
-        }
-      } else {
-        player.setError("Streaming unavailable from all providers");
-        player.setLoadingStream(false);
-      }
-    } else {
-      console.error("[onFatalError] fallback already attempted, showing error");
-      player.setError("Playback error: " + errorType);
-    }
-  }, [loadAnivexaFallback]);
+    console.error("[onFatalError]", { errorType });
+    player.setError("Playback error: " + errorType);
+    player.setLoadingStream(false);
+  }, []);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
@@ -166,56 +167,14 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
-    player.fallbackAttemptedRef.current = false;
-
-    let aid = resolvedAnilistRef.current;
-    if (!aid) {
-      try {
-        const res = await fetch(
-          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
-        ).then(r => r.json());
-        if (res.anilist_id) {
-          aid = res.anilist_id;
-          resolvedAnilistRef.current = aid;
-        }
-      } catch { /* not critical */ }
-    }
-
-    const subsPromise = aid
-      ? fetch(`${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`)
-          .then(r => r.ok ? r.json() : null)
-          .catch(() => null)
-      : Promise.resolve(null);
-
-    const [gogoRes, subsData] = await Promise.all([
-      api.gogoanimeStream(s, ep, audio).catch(() => null),
-      subsPromise,
-    ]);
-
-    if (subsData?.subtitles?.length) {
-      subs.setSubs(subsData.subtitles.map((s: any) => {
-        let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
-        if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
-        return { ...s, file: proxyUrl };
-      }));
-    }
-
-    const data = gogoRes?.data;
-    if (data?.qualities) {
-      player.sourceRef.current = "gogoanime";
-      player.setStreamData({ qualities: data.qualities });
-      player.setMasterUrl(api.gogoanimeMaster(s, ep, audio));
-      player.setLoadingStream(false);
-      return;
-    }
-
     player.fallbackAttemptedRef.current = true;
+
     const ok = await loadAnivexaFallback(ep);
     if (!ok) {
       player.setError("No streaming sources available for this episode");
       player.setLoadingStream(false);
     }
-  }, [title, loadAnivexaFallback, audio]);
+  }, [loadAnivexaFallback]);
 
   return (
     <div>
