@@ -192,30 +192,31 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       }
 
       if (!reg?.active) {
-        console.error("No active service worker");
-        return false;
+        throw new Error("Service worker not active. Try refreshing the page.");
       }
 
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
         const API_BASE = process.env.NEXT_PUBLIC_API_URL;
-        if (!API_BASE) {
-          console.error("NEXT_PUBLIC_API_URL not set");
-          return false;
-        }
-        console.log("[Push] Fetching VAPID from:", `${API_BASE}/api/v1/notifications/vapid-key`);
+        if (!API_BASE) throw new Error("API URL not configured");
+
         const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`);
-        if (!res.ok) {
-          console.error("[Push] VAPID fetch failed:", res.status);
-          throw new Error(`VAPID key failed: ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`VAPID key endpoint returned ${res.status}. Backend may be waking up, try again in 30s.`);
         const { public_key } = await res.json();
-        console.log("[Push] Got VAPID key, subscribing...");
         const applicationServerKey = urlBase64ToUint8Array(public_key);
 
-        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
-        console.log("[Push] Subscribed successfully");
+        try {
+          sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+        } catch (subErr: any) {
+          if (subErr?.name === "NotAllowedError") {
+            throw new Error("Browser blocked push subscription. Try adding this site to your home screen.");
+          }
+          if (subErr?.name === "NotSupportedError") {
+            throw new Error("Push notifications not supported on this browser. Try Chrome or Firefox.");
+          }
+          throw subErr;
+        }
       }
 
       const subJson = sub.toJSON();
@@ -225,7 +226,6 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (token) {
         const API_BASE = process.env.NEXT_PUBLIC_API_URL;
         if (!API_BASE) throw new Error("API URL not configured");
-        console.log("[Push] Registering with backend...");
         const subRes = await fetch(`${API_BASE}/api/v1/notifications/subscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -233,18 +233,16 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         });
         if (!subRes.ok) {
           const body = await subRes.json().catch(() => ({}));
-          console.error("[Push] Backend subscribe failed:", subRes.status, body);
-          throw new Error(`Subscribe API ${subRes.status}`);
+          throw new Error(`Backend subscribe failed (${subRes.status}): ${body.detail || "unknown"}`);
         }
-        console.log("[Push] Backend registered");
       }
 
       storeSub({ endpoint: sub.endpoint, p256dh, auth });
       setPushEnabled(true);
       return true;
-    } catch (err) {
+    } catch (err: any) {
       console.error("[Push] FAILED:", err);
-      return false;
+      throw err;
     }
   }, [token]);
 

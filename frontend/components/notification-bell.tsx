@@ -54,15 +54,7 @@ export function NotificationBell() {
       if (pushEnabled) {
         await disablePush();
       } else {
-        const success = await enablePush();
-        if (!success) {
-          const perm = typeof Notification !== "undefined" ? Notification.permission : "unknown";
-          if (perm === "denied") {
-            setPushError("Notifications blocked by browser.");
-          } else {
-            setPushError("Enable failed. Try: Browser Settings > Site Settings > Notifications > anibinge.fun > Allow.");
-          }
-        }
+        await enablePush();
       }
     } catch (e: any) {
       setPushError(e?.message || "Something went wrong.");
