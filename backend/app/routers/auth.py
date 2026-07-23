@@ -3,12 +3,14 @@ Auth: email/password (JWT) + Google OAuth.
 Uses passlib for hashing and python-jose for tokens. DB access is
 via SQLAlchemy async session (see app/models/models.py).
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from jose import jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +22,7 @@ from app.models.models import User
 settings = get_settings()
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+limiter = Limiter(key_func=get_remote_address)
 
 
 class RegisterRequest(BaseModel):
@@ -38,14 +41,15 @@ class GoogleLoginRequest(BaseModel):
 
 
 def create_access_token(user_id: str) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
     return jwt.encode(
         {"sub": user_id, "exp": expire}, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM
     )
 
 
 @router.post("/register")
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("3/minute")
+async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     existing = await db.scalar(
         select(User).where((User.email == payload.email) | (User.username == payload.username))
     )
@@ -76,7 +80,8 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login")
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = await db.scalar(select(User).where(User.email == payload.email))
     if not user or not user.hashed_password or not pwd_context.verify(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
@@ -85,7 +90,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/google")
-async def google_login(payload: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def google_login(request: Request, payload: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
     """
     Verifies the Google ID token (google-auth library) then
     creates/looks-up the local user and issues our own JWT.

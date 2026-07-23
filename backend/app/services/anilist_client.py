@@ -9,6 +9,9 @@ from typing import Any
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.core.circuit_breaker import CircuitBreaker, get_breaker
+from app.core.http import get_shared_client
+
 logger = logging.getLogger("anibinge.anilist_client")
 
 ANILIST_URL = "https://graphql.anilist.co"
@@ -16,13 +19,14 @@ ANILIST_URL = "https://graphql.anilist.co"
 
 class AniListClient:
     def __init__(self):
-        self.client = httpx.AsyncClient(
+        self.client = get_shared_client(
             timeout=20,
             headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
         )
+        self._breaker = CircuitBreaker("anilist", failure_threshold=5, recovery_timeout=30)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -31,13 +35,14 @@ class AniListClient:
     async def _query(self, query: str, variables: dict) -> dict[str, Any]:
         """Execute GraphQL query with retry logic."""
         try:
-            response = await self.client.post(
-                ANILIST_URL,
-                json={
-                    "query": query,
-                    "variables": variables,
-                },
-            )
+            async with self._breaker():
+                response = await self.client.post(
+                    ANILIST_URL,
+                    json={
+                        "query": query,
+                        "variables": variables,
+                    },
+                )
             response.raise_for_status()
             data = response.json()
 

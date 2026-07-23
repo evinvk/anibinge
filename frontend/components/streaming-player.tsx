@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { useSubtitles } from "@/hooks/use-subtitles";
+import { useHlsPlayer } from "@/hooks/use-hls-player";
 import clsx from "clsx";
 
 interface SearchResult {
@@ -16,55 +16,28 @@ interface SearchResult {
   type: string | null;
 }
 
-interface StreamSource {
-  quality: string;
-  url: string;
-}
-
-interface Subtitle {
-  file: string;
-  label: string;
-  language: string;
-  kind: string;
-  default: boolean;
-  source: string;
-  referer: string;
-}
-
-interface StreamData {
-  qualities: StreamSource[];
-}
-
 interface StreamingPlayerProps {
   animeTitle: string;
   anilistId?: number;
 }
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
   const [totalEps, setTotalEps] = useState<number | null>(null);
-  const [streamData, setStreamData] = useState<StreamData | null>(null);
-  const [masterUrl, setMasterUrl] = useState<string | null>(null);
-  const [selectedQuality, setSelectedQuality] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [loadingStream, setLoadingStream] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
-  const subtitlesRef = useRef<Subtitle[]>([]);
-  const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<any>(null);
+  const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
+  const [showEpisodes, setShowEpisodes] = useState(false);
+
+  const subs = useSubtitles(videoRef);
+  const player = useHlsPlayer(videoRef, subs.loadSubtitles);
 
   useEffect(() => {
     searchAnime();
-    return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-    };
+    return () => player.resetPlayer();
   }, [animeTitle]);
 
   useEffect(() => {
@@ -78,36 +51,20 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [selectedSlug]);
 
   useEffect(() => {
-    if (masterUrl && videoRef.current) {
-      loadPlayer(masterUrl);
+    if (player.masterUrl && videoRef.current) {
+      player.loadPlayer(player.masterUrl);
     }
-    return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-    };
-  }, [masterUrl]);
+    return () => player.resetPlayer();
+  }, [player.masterUrl]);
 
-  // Separate effect: load subtitles when they change and video is ready
   useEffect(() => {
-    if (subtitles.length > 0 && videoRef.current) {
-      loadSubtitles();
+    if (subs.subtitles.length > 0 && videoRef.current) {
+      subs.loadSubtitles();
     }
-  }, [subtitles]);
-
-  const [source, setSource] = useState<"gogoanime" | "anivexa" | null>(null);
-  const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
-  const [showEpisodes, setShowEpisodes] = useState(false);
-  const fallbackAttemptedRef = useRef(false);
-  const [activeCues, setActiveCues] = useState<string[]>([]);
-  const cuesRef = useRef<{ start: number; end: number; text: string }[]>([]);
-  const [selectedSub, setSelectedSub] = useState<number>(0);
-  const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
+  }, [subs.subtitles]);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     let aid = resolvedAnilistRef.current;
-    // If no ID yet, try to resolve now
     if (!aid) {
       try {
         const res = await fetch(
@@ -128,19 +85,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         return r.json();
       });
       if (res && res.stream_url) {
-        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
+        subs.setSubs((res.subtitles || []).map((s: any) => {
           let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
           return { ...s, file: proxyUrl };
-        });
-        subtitlesRef.current = proxiedSubs;
-        setSubtitles(proxiedSubs);
+        }));
         const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}`;
-        setSource("anivexa");
-        sourceRef.current = "anivexa";
-        setMasterUrl(masterUrlFull);
-        setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
-        setLoadingStream(false);
+        player.sourceRef.current = "anivexa";
+        player.setMasterUrl(masterUrlFull);
+        player.setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+        player.setLoadingStream(false);
         return true;
       }
     } catch { /* fallback failed */ }
@@ -148,17 +102,13 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle]);
 
   const loadStream = useCallback(async (slug: string, ep: number) => {
-    setLoadingStream(true);
-    setError(null);
-    setStreamData(null);
-    setMasterUrl(null);
-    setSelectedQuality(0);
-    setSubtitles([]);
-    subtitlesRef.current = [];
-    fallbackAttemptedRef.current = false;
+    player.setLoadingStream(true);
+    player.setError(null);
+    subs.resetSubs();
+    player.resetPlayer();
+    player.fallbackAttemptedRef.current = false;
 
     let aid = resolvedAnilistRef.current;
-    // If anilist ID not resolved yet, try to resolve it now
     if (!aid) {
       try {
         const res = await fetch(
@@ -171,7 +121,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       } catch { /* not critical */ }
     }
 
-    // Fetch subtitles and GogoAnime stream in parallel
     const subsPromise = aid
       ? fetch(`${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}`)
           .then(r => r.ok ? r.json() : null)
@@ -183,33 +132,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       subsPromise,
     ]);
 
-    // Store subtitles before player loads
     if (subsData?.subtitles?.length) {
-      const proxiedSubs: Subtitle[] = subsData.subtitles.map((s: Subtitle) => {
+      subs.setSubs(subsData.subtitles.map((s: any) => {
         let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
         if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
         return { ...s, file: proxyUrl };
-      });
-      subtitlesRef.current = proxiedSubs;
-      setSubtitles(proxiedSubs);
+      }));
     }
 
     const data = gogoRes?.data;
     if (data?.qualities) {
-      setSource("gogoanime");
-      sourceRef.current = "gogoanime";
-      setStreamData({ qualities: data.qualities });
-      setMasterUrl(api.gogoanimeMaster(slug, ep));
-      setLoadingStream(false);
+      player.sourceRef.current = "gogoanime";
+      player.setStreamData({ qualities: data.qualities });
+      player.setMasterUrl(api.gogoanimeMaster(slug, ep));
+      player.setLoadingStream(false);
       return;
     }
 
-    // GogoAnime unavailable, try Anivexa directly
-    fallbackAttemptedRef.current = true;
+    player.fallbackAttemptedRef.current = true;
     const ok = await loadAnivexaFallback(ep);
     if (!ok) {
-      setError("No streaming sources available for this episode");
-      setLoadingStream(false);
+      player.setError("No streaming sources available for this episode");
+      player.setLoadingStream(false);
     }
   }, [animeTitle, loadAnivexaFallback]);
 
@@ -220,8 +164,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [selectedSlug, currentEp, loadStream]);
 
   async function searchAnime() {
-    setLoading(true);
-    setError(null);
+    player.setLoadingStream(true);
+    player.setError(null);
     try {
       const res = await api.gogoanimeSearch(animeTitle);
       setResults(res.data || []);
@@ -230,15 +174,14 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         const epCount = res.data[0].episodes_count || res.data[0].actual_episodes_count || res.data[0].latest_episode || null;
         setTotalEps(epCount);
       } else {
-        setError("This anime is not available for streaming");
+        player.setError("This anime is not available for streaming");
       }
     } catch {
-      setError("Failed to search for streaming sources");
+      player.setError("Failed to search for streaming sources");
     } finally {
-      setLoading(false);
+      player.setLoadingStream(false);
     }
 
-    // Resolve AniList ID if not provided
     if (!resolvedAnilistRef.current) {
       try {
         const res = await fetch(
@@ -250,7 +193,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       } catch { /* not critical */ }
     }
 
-    // If GogoAnime didn't provide episode count, try Anivexa
     if (!totalEps && resolvedAnilistRef.current) {
       try {
         const res = await fetch(
@@ -264,147 +206,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     }
   }
 
-  function parseVttTime(time: string): number {
-    const parts = time.trim().split(":");
-    if (parts.length === 3) {
-      const [h, m, rest] = parts;
-      return Number(h) * 3600 + Number(m) * 60 + parseFloat(rest);
-    } else if (parts.length === 2) {
-      const [m, rest] = parts;
-      return Number(m) * 60 + parseFloat(rest);
-    }
-    return parseFloat(parts[0]) || 0;
-  }
-
-  function parseVtt(vttText: string): { start: number; end: number; text: string }[] {
-    const cues: { start: number; end: number; text: string }[] = [];
-    const blocks = vttText.split(/\r?\n\r?\n/);
-    for (const block of blocks) {
-      const lines = block.trim().split(/\r?\n/);
-      const timeLine = lines.find((l) => l.includes("-->"));
-      if (!timeLine) continue;
-      const timeMatch = timeLine.match(
-        /(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}\s*-->\s*(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}/
-      );
-      if (!timeMatch) continue;
-      const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
-      const cueLines = lines.filter((l) => l !== timeLine && !l.match(/^\d+$/));
-      const text = cueLines.join("\n").replace(/<[^>]+>/g, "");
-      cues.push({ start: parseVttTime(startStr), end: parseVttTime(endStr), text });
-    }
-    return cues;
-  }
-
-  async function loadSubtitles() {
-    const subs = subtitlesRef.current;
-    if (!subs.length) return;
-    parsedSubsRef.current.clear();
-
-    for (let i = 0; i < subs.length; i++) {
-      try {
-        const resp = await fetch(subs[i].file);
-        if (!resp.ok) continue;
-        const vttText = await resp.text();
-        const cues = parseVtt(vttText);
-        if (cues.length > 0) {
-          parsedSubsRef.current.set(i, cues);
-        }
-      } catch {
-        // subtitle failed
-      }
-    }
-
-    // Auto-select default track or first available
-    const defaultIdx = subs.findIndex((s) => s.default);
-    const firstAvailable = Array.from(parsedSubsRef.current.keys())[0];
-    const idx = defaultIdx >= 0 && parsedSubsRef.current.has(defaultIdx) ? defaultIdx : firstAvailable;
-    if (idx !== undefined) {
-      setSelectedSub(idx);
-      cuesRef.current = parsedSubsRef.current.get(idx) || [];
-    }
-  }
-
-  function switchSub(idx: number) {
-    setSelectedSub(idx);
-    cuesRef.current = parsedSubsRef.current.get(idx) || [];
-    setActiveCues([]);
-  }
-
-  // Listen to video timeupdate to show/hide cues
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const onTime = () => {
-      const t = video.currentTime;
-      const active = cuesRef.current
-        .filter((c) => t >= c.start && t <= c.end)
-        .map((c) => c.text);
-      setActiveCues(active);
-    };
-    video.addEventListener("timeupdate", onTime);
-    return () => video.removeEventListener("timeupdate", onTime);
-  });
-
-  async function loadPlayer(url: string) {
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    const video = videoRef.current;
-    if (!video) return;
-
-    const Hls = (await import("hls.js")).default;
-
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-      });
-      hlsRef.current = hls;
-
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-        if (data.levels?.length > 1) {
-          hls.currentLevel = 0;
-        }
-        video.play().catch(() => {});
-      });
-      loadSubtitles();
-      hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
-        if (data.fatal && sourceRef.current === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
-          fallbackAttemptedRef.current = true;
-          hls.destroy();
-          hlsRef.current = null;
-          setLoadingStream(true);
-          setError(null);
-          const ok = await loadAnivexaFallback(currentEp);
-          if (!ok) {
-            setError("Streaming unavailable from all providers");
-            setLoadingStream(false);
-          }
-        } else if (data.fatal) {
-          setError("Playback error: " + data.type);
-        }
-      });
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
-      loadSubtitles();
-      video.play().catch(() => {});
-    } else {
-      setError("HLS is not supported in this browser");
-    }
-  }
-
-  function setQuality(index: number) {
-    setSelectedQuality(index);
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = index;
-    }
-  }
-
-  if (loading) {
+  if (player.loadingStream && !player.streamData) {
     return (
       <div className="flex items-center justify-center gap-2 py-8 text-mist">
         <Loader2 className="h-5 w-5 animate-spin" />
@@ -413,16 +215,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     );
   }
 
-  if (error && results.length === 0) {
+  if (player.error && results.length === 0) {
     return (
       <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
         <AlertTriangle className="h-4 w-4 shrink-0" />
-        <span className="text-xs">{error}</span>
+        <span className="text-xs">{player.error}</span>
       </div>
     );
   }
 
-  if (results.length === 0 && !loading) {
+  if (results.length === 0 && !player.loadingStream) {
     return null;
   }
 
@@ -453,21 +255,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       )}
 
       <div className="relative mt-4 aspect-video w-full overflow-hidden rounded-xl bg-black">
-        {loadingStream ? (
+        {player.loadingStream ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
           </div>
-        ) : streamData ? (
+        ) : player.streamData ? (
           <>
-            <video
-              ref={videoRef}
-              className="h-full w-full"
-              controls
-              playsInline
-            />
-            {activeCues.length > 0 && (
+            <video ref={videoRef} className="h-full w-full" controls playsInline />
+            {subs.activeCues.length > 0 && (
               <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none">
-                {activeCues.map((text, i) => (
+                {subs.activeCues.map((text, i) => (
                   <span
                     key={i}
                     className="rounded bg-black/70 px-2 py-0.5 text-center text-sm font-medium text-white shadow-lg sm:text-base"
@@ -478,10 +275,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               </div>
             )}
           </>
-        ) : error ? (
+        ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
-            <span className="text-sm">{error}</span>
+            <span className="text-sm">{player.error}</span>
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-mist text-sm">
@@ -490,15 +287,15 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         )}
       </div>
 
-      {subtitles.length > 1 && (
+      {subs.subtitles.length > 1 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {subtitles.map((sub, i) => (
+          {subs.subtitles.map((sub, i) => (
             <button
               key={i}
-              onClick={() => switchSub(i)}
+              onClick={() => subs.switchSub(i)}
               className={clsx(
                 "rounded-md px-2 py-1 text-xs font-medium transition",
-                selectedSub === i
+                subs.selectedSub === i
                   ? "bg-primary-600 text-white"
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
@@ -507,10 +304,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
             </button>
           ))}
           <button
-            onClick={() => { setSelectedSub(-1); cuesRef.current = []; setActiveCues([]); }}
+            onClick={() => { subs.setSelectedSub(-1); subs.cuesRef.current = []; subs.setActiveCues([]); }}
             className={clsx(
               "rounded-md px-2 py-1 text-xs font-medium transition",
-              selectedSub === -1 || (subtitles.length > 0 && cuesRef.current.length === 0 && selectedSub === 0 && !subtitles[0]?.default)
+              subs.selectedSub === -1 || (subs.subtitles.length > 0 && subs.cuesRef.current.length === 0 && subs.selectedSub === 0 && !subs.subtitles[0]?.default)
                 ? "bg-primary-600 text-white"
                 : "bg-white/5 text-mist hover:bg-white/10"
             )}
@@ -520,15 +317,15 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
-      {streamData && streamData.qualities.length > 1 && (
+      {player.streamData && player.streamData.qualities.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {streamData.qualities.map((s, i) => (
+          {player.streamData.qualities.map((s, i) => (
             <button
               key={i}
-              onClick={() => setQuality(i)}
+              onClick={() => player.setQuality(i)}
               className={clsx(
                 "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-                selectedQuality === i
+                player.selectedQuality === i
                   ? "bg-primary-600 text-white"
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
@@ -574,10 +371,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
-      {error && !loadingStream && (
+      {player.error && !player.loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="text-xs">{error}</span>
+          <span className="text-xs">{player.error}</span>
         </div>
       )}
     </section>

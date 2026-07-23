@@ -15,6 +15,8 @@ from typing import Any
 
 import httpx
 
+from app.core.http import get_shared_client
+
 logger = logging.getLogger("anibinge.gogoanime")
 
 _BASE_URL = "https://gogoanimehd.to"
@@ -37,7 +39,7 @@ _catalog_loaded_at: float = 0
 async def _get_client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
-        _client = httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True)
+        _client = get_shared_client(timeout=_TIMEOUT, headers=_HEADERS, follow_redirects=True)
     return _client
 
 

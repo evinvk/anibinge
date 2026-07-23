@@ -11,6 +11,7 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
+from app.core.http import get_shared_client
 from app.services import anilist_client, jikan_client, mal_client, gogoanime_client, animeschedule_client
 
 logger = logging.getLogger("anibinge.aggregator")
@@ -42,13 +43,13 @@ async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
           }
         }
         """
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://graphql.anilist.co",
-                json={"query": query, "variables": {"ids": mal_ids}},
-            )
-            resp.raise_for_status()
-            data = resp.json().get("data", {})
+        client = get_shared_client()
+        resp = await client.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"ids": mal_ids}},
+        )
+        resp.raise_for_status()
+        data = resp.json().get("data", {})
         image_map = {}
         for m in data.get("Page", {}).get("media", []):
             mid = m.get("idMal")
@@ -177,8 +178,8 @@ def _normalize_gogoanime(item: dict) -> dict:
     }
 
 
-def _normalize_animeschedule(item: dict) -> dict:
-    """Normalize AnimeSchedule /anime response to standard schema."""
+def _parse_start_date(item: dict) -> str | None:
+    """Extract start date from AnimeSchedule item."""
     premier = item.get("premier") or item.get("subPremier") or ""
     start_date = premier[:10] if premier and not premier.startswith("0001") else None
     if not start_date:
@@ -190,20 +191,42 @@ def _normalize_animeschedule(item: dict) -> dict:
                          "September": "09", "October": "10", "November": "11", "December": "12"}
             mm = month_map.get(month, "01")
             start_date = f"{year}-{mm}-01"
-    names = item.get("names") or {}
-    genres = [g.get("name", "") for g in item.get("genres", [])]
-    stats = item.get("stats") or {}
-    sub_time = item.get("subTime") or item.get("jpnTime") or ""
-    air_time = sub_time[11:16] if len(sub_time) > 16 else None
-    # Extract MAL ID from websites.mal URL if available
-    mal_id = None
+    return start_date
+
+
+def _extract_mal_id(item: dict) -> int | None:
+    """Extract MAL ID from AnimeSchedule websites.mal URL."""
     websites = item.get("websites") or {}
     mal_url = websites.get("mal") or ""
     if "/anime/" in mal_url:
         try:
-            mal_id = int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
+            return int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
         except (ValueError, IndexError):
             pass
+    return None
+
+
+async def _fallback_chain(*callables):
+    """Try each callable in order, return first successful result."""
+    for fn in callables:
+        try:
+            result = await fn()
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning("Fallback chain step failed: %s", e)
+    return None
+
+
+def _normalize_animeschedule(item: dict) -> dict:
+    """Normalize AnimeSchedule /anime response to standard schema."""
+    names = item.get("names") or {}
+    genres = [g.get("name", "") for g in item.get("genres", [])]
+    stats = item.get("stats") or {}
+    start_date = _parse_start_date(item)
+    sub_time = item.get("subTime") or item.get("jpnTime") or ""
+    air_time = sub_time[11:16] if len(sub_time) > 16 else None
+    mal_id = _extract_mal_id(item)
     slug = item.get("route", "")
     return {
         "id": mal_id or slug,
@@ -231,28 +254,10 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
     names = item.get("names") or {}
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
-    premier = item.get("premier") or item.get("subPremier") or ""
-    start_date = premier[:10] if premier and not premier.startswith("0001") else None
-    if not start_date:
-        month = item.get("month") or ""
-        year = item.get("year") or ""
-        if month and year and int(year) > 2000:
-            month_map = {"January": "01", "February": "02", "March": "03", "April": "04",
-                         "May": "05", "June": "06", "July": "07", "August": "08",
-                         "September": "09", "October": "10", "November": "11", "December": "12"}
-            mm = month_map.get(month, "01")
-            start_date = f"{year}-{mm}-01"
+    start_date = _parse_start_date(item)
     sub_time = item.get("subTime") or item.get("jpnTime") or ""
     air_time = sub_time[11:16] if len(sub_time) > 16 else None
-    # Extract MAL ID from websites.mal URL if available
-    mal_id = None
-    websites = item.get("websites") or {}
-    mal_url = websites.get("mal") or ""
-    if "/anime/" in mal_url:
-        try:
-            mal_id = int(mal_url.split("/anime/")[1].split("/")[0].split("_")[0])
-        except (ValueError, IndexError):
-            pass
+    mal_id = _extract_mal_id(item)
     slug = item.get("route", "")
     season_raw = item.get("season")
     season = season_raw.get("season") if isinstance(season_raw, dict) else season_raw

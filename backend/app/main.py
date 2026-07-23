@@ -1,5 +1,6 @@
 import logging
 import time
+import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
+from app.core.circuit_breaker import all_breakers
 from app.routers import admin, anime, auth, news, notifications, schedule, search, seasonal, streaming, watchlist
 
 logging.basicConfig(
@@ -43,18 +45,41 @@ app.add_middleware(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all HTTP requests with timing and status."""
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())[:8]
     start = time.perf_counter()
     response = await call_next(request)
     duration_ms = (time.perf_counter() - start) * 1000
     logger.info(
-        "%s %s -> %s (%.1fms)",
+        "[%s] %s %s -> %s (%.1fms)",
+        request_id,
         request.method,
         request.url.path,
         response.status_code,
         duration_ms
     )
+    response.headers["X-Request-ID"] = request_id
     response.headers["X-Process-Time-Ms"] = f"{duration_ms:.1f}"
+    return response
+
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if response.status_code >= 400:
+        return response
+    if path == "/api/health":
+        response.headers["Cache-Control"] = "no-store"
+    elif any(p in path for p in ["/api/v1/auth/", "/api/v1/watchlist", "/api/v1/admin/", "/api/v1/notifications/"]):
+        response.headers["Cache-Control"] = "private, no-cache"
+    elif any(p in path for p in ["/api/v1/anime/trending", "/api/v1/schedule/", "/api/v1/anime/upcoming", "/api/v1/streaming/gogoanime/latest"]):
+        response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
+    elif any(p in path for p in ["/api/v1/anime/", "/api/v1/seasonal/"]) and "/characters" not in path and "/staff" not in path and "/episodes" not in path and "/recommendations" not in path:
+        response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=300"
+    elif any(p in path for p in ["/characters", "/staff"]):
+        response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=3600"
+    else:
+        response.headers["Cache-Control"] = "public, max-age=60"
     return response
 
 
@@ -93,12 +118,55 @@ app.include_router(notifications.router)
 
 @app.get("/api/health")
 async def health():
-    """Health check endpoint."""
-    return {
+    health_data = {
         "status": "ok",
         "env": settings.ENV,
         "version": "2.0.0",
+        "uptime_s": 0,
     }
+    # Check Redis
+    try:
+        import time as _time
+        r_start = _time.monotonic()
+        from app.core.cache import get_redis
+        r = await get_redis()
+        await r.ping()
+        health_data["redis"] = {
+            "status": "ok",
+            "latency_ms": round((_time.monotonic() - r_start) * 1000, 1),
+        }
+    except Exception as e:
+        health_data["redis"] = {"status": "unavailable", "error": str(e)[:100]}
+
+    # Check DB
+    try:
+        import time as _time
+        db_start = _time.monotonic()
+        from app.core.db import AsyncSessionLocal
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        health_data["db"] = {
+            "status": "ok",
+            "latency_ms": round((_time.monotonic() - db_start) * 1000, 1),
+        }
+    except Exception as e:
+        health_data["db"] = {"status": "unavailable", "error": str(e)[:100]}
+        health_data["status"] = "degraded"
+
+    # Circuit breaker states
+    try:
+        breakers = all_breakers()
+        health_data["circuit_breakers"] = [
+            {"name": name, "state": info["state"], "failures": info["failure_count"]}
+            for name, info in breakers.items()
+        ]
+    except Exception:
+        health_data["circuit_breakers"] = []
+
+    status_code = 200 if health_data["db"]["status"] == "ok" else 503
+    from fastapi.responses import JSONResponse
+    return JSONResponse(content=health_data, status_code=status_code)
 
 
 @app.get("/")
@@ -155,6 +223,7 @@ async def startup_event():
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    from app.core.http import close_shared_client
     from app.services import gogoanime_client, animeschedule_client, anivexa_client
     await gogoanime_client.close()
     logger.info("GogoAnime client closed")
@@ -162,12 +231,14 @@ async def shutdown_event():
     logger.info("Anivexa client closed")
     await animeschedule_client.animeschedule.close()
     logger.info("AnimeSchedule client closed")
+    await close_shared_client()
+    logger.info("Shared HTTP client closed")
 
 
 # ---------- Background push notification checker ----------
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 
 _last_episode_check = None
 _last_news_check = None
@@ -183,8 +254,8 @@ async def _content_checker_loop():
         return
 
     # Initialize last check timestamps
-    _last_episode_check = datetime.utcnow()
-    _last_news_check = datetime.utcnow()
+    _last_episode_check = datetime.now(timezone.utc)
+    _last_news_check = datetime.now(timezone.utc)
 
     CHECK_INTERVAL = 15 * 60  # 15 minutes
 
@@ -224,7 +295,7 @@ async def _check_new_episodes():
                 await send_push_to_all(title=title, body=body, url=url)
         # else: first run, don't spam notifications
 
-        _last_episode_check = datetime.utcnow()
+        _last_episode_check = datetime.now(timezone.utc)
     except Exception:
         logger.debug("Episode check failed (non-critical)")
 
@@ -244,7 +315,7 @@ async def _check_new_news():
         if _last_news_check:
             new_articles = [
                 a for a in articles
-                if a.get("published_at") and datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")).replace(tzinfo=None) > _last_news_check
+                if a.get("published_at") and datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")) > _last_news_check
             ]
         else:
             new_articles = []
@@ -259,6 +330,6 @@ async def _check_new_news():
                     url=url,
                 )
 
-        _last_news_check = datetime.utcnow()
+        _last_news_check = datetime.now(timezone.utc)
     except Exception:
         logger.debug("News check failed (non-critical)")

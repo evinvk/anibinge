@@ -10,6 +10,7 @@ import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_not_exception_type
 
 from app.core.config import get_settings
+from app.core.http import get_shared_client
 
 logger = logging.getLogger("anibinge.animeschedule_client")
 settings = get_settings()
@@ -19,7 +20,7 @@ BASE_URL = "https://animeschedule.net/api/v3"
 
 class AnimeScheduleClient:
     def __init__(self):
-        self.client = httpx.AsyncClient(
+        self.client = get_shared_client(
             timeout=20,
             headers={
                 "Authorization": f"Bearer {settings.ANIMESCHEDULE_API_TOKEN}",

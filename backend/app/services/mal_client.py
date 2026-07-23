@@ -24,11 +24,14 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
+from app.core.circuit_breaker import CircuitBreaker, get_breaker
+from app.core.http import get_shared_client
 
 logger = logging.getLogger("anibinge.mal_client")
 settings = get_settings()
 
-_client = httpx.AsyncClient(base_url=settings.MAL_BASE_URL, timeout=10.0)
+_client = get_shared_client(base_url=settings.MAL_BASE_URL, timeout=10.0)
+_breaker = CircuitBreaker("mal", failure_threshold=5, recovery_timeout=30)
 
 
 async def _get(
@@ -47,28 +50,29 @@ async def _get(
 
     headers = {"X-MAL-CLIENT-ID": settings.MAL_CLIENT_ID}
 
-    for attempt in range(retries + 1):
-        try:
-            resp = await _client.get(
-                path, params=params or {}, headers=headers
-            )
+    async with _breaker():
+        for attempt in range(retries + 1):
+            try:
+                resp = await _client.get(
+                    path, params=params or {}, headers=headers
+                )
 
-            if resp.status_code == 429 and attempt < retries:
-                # Rate limited, backoff and retry
-                wait_time = 1.2 * (attempt + 1)
-                logger.warning("MAL rate limited, backing off for %.1fs", wait_time)
-                await asyncio.sleep(wait_time)
-                continue
+                if resp.status_code == 429 and attempt < retries:
+                    # Rate limited, backoff and retry
+                    wait_time = 1.2 * (attempt + 1)
+                    logger.warning("MAL rate limited, backing off for %.1fs", wait_time)
+                    await asyncio.sleep(wait_time)
+                    continue
 
-            resp.raise_for_status()
-            return resp.json()
+                resp.raise_for_status()
+                return resp.json()
 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in (401, 403) and attempt < retries:
-                # Transient auth hiccup, brief backoff and retry once
-                await asyncio.sleep(0.5)
-                continue
-            raise
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (401, 403) and attempt < retries:
+                    # Transient auth hiccup, brief backoff and retry once
+                    await asyncio.sleep(0.5)
+                    continue
+                raise
 
     return {}
 

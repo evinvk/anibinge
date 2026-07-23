@@ -9,13 +9,14 @@ from typing import Any
 import httpx
 
 from app.core.config import get_settings
+from app.core.http import get_shared_client
 
 logger = logging.getLogger("anibinge.anivexa_client")
 settings = get_settings()
 
 _base_url = settings.ANIVEXA_BASE_URL
 
-_client = httpx.AsyncClient(base_url=_base_url, timeout=30.0, headers={
+_client = get_shared_client(base_url=_base_url, timeout=30.0, headers={
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 })
 

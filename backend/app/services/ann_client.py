@@ -16,11 +16,12 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
+from app.core.http import get_shared_client
 
 logger = logging.getLogger("anibinge.ann")
 settings = get_settings()
 
-_client = httpx.AsyncClient(
+_client = get_shared_client(
     base_url="https://www.animenewsnetwork.com",
     timeout=20.0,
     follow_redirects=True,

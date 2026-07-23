@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export interface AnimeSummary {
   id: number | string;
@@ -65,22 +65,38 @@ async function request<T>(path: string, revalidateSeconds = 60, retries = 1): Pr
 async function authedRequest<T>(
   path: string,
   token: string,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  retries = 2,
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      Authorization: `Bearer ${token}`,
-      ...init.headers,
-    },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.detail || `Request to ${path} failed: ${res.status}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(`${API_BASE}${path}`, {
+        ...init,
+        cache: "no-store",
+        signal: controller.signal,
+        headers: {
+          ...(init.body ? { "Content-Type": "application/json" } : {}),
+          Authorization: `Bearer ${token}`,
+          ...init.headers,
+        },
+      });
+      clearTimeout(timeout);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, body.detail || `Request to ${path} failed: ${res.status}`);
+      }
+      return res.json();
+    } catch (err: any) {
+      if (attempt < retries && (err?.name === "AbortError" || err?.code === "ECONNREFUSED")) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
   }
-  return res.json();
+  throw new Error("Request failed");
 }
 
 export interface WatchlistEntryData {

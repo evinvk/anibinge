@@ -11,6 +11,7 @@ import httpx as _httpx
 import logging
 
 from app.core.config import get_settings
+from app.core.http import get_shared_client
 from app.services import wibu_client
 from app.services import gogoanime_client
 from app.services import anivexa_client
@@ -267,24 +268,24 @@ async def gogoanime_health(request: Request):
             variant_url = base + variant_url
 
         # Fetch variant M3U8
-        async with _httpx.AsyncClient(timeout=_TIMEOUT, headers=_HEADERS) as client:
-            resp = await client.get(variant_url)
-            resp.raise_for_status()
-            vlines = resp.text.strip().split("\n")
-            segs = [l.strip() for l in vlines if l.strip() and not l.startswith("#")]
+        client = get_shared_client(timeout=_TIMEOUT, headers=_HEADERS)
+        resp = await client.get(variant_url)
+        resp.raise_for_status()
+        vlines = resp.text.strip().split("\n")
+        segs = [l.strip() for l in vlines if l.strip() and not l.startswith("#")]
 
-            if not segs:
-                return {"healthy": False, "reason": "no_segments"}
+        if not segs:
+            return {"healthy": False, "reason": "no_segments"}
 
-            # Try fetching the first segment and check content type
-            first_seg = segs[0]
-            resp2 = await client.get(first_seg, follow_redirects=True)
-            ct = resp2.headers.get("content-type", "")
+        # Try fetching the first segment and check content type
+        first_seg = segs[0]
+        resp2 = await client.get(first_seg, follow_redirects=True)
+        ct = resp2.headers.get("content-type", "")
 
-            if "image/png" in ct or "image/jpeg" in ct:
-                return {"healthy": False, "reason": "cdn_returns_images"}
+        if "image/png" in ct or "image/jpeg" in ct:
+            return {"healthy": False, "reason": "cdn_returns_images"}
 
-            return {"healthy": True}
+        return {"healthy": True}
 
     except Exception as e:
         return {"healthy": False, "reason": "check_failed", "error": str(e)[:200]}
@@ -440,6 +441,21 @@ _CORS_HEADERS = {
     "Access-Control-Allow-Headers": "*",
 }
 
+_PROXY_ALLOWED_HOSTS = {
+    "gogocdn.net", "gogostream.com", "gogohd.net",
+    "vidstreaming.io", "gogoservers.mema",
+    "anivexa-api-eight.vercel.app",
+}
+
+
+def _is_proxy_url_allowed(url: str) -> bool:
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return False
+    return any(host == h or host.endswith("." + h) for h in _PROXY_ALLOWED_HOSTS)
+
 
 @router.get("/gogoanime/proxy")
 @limiter.limit("120/minute")
@@ -458,38 +474,39 @@ async def gogoanime_proxy(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid proxy URL encoding")
 
+    if not _is_proxy_url_allowed(decoded_url):
+        raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
+
     try:
-        async with _httpx.AsyncClient(
-            timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True
-        ) as client:
-            resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/"})
-            resp.raise_for_status()
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
+        resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/"})
+        resp.raise_for_status()
 
-            content_type = resp.headers.get("content-type", "")
-            body = resp.text
+        content_type = resp.headers.get("content-type", "")
+        body = resp.text
 
-            # If it's M3U8 content, rewrite URLs to go through this proxy
-            if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
-                from urllib.parse import urlparse
-                parsed = urlparse(decoded_url)
-                base_url = f"{parsed.scheme}://{parsed.netloc}"
-                body = gogoanime_client._rewrite_m3u8_urls(body, base_url)
-                return Response(
-                    content=body,
-                    media_type="application/vnd.apple.mpegurl",
-                    headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
-                )
-
-            # Binary content (.ts segments, etc.)
+        # If it's M3U8 content, rewrite URLs to go through this proxy
+        if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
+            from urllib.parse import urlparse
+            parsed = urlparse(decoded_url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            body = gogoanime_client._rewrite_m3u8_urls(body, base_url)
             return Response(
-                content=resp.content,
-                media_type=content_type or "video/mp2t",
-                headers={
-                    **_CORS_HEADERS,
-                    "Cache-Control": "public, max-age=86400",
-                    "Content-Length": str(len(resp.content)),
-                },
+                content=body,
+                media_type="application/vnd.apple.mpegurl",
+                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
+
+        # Binary content (.ts segments, etc.)
+        return Response(
+            content=resp.content,
+            media_type=content_type or "video/mp2t",
+            headers={
+                **_CORS_HEADERS,
+                "Cache-Control": "public, max-age=86400",
+                "Content-Length": str(len(resp.content)),
+            },
+        )
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
@@ -588,19 +605,22 @@ async def anivexa_subtitle_proxy(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid subtitle URL encoding")
 
+    if not _is_proxy_url_allowed(decoded_url):
+        raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
+
     headers = {**_PROXY_HEADERS}
     if referer:
         headers["Referer"] = referer
 
     try:
-        async with _httpx.AsyncClient(timeout=_PROXY_TIMEOUT, headers=headers, follow_redirects=True) as client:
-            resp = await client.get(decoded_url)
-            resp.raise_for_status()
-            return Response(
-                content=resp.text,
-                media_type="text/vtt",
-                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=3600"},
-            )
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=headers, follow_redirects=True)
+        resp = await client.get(decoded_url)
+        resp.raise_for_status()
+        return Response(
+            content=resp.text,
+            media_type="text/vtt",
+            headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=3600"},
+        )
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except Exception as e:
@@ -625,10 +645,10 @@ async def anivexa_master_m3u8(
         m3u8_url = result["stream_url"]
 
         # Fetch the M3U8 content and rewrite URLs to proxy through us
-        async with _httpx.AsyncClient(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True) as client:
-            resp = await client.get(m3u8_url)
-            resp.raise_for_status()
-            m3u8_text = resp.text
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
+        resp = await client.get(m3u8_url)
+        resp.raise_for_status()
+        m3u8_text = resp.text
 
         # If it's a master playlist, rewrite variant URLs to go through our proxy
         if "#EXT-X-STREAM-INF" in m3u8_text:
@@ -660,38 +680,39 @@ async def anivexa_proxy(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid proxy URL encoding")
 
+    if not _is_proxy_url_allowed(decoded_url):
+        raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
+
     try:
-        async with _httpx.AsyncClient(
-            timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True
-        ) as client:
-            resp = await client.get(decoded_url)
-            resp.raise_for_status()
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
+        resp = await client.get(decoded_url)
+        resp.raise_for_status()
 
-            content_type = resp.headers.get("content-type", "")
-            body = resp.text
+        content_type = resp.headers.get("content-type", "")
+        body = resp.text
 
-            # Rewrite M3U8 content to go through this proxy
-            if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
-                from urllib.parse import urlparse
-                parsed = urlparse(decoded_url)
-                base_url = f"{parsed.scheme}://{parsed.netloc}"
-                body = _rewrite_anivexa_m3u8(body, decoded_url, base_url)
-                return Response(
-                    content=body,
-                    media_type="application/vnd.apple.mpegurl",
-                    headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
-                )
-
-            # Binary content (.ts segments, etc.)
+        # Rewrite M3U8 content to go through this proxy
+        if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
+            from urllib.parse import urlparse
+            parsed = urlparse(decoded_url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            body = _rewrite_anivexa_m3u8(body, decoded_url, base_url)
             return Response(
-                content=resp.content,
-                media_type=content_type or "video/mp2t",
-                headers={
-                    **_CORS_HEADERS,
-                    "Cache-Control": "public, max-age=86400",
-                    "Content-Length": str(len(resp.content)),
-                },
+                content=body,
+                media_type="application/vnd.apple.mpegurl",
+                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
+
+        # Binary content (.ts segments, etc.)
+        return Response(
+            content=resp.content,
+            media_type=content_type or "video/mp2t",
+            headers={
+                **_CORS_HEADERS,
+                "Cache-Control": "public, max-age=86400",
+                "Content-Length": str(len(resp.content)),
+            },
+        )
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:

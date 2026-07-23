@@ -4,21 +4,13 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
 import { api } from "@/lib/api";
+import { useSubtitles } from "@/hooks/use-subtitles";
+import { useHlsPlayer } from "@/hooks/use-hls-player";
 import clsx from "clsx";
 
 interface StreamSource {
   quality: string;
   url: string;
-}
-
-interface Subtitle {
-  file: string;
-  label: string;
-  language: string;
-  kind: string;
-  default: boolean;
-  source: string;
-  referer: string;
 }
 
 interface StreamData {
@@ -36,28 +28,16 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props) {
   const [currentEp, setCurrentEp] = useState(1);
-  const [streamData, setStreamData] = useState<StreamData | null>(null);
-  const [masterUrl, setMasterUrl] = useState<string | null>(null);
-  const [selectedQuality, setSelectedQuality] = useState(0);
-  const [loadingStream, setLoadingStream] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<"gogoanime" | "anivexa" | null>(null);
-  const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
-  const [showEpisodes, setShowEpisodes] = useState(false);
-  const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
-  const subtitlesRef = useRef<Subtitle[]>([]);
-  const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const hlsRef = useRef<any>(null);
-  const fallbackAttemptedRef = useRef(false);
+  const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
+  const [showEpisodes, setShowEpisodes] = useState(false);
   const currentEpRef = useRef(1);
-  const [activeCues, setActiveCues] = useState<string[]>([]);
-  const cuesRef = useRef<{ start: number; end: number; text: string }[]>([]);
-  const [selectedSub, setSelectedSub] = useState<number>(0);
-  const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
+
+  const subs = useSubtitles(videoRef);
+  const player = useHlsPlayer(videoRef, subs.loadSubtitles);
 
   useEffect(() => {
     currentEpRef.current = currentEp;
@@ -74,12 +54,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-    };
+    return () => player.resetPlayer();
   }, [title]);
 
   useEffect(() => {
@@ -88,7 +63,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     }
   }, [slug, currentEp, audio]);
 
-  // Resolve AniList ID if not provided
   useEffect(() => {
     if (!resolvedAnilistRef.current && title) {
       fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`)
@@ -101,23 +75,17 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   }, [title]);
 
   useEffect(() => {
-    if (masterUrl && videoRef.current) {
-      loadPlayer(masterUrl);
+    if (player.masterUrl && videoRef.current) {
+      player.loadPlayer(player.masterUrl);
     }
-    return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy();
-        hlsRef.current = null;
-      }
-    };
-  }, [masterUrl]);
+    return () => player.resetPlayer();
+  }, [player.masterUrl]);
 
-  // Separate effect: load subtitles when they change and video is ready
   useEffect(() => {
-    if (subtitles.length > 0 && videoRef.current) {
-      loadSubtitles();
+    if (subs.subtitles.length > 0 && videoRef.current) {
+      subs.loadSubtitles();
     }
-  }, [subtitles]);
+  }, [subs.subtitles]);
 
   const loadAnivexaFallback = useCallback(async (ep: number) => {
     let aid = resolvedAnilistRef.current;
@@ -141,19 +109,16 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         return r.json();
       });
       if (res && res.stream_url) {
-        const proxiedSubs = (res.subtitles || []).map((s: Subtitle) => {
+        subs.setSubs((res.subtitles || []).map((s: any) => {
           let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
           if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
           return { ...s, file: proxyUrl };
-        });
-        subtitlesRef.current = proxiedSubs;
-        setSubtitles(proxiedSubs);
+        }));
         const masterUrlFull = `${API_BASE}/api/v1/streaming/anivexa/${aid}/master?ep=${ep}&audio=${audio}`;
-        setSource("anivexa");
-        sourceRef.current = "anivexa";
-        setMasterUrl(masterUrlFull);
-        setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
-        setLoadingStream(false);
+        player.sourceRef.current = "anivexa";
+        player.setMasterUrl(masterUrlFull);
+        player.setStreamData({ qualities: [{ quality: "auto", url: masterUrlFull }] });
+        player.setLoadingStream(false);
         return true;
       }
     } catch { /* fallback failed */ }
@@ -161,14 +126,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   }, [title, audio]);
 
   const loadStream = useCallback(async (s: string, ep: number) => {
-    setLoadingStream(true);
-    setError(null);
-    setStreamData(null);
-    setMasterUrl(null);
-    setSelectedQuality(0);
-    setSubtitles([]);
-    subtitlesRef.current = [];
-    fallbackAttemptedRef.current = false;
+    player.setLoadingStream(true);
+    player.setError(null);
+    subs.resetSubs();
+    player.resetPlayer();
+    player.fallbackAttemptedRef.current = false;
 
     let aid = resolvedAnilistRef.current;
     if (!aid) {
@@ -183,7 +145,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       } catch { /* not critical */ }
     }
 
-    // Fetch subtitles and GogoAnime stream in parallel
     const subsPromise = aid
       ? fetch(`${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`)
           .then(r => r.ok ? r.json() : null)
@@ -195,204 +156,44 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       subsPromise,
     ]);
 
-    // Store subtitles before player loads
     if (subsData?.subtitles?.length) {
-      const proxiedSubs: Subtitle[] = subsData.subtitles.map((s: Subtitle) => {
+      subs.setSubs(subsData.subtitles.map((s: any) => {
         let proxyUrl = `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(s.file))}`;
         if (s.referer) proxyUrl += `&referer=${encodeURIComponent(s.referer)}`;
         return { ...s, file: proxyUrl };
-      });
-      subtitlesRef.current = proxiedSubs;
-      setSubtitles(proxiedSubs);
+      }));
     }
 
     const data = gogoRes?.data;
     if (data?.qualities) {
-      setSource("gogoanime");
-      sourceRef.current = "gogoanime";
-      setStreamData({ qualities: data.qualities });
-      setMasterUrl(api.gogoanimeMaster(s, ep, audio));
-      setLoadingStream(false);
+      player.sourceRef.current = "gogoanime";
+      player.setStreamData({ qualities: data.qualities });
+      player.setMasterUrl(api.gogoanimeMaster(s, ep, audio));
+      player.setLoadingStream(false);
       return;
     }
 
-    // GogoAnime unavailable, try Anivexa directly
-    fallbackAttemptedRef.current = true;
+    player.fallbackAttemptedRef.current = true;
     const ok = await loadAnivexaFallback(ep);
     if (!ok) {
-      setError("No streaming sources available for this episode");
-      setLoadingStream(false);
+      player.setError("No streaming sources available for this episode");
+      player.setLoadingStream(false);
     }
   }, [title, loadAnivexaFallback, audio]);
-
-  function parseVttTime(time: string): number {
-    const parts = time.trim().split(":");
-    if (parts.length === 3) {
-      const [h, m, rest] = parts;
-      return Number(h) * 3600 + Number(m) * 60 + parseFloat(rest);
-    } else if (parts.length === 2) {
-      const [m, rest] = parts;
-      return Number(m) * 60 + parseFloat(rest);
-    }
-    return parseFloat(parts[0]) || 0;
-  }
-
-  function parseVtt(vttText: string): { start: number; end: number; text: string }[] {
-    const cues: { start: number; end: number; text: string }[] = [];
-    const blocks = vttText.split(/\r?\n\r?\n/);
-    for (const block of blocks) {
-      const lines = block.trim().split(/\r?\n/);
-      const timeLine = lines.find((l) => l.includes("-->"));
-      if (!timeLine) continue;
-      const timeMatch = timeLine.match(
-        /(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}\s*-->\s*(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}/
-      );
-      if (!timeMatch) continue;
-      const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
-      const cueLines = lines.filter((l) => l !== timeLine && !l.match(/^\d+$/));
-      const text = cueLines.join("\n").replace(/<[^>]+>/g, "");
-      cues.push({ start: parseVttTime(startStr), end: parseVttTime(endStr), text });
-    }
-    return cues;
-  }
-
-  async function loadSubtitles() {
-    const subs = subtitlesRef.current;
-    if (!subs.length) return;
-    parsedSubsRef.current.clear();
-
-    for (let i = 0; i < subs.length; i++) {
-      try {
-        const resp = await fetch(subs[i].file);
-        if (!resp.ok) continue;
-        const vttText = await resp.text();
-        const cues = parseVtt(vttText);
-        if (cues.length > 0) {
-          parsedSubsRef.current.set(i, cues);
-        }
-      } catch {
-        // subtitle failed
-      }
-    }
-
-    const defaultIdx = subs.findIndex((s) => s.default);
-    const firstAvailable = Array.from(parsedSubsRef.current.keys())[0];
-    const idx = defaultIdx >= 0 && parsedSubsRef.current.has(defaultIdx) ? defaultIdx : firstAvailable;
-    if (idx !== undefined) {
-      setSelectedSub(idx);
-      cuesRef.current = parsedSubsRef.current.get(idx) || [];
-    }
-  }
-
-  function switchSub(idx: number) {
-    setSelectedSub(idx);
-    cuesRef.current = parsedSubsRef.current.get(idx) || [];
-    setActiveCues([]);
-  }
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const onTime = () => {
-      const t = video.currentTime;
-      const active = cuesRef.current
-        .filter((c) => t >= c.start && t <= c.end)
-        .map((c) => c.text);
-      setActiveCues(active);
-    };
-    video.addEventListener("timeupdate", onTime);
-    return () => video.removeEventListener("timeupdate", onTime);
-  });
-
-  async function loadPlayer(url: string) {
-    if (hlsRef.current) {
-      hlsRef.current.destroy();
-      hlsRef.current = null;
-    }
-
-    const video = videoRef.current;
-    if (!video) return;
-
-    const Hls = (await import("hls.js")).default;
-
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-      });
-      hlsRef.current = hls;
-
-      hls.loadSource(url);
-      hls.attachMedia(video);
-
-      hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-        if (data.levels?.length > 1) {
-          hls.currentLevel = 0;
-        }
-        video.play().catch(() => {});
-      });
-      loadSubtitles();
-      hls.on(Hls.Events.ERROR, async (_: any, data: any) => {
-        if (data.fatal && sourceRef.current === "gogoanime" && !fallbackAttemptedRef.current && resolvedAnilistRef.current) {
-          fallbackAttemptedRef.current = true;
-          hls.destroy();
-          hlsRef.current = null;
-          setLoadingStream(true);
-          setError(null);
-          const ok = await loadAnivexaFallback(currentEpRef.current);
-          if (!ok) {
-            setError("Streaming unavailable from all providers");
-            setLoadingStream(false);
-          }
-        } else if (data.fatal) {
-          setError("Playback error: " + data.type);
-        }
-      });
-    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      video.src = url;
-      loadSubtitles();
-      video.play().catch(() => {});
-    } else {
-      setError("HLS is not supported in this browser");
-    }
-  }
-
-  function setQuality(index: number) {
-    setSelectedQuality(index);
-    if (hlsRef.current) {
-      hlsRef.current.currentLevel = index;
-    }
-  }
 
   return (
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
-        {loadingStream ? (
+        {player.loadingStream ? (
           <div className="absolute inset-0 flex items-center justify-center">
             <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
           </div>
-        ) : streamData ? (
+        ) : player.streamData ? (
           <>
-            <video
-              ref={videoRef}
-              className="h-full w-full"
-              controls
-              playsInline
-            >
-              {subtitles.map((sub, i) => (
-                <track
-                  key={i}
-                  src={sub.file}
-                  label={sub.label}
-                  srcLang={sub.language}
-                  kind="subtitles"
-                  default={sub.default}
-                />
-              ))}
-            </video>
-            {activeCues.length > 0 && (
+            <video ref={videoRef} className="h-full w-full" controls playsInline />
+            {subs.activeCues.length > 0 && (
               <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-10">
-                {activeCues.map((text, i) => (
+                {subs.activeCues.map((text, i) => (
                   <span
                     key={i}
                     className="rounded bg-black/70 px-2 py-0.5 text-center text-sm font-medium text-white shadow-lg sm:text-base"
@@ -402,9 +203,9 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
                 ))}
               </div>
             )}
-            {activeCues.length > 0 && isFullscreen && fsTargetRef.current && createPortal(
+            {subs.activeCues.length > 0 && isFullscreen && fsTargetRef.current && createPortal(
               <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-50">
-                {activeCues.map((text, i) => (
+                {subs.activeCues.map((text, i) => (
                   <span
                     key={i}
                     className="rounded bg-black/70 px-3 py-1 text-center text-base font-medium text-white shadow-lg md:text-lg"
@@ -416,10 +217,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
               fsTargetRef.current
             )}
           </>
-        ) : error ? (
+        ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
-            <span className="text-sm">{error}</span>
+            <span className="text-sm">{player.error}</span>
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-mist text-sm">
@@ -428,15 +229,15 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         )}
       </div>
 
-      {subtitles.length > 1 && (
+      {subs.subtitles.length > 1 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {subtitles.map((sub, i) => (
+          {subs.subtitles.map((sub, i) => (
             <button
               key={i}
-              onClick={() => switchSub(i)}
+              onClick={() => subs.switchSub(i)}
               className={clsx(
                 "rounded-md px-2 py-1 text-xs font-medium transition",
-                selectedSub === i
+                subs.selectedSub === i
                   ? "bg-primary-600 text-white"
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
@@ -445,10 +246,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
             </button>
           ))}
           <button
-            onClick={() => { setSelectedSub(-1); cuesRef.current = []; setActiveCues([]); }}
+            onClick={() => { subs.setSelectedSub(-1); subs.cuesRef.current = []; subs.setActiveCues([]); }}
             className={clsx(
               "rounded-md px-2 py-1 text-xs font-medium transition",
-              selectedSub === -1 || (subtitles.length > 0 && cuesRef.current.length === 0 && selectedSub === 0 && !subtitles[0]?.default)
+              subs.selectedSub === -1 || (subs.subtitles.length > 0 && subs.cuesRef.current.length === 0 && subs.selectedSub === 0 && !subs.subtitles[0]?.default)
                 ? "bg-primary-600 text-white"
                 : "bg-white/5 text-mist hover:bg-white/10"
             )}
@@ -458,15 +259,15 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         </div>
       )}
 
-      {streamData && streamData.qualities.length > 1 && (
+      {player.streamData && player.streamData.qualities.length > 1 && (
         <div className="mt-3 flex flex-wrap gap-2">
-          {streamData.qualities.map((s, i) => (
+          {player.streamData.qualities.map((s, i) => (
             <button
               key={i}
-              onClick={() => setQuality(i)}
+              onClick={() => player.setQuality(i)}
               className={clsx(
                 "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-                selectedQuality === i
+                player.selectedQuality === i
                   ? "bg-primary-600 text-white"
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
@@ -485,7 +286,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
             onClick={() => {
               if (opt !== audio) {
                 setAudio(opt);
-                setError(null);
+                player.setError(null);
               }
             }}
             className={clsx(
@@ -534,10 +335,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         </div>
       )}
 
-      {error && !loadingStream && (
+      {player.error && !player.loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="text-xs">{error}</span>
+          <span className="text-xs">{player.error}</span>
         </div>
       )}
     </div>

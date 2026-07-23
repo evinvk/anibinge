@@ -14,11 +14,12 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
+from app.core.http import get_shared_client
 
 logger = logging.getLogger("anibinge.wibu_client")
 settings = get_settings()
 
-_client = httpx.AsyncClient(base_url="https://api.wibuapi.com/v1", timeout=10.0)
+_client = get_shared_client(base_url="https://api.wibuapi.com/v1", timeout=10.0)
 
 
 async def _get(

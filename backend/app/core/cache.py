@@ -15,11 +15,22 @@ from typing import Any, Callable
 import redis.asyncio as redis
 
 from app.core.config import get_settings
+from app.core.dedup import dedup
 
 logger = logging.getLogger("anibinge.cache")
 
 settings = get_settings()
 _redis: redis.Redis | None = None
+
+_pool = redis.ConnectionPool.from_url(
+    settings.REDIS_URL,
+    encoding="utf-8",
+    decode_responses=True,
+    max_connections=20,
+    socket_connect_timeout=2,
+    socket_timeout=2,
+)
+_redis = redis.Redis(connection_pool=_pool)
 
 # Once a Redis connection failure has been observed, stop retrying it on
 # every single request (each attempt costs a connection-timeout's worth of
@@ -29,15 +40,6 @@ _REDIS_RETRY_COOLDOWN_SECONDS = 30.0
 
 
 async def get_redis() -> redis.Redis:
-    global _redis
-    if _redis is None:
-        _redis = redis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=True,
-            socket_connect_timeout=2,
-            socket_timeout=2,
-        )
     return _redis
 
 
@@ -83,7 +85,7 @@ def cached(prefix: str, ttl: int):
                     _redis_unavailable_until = time.monotonic() + _REDIS_RETRY_COOLDOWN_SECONDS
 
             # Always call the real function on a cache miss / cache failure.
-            result = await fn(*args, **kwargs)
+            result = await dedup(key, fn, *args, **kwargs)
 
             if time.monotonic() >= _redis_unavailable_until:
                 try:
@@ -106,7 +108,14 @@ async def invalidate_prefix(prefix: str) -> int:
     """Used by the admin cache-management endpoint."""
     r = await get_redis()
     deleted = 0
+    batch = []
     async for key in r.scan_iter(match=f"anibinge:{prefix}:*"):
-        await r.delete(key)
-        deleted += 1
+        batch.append(key)
+        if len(batch) >= 100:
+            await r.delete(*batch)
+            deleted += len(batch)
+            batch = []
+    if batch:
+        await r.delete(*batch)
+        deleted += len(batch)
     return deleted
