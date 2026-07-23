@@ -4,6 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
+import { AdsterraAd } from "@/components/adsterra-ad";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -96,6 +97,10 @@ export default function WatchPage({ params }: PageProps) {
         </Link>
         <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
         <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} />
+
+        <div className="mt-8 flex justify-center">
+          <AdsterraAd />
+        </div>
       </div>
     </div>
   );
