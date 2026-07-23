@@ -1,27 +1,62 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Database, Users, Trash2 } from "lucide-react";
+import { Activity, Database, Users, Trash2, ShieldOff } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import Link from "next/link";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-// NOTE: this page assumes the visitor already has a valid admin JWT in
-// localStorage (set at login). In production, gate this route with
-// middleware.ts that checks the token's `role` claim server-side before
-// the page ever renders, rather than relying on client-side checks alone.
-
 export default function AdminDashboardPage() {
+  const { user, loading: authLoading } = useAuth();
   const [overview, setOverview] = useState<any>(null);
   const [monitoring, setMonitoring] = useState<any>(null);
   const [busyPrefix, setBusyPrefix] = useState<string | null>(null);
 
+  const isAdmin = user?.is_admin === true;
+
   useEffect(() => {
     const token = localStorage.getItem("anibinge_token");
-    if (!token) return;
+    if (!token || !isAdmin) return;
     const headers = { Authorization: `Bearer ${token}` };
     fetch(`${API_BASE}/api/v1/admin/analytics/overview`, { headers }).then((r) => r.json()).then(setOverview);
     fetch(`${API_BASE}/api/v1/admin/api-monitoring`, { headers }).then((r) => r.json()).then(setMonitoring);
-  }, []);
+  }, [isAdmin]);
+
+  async function invalidateCache(prefix: string) {
+    setBusyPrefix(prefix);
+    const token = localStorage.getItem("anibinge_token");
+    await fetch(`${API_BASE}/api/v1/admin/cache/invalidate/${prefix}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    setBusyPrefix(null);
+  }
+
+  if (authLoading) {
+    return <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 text-mist">Loading…</div>;
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 text-center">
+        <ShieldOff className="mx-auto h-12 w-12 text-mist" />
+        <h1 className="mt-4 font-display text-2xl font-bold">Sign in required</h1>
+        <p className="mt-2 text-mist">You must be logged in to access the admin dashboard.</p>
+        <Link href="/login" className="mt-6 inline-block rounded-full bg-primary-600 px-6 py-2 text-sm font-medium hover:bg-primary-500">Log in</Link>
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 text-center">
+        <ShieldOff className="mx-auto h-12 w-12 text-mist" />
+        <h1 className="mt-4 font-display text-2xl font-bold">Access denied</h1>
+        <p className="mt-2 text-mist">You don't have admin privileges.</p>
+      </div>
+    );
+  }
 
   async function invalidateCache(prefix: string) {
     setBusyPrefix(prefix);

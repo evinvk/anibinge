@@ -62,6 +62,16 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     await db.commit()
     await db.refresh(user)
 
+    # First registered user becomes admin
+    user_count = await db.scalar(select(User))
+    if user_count:
+        from sqlalchemy import func
+        count = await db.scalar(select(func.count()).select_from(User))
+        if count == 1:
+            user.is_admin = True
+            await db.commit()
+            await db.refresh(user)
+
     return {"access_token": create_access_token(user.id), "token_type": "bearer"}
 
 
