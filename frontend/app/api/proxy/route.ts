@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 const BLOCKED_HOSTS = new Set([
   "localhost",
@@ -7,7 +7,7 @@ const BLOCKED_HOSTS = new Set([
   "0.0.0.0",
 ]);
 
-const BLOCKED_IP_RE = /^((10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::ffff:(127|10|172\.(1[6-9]|2\d|3[01])|192\.168)\.))/
+const BLOCKED_IP_RE = /^((10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::ffff:(127|10|172\.(1[6-9]|2\d|3[01])|192\.168)\.))/;
 
 function isBlockedHost(hostname: string): boolean {
   if (BLOCKED_HOSTS.has(hostname)) return true;
@@ -27,22 +27,22 @@ export async function GET(req: NextRequest) {
   const referer = req.nextUrl.searchParams.get("referer") || "";
 
   if (!url) {
-    return Response.json({ error: "Missing url param" }, { status: 400 });
+    return NextResponse.json({ error: "Missing url param" }, { status: 400 });
   }
 
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
-    return Response.json({ error: "Invalid url" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid url" }, { status: 400 });
   }
 
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    return Response.json({ error: "Only http/https" }, { status: 403 });
+    return NextResponse.json({ error: "Only http/https" }, { status: 403 });
   }
 
   if (isBlockedHost(parsed.hostname)) {
-    return Response.json({ error: "Blocked host" }, { status: 403 });
+    return NextResponse.json({ error: "Blocked host" }, { status: 403 });
   }
 
   try {
@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     });
 
     if (!resp.ok) {
-      return Response.json({ error: `Upstream ${resp.status}` }, { status: resp.status });
+      return NextResponse.json({ error: `Upstream ${resp.status}` }, { status: resp.status });
     }
 
     const contentType = resp.headers.get("Content-Type") || "";
@@ -112,7 +112,7 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (e: any) {
-    return Response.json(
+    return NextResponse.json(
       { error: e.message || "Proxy failed" },
       { status: 502 },
     );
