@@ -245,6 +245,19 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         }
       } catch { /* not critical */ }
     }
+
+    // If GogoAnime didn't provide episode count, try Anivexa
+    if (!totalEps && resolvedAnilistRef.current) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/${resolvedAnilistRef.current}/episodes`
+        ).then(r => r.json());
+        const count = res?.mappings?.episodes;
+        if (count && count > 0) {
+          setTotalEps(count);
+        }
+      } catch { /* not critical */ }
+    }
   }
 
   function parseVttTime(time: string): number {
