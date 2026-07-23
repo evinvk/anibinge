@@ -196,6 +196,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     }
   }, [title, loadAnivexaFallback]);
 
+  function parseVttTime(time: string): number {
+    const parts = time.trim().split(":");
+    if (parts.length === 3) {
+      const [h, m, rest] = parts;
+      return Number(h) * 3600 + Number(m) * 60 + parseFloat(rest);
+    } else if (parts.length === 2) {
+      const [m, rest] = parts;
+      return Number(m) * 60 + parseFloat(rest);
+    }
+    return parseFloat(parts[0]) || 0;
+  }
+
   async function loadSubtitlesOntoVideo(video: HTMLVideoElement, subs: Subtitle[]) {
     if (!subs.length) return;
     for (const sub of subs) {
@@ -203,21 +215,31 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         const resp = await fetch(sub.file);
         if (!resp.ok) continue;
         const vttText = await resp.text();
-        const blob = new Blob([vttText], { type: "text/vtt" });
-        const blobUrl = URL.createObjectURL(blob);
-        const trackEl = document.createElement("track");
-        trackEl.kind = sub.kind || "captions";
-        trackEl.label = sub.label;
-        trackEl.srclang = sub.language;
-        trackEl.src = blobUrl;
-        if (sub.default) trackEl.default = true;
-        video.appendChild(trackEl);
+        const track = video.addTextTrack("captions", sub.label, sub.language);
+        const blocks = vttText.split(/\r?\n\r?\n/);
+        for (const block of blocks) {
+          const lines = block.trim().split(/\r?\n/);
+          const timeLine = lines.find((l) => l.includes("-->"));
+          if (!timeLine) continue;
+          const timeMatch = timeLine.match(
+            /(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}\s*-->\s*(\d{1,2}:)?\d{1,2}:\d{2}[\.,]\d{3}/
+          );
+          if (!timeMatch) continue;
+          const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
+          const cueLines = lines.filter((l) => l !== timeLine && !l.match(/^\d+$/));
+          const text = cueLines.join("\n").replace(/<[^>]+>/g, "");
+          const cue = new VTTCue(parseVttTime(startStr), parseVttTime(endStr), text);
+          track.addCue(cue);
+        }
+        if (sub.default) track.mode = "showing";
       } catch {
         // Subtitle failed to load — skip silently
       }
     }
     for (let i = 0; i < video.textTracks.length; i++) {
-      video.textTracks[i].mode = "showing";
+      if (video.textTracks[i].cues && video.textTracks[i].cues!.length > 0) {
+        video.textTracks[i].mode = "showing";
+      }
     }
   }
 
