@@ -20,16 +20,16 @@ async function TrendingRow({ data }: { data: any }) {
   return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
 }
 
-async function UpcomingRow() {
-  const res = await safeFetch(() => api.upcoming());
+async function AiringRow() {
+  const res = await safeFetch(() => api.airing());
   if (!res) return null;
-  return <CarouselRow title="Upcoming Anime" href="/browse?status=upcoming" items={res.data} />;
+  return <CarouselRow title="Currently Airing" href="/browse?status=airing" items={res.data} />;
 }
 
-async function TopRatedRow() {
-  const res = await safeFetch(() => api.topRated());
+async function SeasonalRow() {
+  const res = await safeFetch(() => api.currentSeason());
   if (!res) return null;
-  return <CarouselRow title="Top Rated" href="/browse?sort=score" items={res.data} />;
+  return <CarouselRow title="This Season" href="/seasonal" items={res.data} />;
 }
 
 export default async function HomePage() {
@@ -44,20 +44,18 @@ export default async function HomePage() {
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
         <TrendingRow data={trendingData} />
       </Suspense>
-
-      <LatestReleasesSection />
-
-      <Suspense fallback={<CarouselRow title="Top Rated" loading />}>
-        <TopRatedRow />
+      <Suspense fallback={<CarouselRow title="Currently Airing" loading />}>
+        <AiringRow />
+      </Suspense>
+      <Suspense fallback={<CarouselRow title="This Season" loading />}>
+        <SeasonalRow />
       </Suspense>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         <AdsterraAd className="flex justify-center" />
       </div>
 
-      <Suspense fallback={<CarouselRow title="Upcoming Anime" loading />}>
-        <UpcomingRow />
-      </Suspense>
+      <LatestReleasesSection />
     </>
   );
 }
