@@ -35,14 +35,10 @@ export function NotificationBell() {
   };
 
   const handleTogglePush = async () => {
-    // If permission is default, trigger the browser prompt from this synchronous click handler
     if (pushPermission === "default") {
       try {
         const result = await requestPermission();
-        if (result === "granted") {
-          setPushPermission("granted");
-        } else {
-          setPushPermission(result as NotificationPermission);
+        if (result !== "granted") {
           setPushError("Permission not granted.");
           return;
         }
