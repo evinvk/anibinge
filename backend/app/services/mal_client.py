@@ -30,7 +30,8 @@ from app.core.http import get_shared_client
 logger = logging.getLogger("anibinge.mal_client")
 settings = get_settings()
 
-_client = get_shared_client(base_url=settings.MAL_BASE_URL, timeout=10.0)
+_client = get_shared_client(timeout=10.0)
+_MAL_BASE = settings.MAL_BASE_URL
 _breaker = CircuitBreaker("mal", failure_threshold=5, recovery_timeout=30)
 
 
@@ -54,7 +55,7 @@ async def _get(
         for attempt in range(retries + 1):
             try:
                 resp = await _client.get(
-                    path, params=params or {}, headers=headers
+                    f"{_MAL_BASE}{path}", params=params or {}, headers=headers
                 )
 
                 if resp.status_code == 429 and attempt < retries:

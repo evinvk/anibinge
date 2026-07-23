@@ -21,7 +21,8 @@ from app.core.http import get_shared_client
 
 settings = get_settings()
 
-_client = get_shared_client(base_url=settings.JIKAN_BASE_URL, timeout=10.0)
+_client = get_shared_client(timeout=10.0)
+_JIKAN_BASE = settings.JIKAN_BASE_URL
 _breaker = CircuitBreaker("jikan", failure_threshold=5, recovery_timeout=30)
 
 
@@ -70,7 +71,7 @@ async def _get(path: str, params: dict | None = None, retries: int = 3) -> dict[
         for attempt in range(retries + 1):
             await _limiter.acquire()
             try:
-                resp = await _client.get(path, params=params or {})
+                resp = await _client.get(f"{_JIKAN_BASE}{path}", params=params or {})
                 if resp.status_code in (429, 503, 504) and attempt < retries:
                     await asyncio.sleep(2.0 * (attempt + 1))
                     continue

@@ -27,9 +27,14 @@ def get_shared_client(**overrides) -> httpx.AsyncClient:
     """
     Return the singleton httpx.AsyncClient.
 
-    Callers that need custom headers or base_url should pass overrides
-    on the *first* call. Subsequent calls return the same client —
-    overrides are silently ignored after initialization.
+    All callers share the SAME underlying connection pool.
+    Overrides (timeout, headers, etc.) are applied ONLY on the first
+    call — subsequent calls silently use the already-created client.
+
+    IMPORTANT: Do NOT pass `base_url` here.  Instead, construct full
+    URLs in your service client (e.g. `client.get(f"{BASE}{path}")`).
+    This avoids the fragile import-order dependency where one service's
+    base_url overwrites another's.
     """
     global _shared_client
     if _shared_client is None or _shared_client.is_closed:
@@ -41,6 +46,13 @@ def get_shared_client(**overrides) -> httpx.AsyncClient:
             **overrides,
         )
         logger.info("Shared httpx client created (max_conn=50, keepalive=20)")
+    else:
+        if overrides:
+            logger.warning(
+                "get_shared_client() called with ignored overrides: %s "
+                "(client already initialized). Pass full URLs in your service client instead.",
+                overrides,
+            )
     return _shared_client
 
 

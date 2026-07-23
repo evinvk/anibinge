@@ -22,7 +22,6 @@ logger = logging.getLogger("anibinge.ann")
 settings = get_settings()
 
 _client = get_shared_client(
-    base_url="https://www.animenewsnetwork.com",
     timeout=20.0,
     follow_redirects=True,
     headers={
@@ -31,6 +30,8 @@ _client = get_shared_client(
         "Accept-Language": "en-US,en;q=0.9",
     },
 )
+
+_ANN_BASE = "https://www.animenewsnetwork.com"
 
 _RSS_NEWS = "/all/rss.xml"
 _RSS_REVIEWS = "/review/rss.xml"
@@ -41,7 +42,7 @@ async def _fetch_rss(path: str, retries: int = 3) -> str:
     last_exc = None
     for attempt in range(retries + 1):
         try:
-            resp = await _client.get(path)
+            resp = await _client.get(f"{_ANN_BASE}{path}")
             if resp.status_code == 429 and attempt < retries:
                 await asyncio.sleep(2 * (attempt + 1))
                 continue

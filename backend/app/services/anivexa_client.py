@@ -16,7 +16,7 @@ settings = get_settings()
 
 _base_url = settings.ANIVEXA_BASE_URL
 
-_client = get_shared_client(base_url=_base_url, timeout=30.0, headers={
+_client = get_shared_client(timeout=30.0, headers={
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 })
 
@@ -26,7 +26,8 @@ _PROVIDERS = ["anikoto", "animegg", "anineko", "anizone"]
 
 async def _get(path: str, params: dict | None = None) -> dict[str, Any]:
     try:
-        resp = await _client.get(path, params=params or {})
+        url = f"{_base_url}{path}"
+        resp = await _client.get(url, params=params or {})
         resp.raise_for_status()
         return resp.json()
     except httpx.HTTPStatusError as e:
@@ -110,7 +111,7 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
 async def health_check() -> bool:
     """Check if the Anivexa API is reachable."""
     try:
-        resp = await _client.get("/", timeout=5.0)
+        resp = await _client.get(_base_url, timeout=5.0)
         return resp.status_code == 200
     except Exception:
         return False

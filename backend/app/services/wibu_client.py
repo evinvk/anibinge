@@ -19,7 +19,8 @@ from app.core.http import get_shared_client
 logger = logging.getLogger("anibinge.wibu_client")
 settings = get_settings()
 
-_client = get_shared_client(base_url="https://api.wibuapi.com/v1", timeout=10.0)
+_client = get_shared_client(timeout=10.0)
+_WIBU_BASE = "https://api.wibuapi.com/v1"
 
 
 async def _get(
@@ -30,7 +31,8 @@ async def _get(
     """
     for attempt in range(retries + 1):
         try:
-            resp = await _client.get(path, params=params or {})
+            url = f"{_WIBU_BASE}{path}"
+            resp = await _client.get(url, params=params or {})
 
             if resp.status_code == 429 and attempt < retries:
                 # Rate limited, backoff and retry
