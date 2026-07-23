@@ -78,22 +78,26 @@ class AniListClient:
         if sort != "asc" and sort_by[0] not in ("TITLE_ROMAJI",):
             sort_by = [sort_by[0] + "_DESC"]
 
-        # Build dynamic filter string
+        # Build dynamic filter string and variable declarations
         media_filters = "type:ANIME"
-        variables = {"search": search, "page": page, "perPage": per_page}
+        variables: dict = {"search": search, "page": page, "perPage": per_page}
+        var_decls = ["$search:String", "$page:Int", "$perPage:Int"]
 
         if status_in:
             media_filters += ",status_in:$status_in"
             variables["status_in"] = status_in
+            var_decls.append("$status_in:[MediaStatus]")
         if format_in:
             media_filters += ",format_in:$format_in"
             variables["format_in"] = format_in
+            var_decls.append("$format_in:[MediaFormat]")
         if genre_in:
             media_filters += ",genre_in:$genre_in"
             variables["genre_in"] = genre_in
+            var_decls.append("$genre_in:[String]")
 
         query = f"""
-        query ($search:String,$page:Int,$perPage:Int,$status_in:[MediaStatus],$format_in:[MediaFormat],$genre_in:[String]){{
+        query ({','.join(var_decls)}){{
           Page(page:$page,perPage:$perPage){{
             pageInfo{{total currentPage hasNextPage}}
             media(search:$search,{media_filters},sort:{sort_by[0]}){{
