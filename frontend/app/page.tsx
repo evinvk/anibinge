@@ -20,18 +20,6 @@ async function TrendingRow({ data }: { data: any }) {
   return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
 }
 
-async function AiringRow() {
-  const res = await safeFetch(() => api.airing());
-  if (!res) return null;
-  return <CarouselRow title="Currently Airing" href="/browse?status=airing" items={res.data} />;
-}
-
-async function SeasonalRow() {
-  const res = await safeFetch(() => api.currentSeason());
-  if (!res) return null;
-  return <CarouselRow title="This Season" href="/seasonal" items={res.data} />;
-}
-
 export default async function HomePage() {
   const trendingRes = await safeFetch(() => api.trending());
   const trendingData = trendingRes?.data;
@@ -43,12 +31,6 @@ export default async function HomePage() {
 
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
         <TrendingRow data={trendingData} />
-      </Suspense>
-      <Suspense fallback={<CarouselRow title="Currently Airing" loading />}>
-        <AiringRow />
-      </Suspense>
-      <Suspense fallback={<CarouselRow title="This Season" loading />}>
-        <SeasonalRow />
       </Suspense>
 
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
