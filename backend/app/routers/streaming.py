@@ -643,9 +643,13 @@ async def anivexa_master_m3u8(
             raise HTTPException(status_code=404, detail="Stream not available")
 
         m3u8_url = result["stream_url"]
+        referer = result.get("referer")
 
         # Fetch the M3U8 content and rewrite URLs to proxy through us
-        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
+        fetch_headers = {**_PROXY_HEADERS}
+        if referer:
+            fetch_headers["Referer"] = referer
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=fetch_headers, follow_redirects=True)
         resp = await client.get(m3u8_url)
         resp.raise_for_status()
         m3u8_text = resp.text

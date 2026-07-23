@@ -56,12 +56,13 @@ async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "
     for provider in _PROVIDERS:
         data = await get_stream_data(anilist_id, episode, provider, audio)
         if data and not data.get("error"):
-            m3u8_url, subtitles = _extract_stream_info(data, audio)
+            m3u8_url, subtitles, m3u8_referer = _extract_stream_info(data, audio)
             if m3u8_url:
                 return {
                     "source": "anivexa",
                     "provider": provider,
                     "stream_url": m3u8_url,
+                    "referer": m3u8_referer,
                     "subtitles": subtitles,
                 }
     return {}
@@ -76,10 +77,12 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
         ssub = data
 
     m3u8_url = None
+    m3u8_referer = None
     streams = ssub.get("streams", [])
     for s in streams:
         if s.get("type") == "hls" and s.get("url"):
             m3u8_url = s["url"]
+            m3u8_referer = s.get("referer")
             break
 
     # Extract subtitles with referer from matching stream source
@@ -105,7 +108,7 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
                 "referer": referer,
             })
 
-    return m3u8_url, subtitles
+    return m3u8_url, subtitles, m3u8_referer
 
 
 async def health_check() -> bool:
