@@ -42,7 +42,7 @@ export function NotificationBell() {
           setPushError("Permission not granted.");
           return;
         }
-      } catch {
+      } catch (e) {
         setPushError("Permission request failed.");
         return;
       }
@@ -58,14 +58,14 @@ export function NotificationBell() {
         if (!success) {
           const perm = typeof Notification !== "undefined" ? Notification.permission : "unknown";
           if (perm === "denied") {
-            setPushError("Notifications blocked. Enable in browser settings.");
+            setPushError("Notifications blocked by browser.");
           } else {
-            setPushError("Could not enable notifications.");
+            setPushError("Enable failed. Try: Browser Settings > Site Settings > Notifications > anibinge.fun > Allow.");
           }
         }
       }
-    } catch {
-      setPushError("Something went wrong.");
+    } catch (e: any) {
+      setPushError(e?.message || "Something went wrong.");
     } finally {
       setToggling(false);
     }

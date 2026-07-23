@@ -165,28 +165,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   const enablePush = useCallback(async (): Promise<boolean> => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
-      console.warn("Push notifications not supported");
+      console.warn("Push not supported");
       return false;
     }
 
     try {
       const perm = getPermissionState();
-      if (perm === "denied") {
-        console.warn("Notifications blocked by user");
-        return false;
-      }
-      if (perm !== "granted") {
-        console.warn("Permission not yet granted:", perm);
-        return false;
-      }
+      if (perm === "denied") return false;
+      if (perm !== "granted") return false;
 
-      // Get or register service worker
       let reg = await navigator.serviceWorker.getRegistration("/");
       if (!reg) {
         reg = await navigator.serviceWorker.register("/sw.js");
       }
 
-      // Wait for active state
       if (reg.installing || reg.waiting) {
         await new Promise<void>((resolve) => {
           const sw = reg!.installing || reg!.waiting;
@@ -207,18 +199,23 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       let sub = await reg.pushManager.getSubscription();
 
       if (!sub) {
-        // Fetch VAPID key
         const API_BASE = process.env.NEXT_PUBLIC_API_URL;
         if (!API_BASE) {
           console.error("NEXT_PUBLIC_API_URL not set");
           return false;
         }
+        console.log("[Push] Fetching VAPID from:", `${API_BASE}/api/v1/notifications/vapid-key`);
         const res = await fetch(`${API_BASE}/api/v1/notifications/vapid-key`);
-        if (!res.ok) throw new Error(`VAPID key failed: ${res.status}`);
+        if (!res.ok) {
+          console.error("[Push] VAPID fetch failed:", res.status);
+          throw new Error(`VAPID key failed: ${res.status}`);
+        }
         const { public_key } = await res.json();
+        console.log("[Push] Got VAPID key, subscribing...");
         const applicationServerKey = urlBase64ToUint8Array(public_key);
 
         sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey });
+        console.log("[Push] Subscribed successfully");
       }
 
       const subJson = sub.toJSON();
@@ -228,6 +225,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       if (token) {
         const API_BASE = process.env.NEXT_PUBLIC_API_URL;
         if (!API_BASE) throw new Error("API URL not configured");
+        console.log("[Push] Registering with backend...");
         const subRes = await fetch(`${API_BASE}/api/v1/notifications/subscribe`, {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -235,15 +233,17 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         });
         if (!subRes.ok) {
           const body = await subRes.json().catch(() => ({}));
-          throw new Error(`Subscribe API ${subRes.status}: ${JSON.stringify(body)}`);
+          console.error("[Push] Backend subscribe failed:", subRes.status, body);
+          throw new Error(`Subscribe API ${subRes.status}`);
         }
+        console.log("[Push] Backend registered");
       }
 
       storeSub({ endpoint: sub.endpoint, p256dh, auth });
       setPushEnabled(true);
       return true;
     } catch (err) {
-      console.error("Failed to enable push:", err);
+      console.error("[Push] FAILED:", err);
       return false;
     }
   }, [token]);
