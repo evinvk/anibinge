@@ -153,7 +153,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           // If video is already playing, add tracks now
           const video = videoRef.current;
           if (video && hlsRef.current) {
-            proxiedSubs.forEach((sub) => {
+            proxiedSubs.forEach((sub: Subtitle) => {
               const track = document.createElement("track");
               track.kind = sub.kind || "captions";
               track.label = sub.label;
