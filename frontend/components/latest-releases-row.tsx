@@ -10,11 +10,11 @@ interface LatestReleasesRowProps {
 
 function SkeletonCard() {
   return (
-    <div className="glass-card w-36 shrink-0 animate-pulse sm:w-44">
-      <div className="aspect-[2/3] w-full rounded-t-xl2 bg-surface-hi" />
-      <div className="space-y-2 p-3">
+    <div className="glass-card h-full w-full animate-pulse">
+      <div className="aspect-[2/3] w-full shrink-0 rounded-t-xl2 bg-surface-hi" />
+      <div className="flex h-28 flex-col justify-start p-3">
         <div className="h-3.5 w-4/5 rounded bg-surface-hi" />
-        <div className="h-3 w-1/2 rounded bg-surface-hi" />
+        <div className="mt-auto h-3 w-1/2 rounded bg-surface-hi" />
       </div>
     </div>
   );
@@ -25,9 +25,9 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
   const epLabel = item.latest_episode ? `Ep ${item.latest_episode}` : null;
 
   return (
-    <Link href={`/watch/${item.slug}`} className="group block">
-      <div className="glass-card aura-border w-full transition-transform duration-200 group-hover:-translate-y-1">
-        <div className="relative aspect-[2/3] w-full overflow-hidden rounded-t-xl2">
+    <Link href={`/watch/${item.slug}`} className="group block h-full">
+      <div className="glass-card aura-border flex h-full flex-col transition-transform duration-200 group-hover:-translate-y-1">
+        <div className="relative aspect-[2/3] w-full shrink-0 overflow-hidden rounded-t-xl2">
           {item.poster ? (
             <Image
               src={item.poster}
@@ -68,11 +68,11 @@ function LatestCard({ item }: { item: GogoAnimeItem }) {
           </div>
         </div>
 
-        <div className="p-3">
+        <div className="flex h-28 flex-col justify-start p-3">
           <h3 className="line-clamp-2 font-display text-sm font-semibold leading-snug text-paper">
             {title}
           </h3>
-          <p className="mt-1 truncate text-xs text-mist">
+          <p className="mt-auto truncate text-xs text-mist">
             {[item.type, epLabel].filter(Boolean).join(" · ") || "\u00A0"}
           </p>
         </div>
