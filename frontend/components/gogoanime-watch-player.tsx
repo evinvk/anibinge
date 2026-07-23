@@ -364,7 +364,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
               className="h-full w-full"
               controls
               playsInline
-            />
+            >
+              {subtitles.map((sub, i) => (
+                <track
+                  key={i}
+                  src={sub.file}
+                  label={sub.label}
+                  srcLang={sub.language}
+                  kind="subtitles"
+                  default={sub.default}
+                />
+              ))}
+            </video>
             {activeCues.length > 0 && (
               <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none">
                 {activeCues.map((text, i) => (
