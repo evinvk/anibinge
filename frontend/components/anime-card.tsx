@@ -22,7 +22,7 @@ function formatDate(dateStr: string | null): string | null {
 
 export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
   const isAiring = anime.status === "Currently Airing" || anime.status === "RELEASING";
-  const isUpcoming = anime.status === "Not yet aired" || anime.status === "NOT_YET_RELEASED";
+  const isUpcoming = anime.status === "Not yet aired" || anime.status === "NOT_YET_RELEASED" || anime.status === "Upcoming";
   const releaseDate = formatDate(anime.start_date);
 
   const metaLine = [
@@ -90,6 +90,7 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             <p className="mt-1.5 flex items-center gap-1 text-xs font-medium text-primary-400">
               <Clock className="h-3 w-3 shrink-0" />
               {releaseDate}
+              {anime.air_time && ` at ${anime.air_time}`}
             </p>
           )}
         </div>

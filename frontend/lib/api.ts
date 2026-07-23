@@ -1,8 +1,8 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export interface AnimeSummary {
-  id: number;
-  source: "mal" | "jikan" | "anilist";
+  id: number | string;
+  source: "mal" | "jikan" | "anilist" | "animeschedule";
   title: string;
   title_english: string | null;
   image: string | null;
@@ -17,6 +17,7 @@ export interface AnimeSummary {
   season: string | null;
   format: string | null;
   start_date: string | null;
+  air_time?: string | null;
 }
 
 export interface GogoAnimeItem {

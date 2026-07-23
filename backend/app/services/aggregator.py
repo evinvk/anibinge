@@ -28,6 +28,7 @@ async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
     """Replace broken/animeschedule images with AniList CDN images using MAL IDs."""
     mal_ids = [r["id"] for r in results if isinstance(r.get("id"), int)]
     if not mal_ids:
+        logger.info("AniList enrichment: no MAL IDs found, skipping")
         return results
     try:
         query = """
@@ -41,7 +42,13 @@ async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
           }
         }
         """
-        data = await anilist_client._query(query, {"ids": mal_ids})
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://graphql.anilist.co",
+                json={"query": query, "variables": {"ids": mal_ids}},
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", {})
         image_map = {}
         for m in data.get("Page", {}).get("media", []):
             mid = m.get("idMal")
@@ -173,7 +180,16 @@ def _normalize_gogoanime(item: dict) -> dict:
 def _normalize_animeschedule(item: dict) -> dict:
     """Normalize AnimeSchedule /anime response to standard schema."""
     premier = item.get("premier") or item.get("subPremier") or ""
-    start_date = premier[:10] if premier else None
+    start_date = premier[:10] if premier and not premier.startswith("0001") else None
+    if not start_date:
+        month = item.get("month") or ""
+        year = item.get("year") or ""
+        if month and year and int(year) > 2000:
+            month_map = {"January": "01", "February": "02", "March": "03", "April": "04",
+                         "May": "05", "June": "06", "July": "07", "August": "08",
+                         "September": "09", "October": "10", "November": "11", "December": "12"}
+            mm = month_map.get(month, "01")
+            start_date = f"{year}-{mm}-01"
     names = item.get("names") or {}
     image_route = item.get("imageVersionRoute", "")
     image = f"https://img.animeschedule.net/v3/img/{image_route}" if image_route else None
@@ -220,7 +236,16 @@ def _normalize_animeschedule_timetable(item: dict) -> dict:
     genres = [g.get("name", "") for g in item.get("genres", [])]
     stats = item.get("stats") or {}
     premier = item.get("premier") or item.get("subPremier") or ""
-    start_date = premier[:10] if premier else None
+    start_date = premier[:10] if premier and not premier.startswith("0001") else None
+    if not start_date:
+        month = item.get("month") or ""
+        year = item.get("year") or ""
+        if month and year and int(year) > 2000:
+            month_map = {"January": "01", "February": "02", "March": "03", "April": "04",
+                         "May": "05", "June": "06", "July": "07", "August": "08",
+                         "September": "09", "October": "10", "November": "11", "December": "12"}
+            mm = month_map.get(month, "01")
+            start_date = f"{year}-{mm}-01"
     sub_time = item.get("subTime") or item.get("jpnTime") or ""
     air_time = sub_time[11:16] if len(sub_time) > 16 else None
     # Extract MAL ID from websites.mal URL if available

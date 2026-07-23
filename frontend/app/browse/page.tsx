@@ -23,8 +23,13 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   let data: Awaited<ReturnType<typeof api.search>>["data"] = [];
   let fetchFailed = false;
   try {
-    const res = await api.search(query, filters);
-    data = res.data;
+    if (params.status === "upcoming") {
+      const res = await api.upcoming(1);
+      data = res.data;
+    } else {
+      const res = await api.search(query, filters);
+      data = res.data;
+    }
   } catch (err) {
     console.error("Browse search failed:", err);
     fetchFailed = true;
@@ -32,8 +37,14 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <h1 className="font-display text-3xl font-bold">Browse</h1>
-      <p className="mt-1 text-mist">Search and filter across the full anime catalog.</p>
+      <h1 className="font-display text-3xl font-bold">
+        {params.status === "upcoming" ? "Upcoming Anime" : "Browse"}
+      </h1>
+      <p className="mt-1 text-mist">
+        {params.status === "upcoming"
+          ? "Anime scheduled to air soon."
+          : "Search and filter across the full anime catalog."}
+      </p>
 
       <BrowseFilters />
 
