@@ -1,13 +1,16 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Bell } from "lucide-react";
+import { Bell, BellOff, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/lib/notifications-context";
+import { useAuth } from "@/lib/auth-context";
 
 export function NotificationBell() {
-  const { unreadCount, latestArticles, markAsRead } = useNotifications();
+  const { unreadCount, latestArticles, markAsRead, enablePush, disablePush, pushEnabled } = useNotifications();
+  const { token } = useAuth();
   const [open, setOpen] = useState(false);
+  const [toggling, setToggling] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,6 +32,19 @@ export function NotificationBell() {
     setOpen(false);
   };
 
+  const handleTogglePush = async () => {
+    setToggling(true);
+    try {
+      if (pushEnabled) {
+        await disablePush();
+      } else {
+        await enablePush();
+      }
+    } finally {
+      setToggling(false);
+    }
+  };
+
   return (
     <div className="relative" ref={panelRef}>
       <button
@@ -47,16 +63,44 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-white/10 bg-surface shadow-2xl sm:w-96">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
-            <h3 className="text-sm font-semibold text-paper">News</h3>
-            {unreadCount > 0 && (
-              <button
-                onClick={handleMarkRead}
-                className="text-xs text-primary-400 hover:text-primary-300"
-              >
-                Mark all read
-              </button>
-            )}
+            <h3 className="text-sm font-semibold text-paper">Notifications</h3>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={handleMarkRead}
+                  className="text-xs text-primary-400 hover:text-primary-300"
+                >
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
+
+          {/* Push notification toggle */}
+          {token && (
+            <div className="flex items-center justify-between border-b border-white/5 px-4 py-2.5">
+              <span className="text-xs text-mist">Push notifications</span>
+              <button
+                onClick={handleTogglePush}
+                disabled={toggling}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                  pushEnabled
+                    ? "bg-primary-600/20 text-primary-400 hover:bg-primary-600/30"
+                    : "bg-white/5 text-mist hover:bg-white/10"
+                )}
+              >
+                {toggling ? (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                ) : pushEnabled ? (
+                  <Check className="h-3 w-3" />
+                ) : (
+                  <BellOff className="h-3 w-3" />
+                )}
+                {pushEnabled ? "On" : "Off"}
+              </button>
+            </div>
+          )}
 
           <div className="max-h-80 overflow-y-auto">
             {latestArticles.length === 0 ? (

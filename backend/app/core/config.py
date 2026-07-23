@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     # Admin bootstrap — promote this email to admin on startup
     ADMIN_EMAIL: str = ""
 
+    # Web Push notifications (VAPID)
+    VAPID_PRIVATE_KEY: str = ""
+    VAPID_PUBLIC_KEY: str = ""
+    VAPID_CLAIM_EMAIL: str = "mailto:admin@anibinge.fun"
+
     # Optional data sources
     TMDB_API_KEY: str = ""
     TMDB_BASE_URL: str = "https://api.themoviedb.org/3"

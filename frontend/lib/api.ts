@@ -229,4 +229,20 @@ export const api = {
     if (anilistId) path += `&anilist_id=${anilistId}`;
     return request<any>(path, 60);
   },
+
+  // Push notifications
+  getVapidKey: () =>
+    request<{ public_key: string }>(`/api/v1/notifications/vapid-key`, 86400),
+
+  subscribePush: (token: string, subscription: { endpoint: string; p256dh: string; auth: string }) =>
+    authedRequest<{ status: string }>("/api/v1/notifications/subscribe", token, {
+      method: "POST",
+      body: JSON.stringify(subscription),
+    }),
+
+  unsubscribePush: (token: string, subscription: { endpoint: string; p256dh: string; auth: string }) =>
+    authedRequest<{ status: string }>("/api/v1/notifications/unsubscribe", token, {
+      method: "POST",
+      body: JSON.stringify(subscription),
+    }),
 };

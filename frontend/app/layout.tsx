@@ -6,6 +6,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { NotificationsProvider } from "@/lib/notifications-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
+import { ServiceWorkerRegister } from "@/components/service-worker-register";
 
 const sora = Sora({ subsets: ["latin"], variable: "--font-sora", display: "swap" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -55,6 +56,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <NotificationsProvider>
               <div className="relative min-h-screen bg-aura-gradient bg-fixed">
+                <ServiceWorkerRegister />
                 <Navbar />
                 <main>{children}</main>
                 <Footer />

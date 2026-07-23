@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -21,6 +21,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     watchlist_entries: Mapped[list["WatchlistEntry"]] = relationship(back_populates="user")
+    push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user")
 
 
 class WatchlistEntry(Base):
@@ -48,3 +49,18 @@ class Review(Base):
     rating: Mapped[float] = mapped_column(Float)
     body: Mapped[str] = mapped_column(String)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+    __table_args__ = (UniqueConstraint("user_id", "endpoint", name="uq_user_endpoint"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"))
+    endpoint: Mapped[str] = mapped_column(String, index=True)
+    p256dh: Mapped[str] = mapped_column(String)
+    auth: Mapped[str] = mapped_column(String)
+    user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="push_subscriptions")

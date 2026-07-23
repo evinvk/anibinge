@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
-from app.routers import admin, anime, auth, news, schedule, search, seasonal, streaming, watchlist
+from app.routers import admin, anime, auth, news, notifications, schedule, search, seasonal, streaming, watchlist
 
 logging.basicConfig(
     level=logging.INFO,
@@ -88,6 +88,7 @@ app.include_router(watchlist.router)
 app.include_router(news.router)
 app.include_router(streaming.router)
 app.include_router(admin.router)
+app.include_router(notifications.router)
 
 
 @app.get("/api/health")
@@ -148,6 +149,9 @@ async def startup_event():
     import asyncio
     asyncio.create_task(gogoanime_client._load_catalog())
 
+    # Start background content checker for push notifications
+    asyncio.create_task(_content_checker_loop())
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -158,3 +162,103 @@ async def shutdown_event():
     logger.info("Anivexa client closed")
     await animeschedule_client.animeschedule.close()
     logger.info("AnimeSchedule client closed")
+
+
+# ---------- Background push notification checker ----------
+
+import asyncio
+from datetime import datetime
+
+_last_episode_check = None
+_last_news_check = None
+
+
+async def _content_checker_loop():
+    """Periodically check for new episodes and news, send push notifications."""
+    global _last_episode_check, _last_news_check
+    await asyncio.sleep(30)  # wait for startup to complete
+
+    if not settings.VAPID_PRIVATE_KEY:
+        logger.info("Push notifications disabled (no VAPID keys)")
+        return
+
+    # Initialize last check timestamps
+    _last_episode_check = datetime.utcnow()
+    _last_news_check = datetime.utcnow()
+
+    CHECK_INTERVAL = 15 * 60  # 15 minutes
+
+    while True:
+        try:
+            await _check_new_episodes()
+            await _check_new_news()
+        except Exception:
+            logger.exception("Content checker error")
+        await asyncio.sleep(CHECK_INTERVAL)
+
+
+async def _check_new_episodes():
+    """Check GogoAnime for new episodes and push notify."""
+    global _last_episode_check
+    try:
+        from app.services import gogoanime_client
+        from app.routers.notifications import send_push_to_all
+
+        catalog = gogoanime_client.get_catalog()
+        if not catalog:
+            return
+
+        # Sort by latest episode, take top 5
+        ongoing = [item for item in catalog if item.get("status") == "Ongoing"]
+        ongoing.sort(key=lambda x: x.get("latest_episode", 0) or 0, reverse=True)
+        top_items = ongoing[:5] if ongoing else catalog[:5]
+
+        if _last_episode_check:
+            # On subsequent runs, only notify if there are new episodes
+            for item in top_items:
+                slug = item.get("slug", "")
+                title = item.get("title", item.get("title_english", "New Episode"))
+                ep_num = item.get("latest_episode", "?")
+                body = f"Episode {ep_num} is now available!"
+                url = f"/anime/gogoanime/{slug}"
+                await send_push_to_all(title=title, body=body, url=url)
+        # else: first run, don't spam notifications
+
+        _last_episode_check = datetime.utcnow()
+    except Exception:
+        logger.debug("Episode check failed (non-critical)")
+
+
+async def _check_new_news():
+    """Check ANN RSS for new articles and push notify."""
+    global _last_news_check
+    try:
+        from app.services import ann_client
+        from app.routers.notifications import send_push_to_all
+
+        articles_result = await ann_client.get_anime_news(page=1, limit=5)
+        articles = articles_result.get("data", []) if isinstance(articles_result, dict) else []
+        if not articles:
+            return
+
+        if _last_news_check:
+            new_articles = [
+                a for a in articles
+                if a.get("published_at") and datetime.fromisoformat(a["published_at"].replace("Z", "+00:00")).replace(tzinfo=None) > _last_news_check
+            ]
+        else:
+            new_articles = []
+
+        if new_articles:
+            for article in new_articles[:3]:
+                title = article.get("title", "Anime News")
+                url = article.get("url", "/news")
+                await send_push_to_all(
+                    title="Anibinge News",
+                    body=title,
+                    url=url,
+                )
+
+        _last_news_check = datetime.utcnow()
+    except Exception:
+        logger.debug("News check failed (non-critical)")

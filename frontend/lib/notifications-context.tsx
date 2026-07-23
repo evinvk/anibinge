@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 
 interface NewsArticle {
   id: string;
@@ -25,11 +26,13 @@ interface NotificationsState {
   latestArticles: NewsArticle[];
   loading: boolean;
   markAsRead: () => void;
-  requestPushPermission: () => Promise<boolean>;
+  enablePush: () => Promise<boolean>;
+  disablePush: () => Promise<void>;
   pushEnabled: boolean;
 }
 
 const STORAGE_KEY = "anibinge:lastSeenNews";
+const PUSH_SUB_KEY = "anibinge:pushSub";
 const POLL_INTERVAL = 5 * 60 * 1000;
 
 const NotificationsContext = createContext<NotificationsState>({
@@ -37,7 +40,8 @@ const NotificationsContext = createContext<NotificationsState>({
   latestArticles: [],
   loading: true,
   markAsRead: () => {},
-  requestPushPermission: async () => false,
+  enablePush: async () => false,
+  disablePush: async () => {},
   pushEnabled: false,
 });
 
@@ -55,7 +59,33 @@ function setLastSeen(ts: number) {
   localStorage.setItem(STORAGE_KEY, String(ts));
 }
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+function getStoredSub(): { endpoint: string; p256dh: string; auth: string } | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem(PUSH_SUB_KEY);
+  return raw ? JSON.parse(raw) : null;
+}
+
+function storeSub(sub: { endpoint: string; p256dh: string; auth: string }) {
+  localStorage.setItem(PUSH_SUB_KEY, JSON.stringify(sub));
+}
+
+function clearStoredSub() {
+  localStorage.removeItem(PUSH_SUB_KEY);
+}
+
 export function NotificationsProvider({ children }: { children: React.ReactNode }) {
+  const { token } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [latestArticles, setLatestArticles] = useState<NewsArticle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,8 +94,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     lastSeenRef.current = getLastSeen();
-    if ("Notification" in window) {
-      setPushEnabled(Notification.permission === "granted");
+    // Check if push is actually enabled (permission + subscription exists)
+    if ("Notification" in window && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then((reg) => {
+        reg.pushManager.getSubscription().then((sub) => {
+          setPushEnabled(Notification.permission === "granted" && sub !== null);
+        });
+      });
     }
   }, []);
 
@@ -88,21 +123,12 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         return published > lastSeen;
       });
       setUnreadCount(unread.length);
-
-      if (unread.length > 0 && pushEnabled && document.visibilityState === "visible") {
-        if (Notification.permission === "granted") {
-          new Notification("Anibinge News", {
-            body: `${unread.length} new article${unread.length > 1 ? "s" : ""}: ${unread[0].title}`,
-            icon: "/icons/icon-192.png",
-          });
-        }
-      }
     } catch {
-      // silent fail — notifications are non-critical
+      // silent fail
     } finally {
       setLoading(false);
     }
-  }, [pushEnabled]);
+  }, []);
 
   useEffect(() => {
     checkForNews();
@@ -117,17 +143,70 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     setUnreadCount(0);
   }, []);
 
-  const requestPushPermission = useCallback(async () => {
-    if (!("Notification" in window)) return false;
+  const enablePush = useCallback(async (): Promise<boolean> => {
+    if (!("Notification" in window) || !("serviceWorker" in navigator)) return false;
+
     const perm = await Notification.requestPermission();
-    const granted = perm === "granted";
-    setPushEnabled(granted);
-    return granted;
-  }, []);
+    if (perm !== "granted") return false;
+
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+
+      if (!sub) {
+        // Get VAPID key from backend
+        const { public_key } = await api.getVapidKey();
+        const applicationServerKey = urlBase64ToUint8Array(public_key);
+
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey,
+        });
+      }
+
+      const subJson = sub.toJSON();
+      const p256dh = (subJson as any).keys?.p256dh || "";
+      const auth = (subJson as any).keys?.auth || "";
+
+      if (token) {
+        await api.subscribePush(token, {
+          endpoint: sub.endpoint,
+          p256dh,
+          auth,
+        });
+      }
+
+      storeSub({ endpoint: sub.endpoint, p256dh, auth });
+      setPushEnabled(true);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [token]);
+
+  const disablePush = useCallback(async () => {
+    try {
+      const sub = getStoredSub();
+      if (sub && token) {
+        await api.unsubscribePush(token, sub);
+      }
+
+      if ("serviceWorker" in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        const existing = await reg.pushManager.getSubscription();
+        if (existing) await existing.unsubscribe();
+      }
+
+      clearStoredSub();
+      setPushEnabled(false);
+    } catch {
+      // silent fail
+    }
+  }, [token]);
 
   return (
     <NotificationsContext.Provider
-      value={{ unreadCount, latestArticles, loading, markAsRead, requestPushPermission, pushEnabled }}
+      value={{ unreadCount, latestArticles, loading, markAsRead, enablePush, disablePush, pushEnabled }}
     >
       {children}
     </NotificationsContext.Provider>
