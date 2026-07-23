@@ -67,11 +67,15 @@ export function useHlsPlayer(
     }
   }
 
-  function resetPlayer() {
+  function destroyHls() {
     if (hlsRef.current) {
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+  }
+
+  function resetPlayer() {
+    destroyHls();
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(0);
@@ -95,5 +99,6 @@ export function useHlsPlayer(
     loadPlayer,
     setQuality,
     resetPlayer,
+    destroyHls,
   };
 }

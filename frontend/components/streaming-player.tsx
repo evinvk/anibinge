@@ -37,7 +37,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   useEffect(() => {
     searchAnime();
-    return () => player.resetPlayer();
+    return () => player.destroyHls();
   }, [animeTitle]);
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     if (player.masterUrl && videoRef.current) {
       player.loadPlayer(player.masterUrl);
     }
-    return () => player.resetPlayer();
+    return () => player.destroyHls();
   }, [player.masterUrl]);
 
   useEffect(() => {
@@ -105,7 +105,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.setLoadingStream(true);
     player.setError(null);
     subs.resetSubs();
-    player.resetPlayer();
+    player.destroyHls();
+    player.setStreamData(null);
+    player.setMasterUrl(null);
     player.fallbackAttemptedRef.current = false;
 
     let aid = resolvedAnilistRef.current;

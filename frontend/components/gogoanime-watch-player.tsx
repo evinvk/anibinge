@@ -54,7 +54,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   }, []);
 
   useEffect(() => {
-    return () => player.resetPlayer();
+    return () => player.destroyHls();
   }, [title]);
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     if (player.masterUrl && videoRef.current) {
       player.loadPlayer(player.masterUrl);
     }
-    return () => player.resetPlayer();
+    return () => player.destroyHls();
   }, [player.masterUrl]);
 
   useEffect(() => {
@@ -129,7 +129,9 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     player.setLoadingStream(true);
     player.setError(null);
     subs.resetSubs();
-    player.resetPlayer();
+    player.destroyHls();
+    player.setStreamData(null);
+    player.setMasterUrl(null);
     player.fallbackAttemptedRef.current = false;
 
     let aid = resolvedAnilistRef.current;
