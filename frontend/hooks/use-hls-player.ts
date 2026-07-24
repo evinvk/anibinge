@@ -53,7 +53,7 @@ export function useHlsPlayer(
         lastTime = video.currentTime;
         lastTimeChange = Date.now();
         freezeRecoveryRef.current = 0;
-      } else if (Date.now() - lastTimeChange > 4000) {
+      } else if (Date.now() - lastTimeChange > 2000) {
         const buffered = video.buffered;
         let seeked = false;
         for (let i = 0; i < buffered.length; i++) {
@@ -76,7 +76,7 @@ export function useHlsPlayer(
           }
         }
         lastTimeChange = Date.now();
-        if (freezeRecoveryRef.current >= 5) {
+        if (freezeRecoveryRef.current >= 3) {
           freezeRecoveryRef.current = 0;
           if (onFatalErrorRef.current) {
             onFatalErrorRef.current("videoFreeze");
@@ -164,7 +164,7 @@ export function useHlsPlayer(
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        enableWorker: false,
+        enableWorker: true,
         lowLatencyMode: false,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,

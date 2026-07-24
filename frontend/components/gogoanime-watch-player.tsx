@@ -167,7 +167,28 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: fallbackAttemptedRef.current });
 
+    if (errorType === "videoFreeze" && embedUrlRef.current) {
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setLoadingStream(false);
+      player.setPlayerStatus("idle");
+      setStatusText("");
+      return;
+    }
+
     if (fallbackAttemptedRef.current) {
+      if (embedUrlRef.current) {
+        player.destroyHls();
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        player.setError(null);
+        player.setLoadingStream(false);
+        player.setPlayerStatus("idle");
+        setStatusText("");
+        return;
+      }
       player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
       setStatusText("");

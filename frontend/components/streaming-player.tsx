@@ -151,11 +151,42 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       setStatusText("Trying Anivexa...");
       const ok = await tryAnivexa(currentEpRef.current);
       if (!ok) {
+        if (embedUrlRef.current) {
+          player.setError(null);
+          player.setLoadingStream(false);
+          setStatusText("");
+          return;
+        }
         player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
         setStatusText("");
       }
+    } else if (errorType === "videoFreeze" && player.masterUrl) {
+      if (embedUrlRef.current) {
+        player.destroyHls();
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        player.setError(null);
+        player.setLoadingStream(false);
+        player.setPlayerStatus("idle");
+        setStatusText("");
+        return;
+      }
+      const savedUrl = player.masterUrl;
+      player.destroyHls();
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      setStatusText("Restarting stream...");
+      player.setMasterUrl(null);
+      await new Promise(r => setTimeout(r, 500));
+      player.setMasterUrl(savedUrl);
     } else {
+      if (embedUrlRef.current) {
+        player.setError(null);
+        player.setLoadingStream(false);
+        setStatusText("");
+        return;
+      }
       player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
       setStatusText("");
