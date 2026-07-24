@@ -140,13 +140,18 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    Primary: AnimeSchedule API (ongoing anime with subTime for accurate timestamps).
-    Fallback: AniList GraphQL (RELEASING + UPDATED_AT_DESC with timeUntilAiring heuristic).
-    Both cross-reference with GogoAnime catalog for poster/slug matching.
+    Uses AniList GraphQL (RELEASING + POPULARITY_DESC) with nextAiringEpisode
+    data to estimate episode numbers and air times. Cross-references with
+    GogoAnime catalog for poster/slug matching.
     """
     try:
-        import re as _re
-        from app.services import gogoanime_client
+        from app.services import anilist_client, gogoanime_client
+
+        WEEK_SECONDS = 604800
+
+        fetch_limit = min(limit + 1, 50)
+        result = await anilist_client.get_schedule(page=page, per_page=fetch_limit)
+        media_list = result.get("Page", {}).get("media", [])
 
         gogo_catalog = gogoanime_client.get_catalog()
         gogo_index: dict[str, dict] = {}
@@ -155,107 +160,48 @@ async def get_recent_episodes(
             if title_key:
                 gogo_index[title_key] = item
 
-        def _parse_sub_time_ago(sub_time_str: str) -> float:
-            """Parse AnimeSchedule subTime string like '2h15m', '45m', '1d3h' into seconds ago."""
-            if not sub_time_str:
-                return 0
-            total = 0
-            for match in _re.finditer(r"(\d+)([dhm])", sub_time_str.lower()):
-                val = int(match.group(1))
-                unit = match.group(2)
-                if unit == "d":
-                    total += val * 86400
-                elif unit == "h":
-                    total += val * 3600
-                elif unit == "m":
-                    total += val * 60
-            return total
+        episodes = []
+        for m in media_list:
+            next_ep = m.get("nextAiringEpisode")
+            if not next_ep or not next_ep.get("episode"):
+                continue
 
-        def _match_gogo(title: str, title_jp: str = "") -> tuple[str | None, str | None]:
-            """Match title against GogoAnime catalog. Returns (poster, slug)."""
+            ep_num = next_ep["episode"] - 1
+            if ep_num < 1:
+                continue
+
+            time_until = next_ep.get("timeUntilAiring", 0) or 0
+            aired_ago = WEEK_SECONDS - time_until if time_until > 0 else 0
+
+            title_obj = m.get("title", {})
+            title = title_obj.get("english") or title_obj.get("romaji") or ""
+            title_jp = title_obj.get("romaji", "")
+
+            poster = None
+            slug = None
             for try_title in [title, title_jp]:
                 norm = gogoanime_client._normalize(try_title)
                 if norm and norm in gogo_index:
                     item = gogo_index[norm]
-                    return item.get("poster") or item.get("image"), item.get("slug")
-            return None, None
+                    poster = item.get("poster") or item.get("image")
+                    slug = item.get("slug")
+                    break
 
-        # Try AnimeSchedule first
-        episodes = []
-        try:
-            from app.services import animeschedule_client
-            result = await animeschedule_client.get_anime_list(
-                airing_statuses="ongoing", page=page, per_page=limit
-            )
-            for a in result:
-                title = a.get("name") or a.get("title", "")
-                title_jp = a.get("name_japanese", "")
-                ep_num = a.get("episodeNumber") or a.get("episode")
-                if not ep_num:
-                    continue
+            if not poster:
+                cover = m.get("coverImage", {})
+                poster = cover.get("large") or cover.get("extraLarge")
 
-                sub_time_str = a.get("subTime", "")
-                aired_ago = _parse_sub_time_ago(sub_time_str)
+            episodes.append({
+                "title": title,
+                "episode": ep_num,
+                "poster": poster,
+                "slug": slug,
+                "aired_ago": aired_ago,
+                "genres": m.get("genres", []),
+                "anilist_id": m.get("id"),
+            })
 
-                poster, slug = _match_gogo(title, title_jp)
-                if not poster:
-                    poster = a.get("picture") or a.get("image")
-
-                episodes.append({
-                    "title": title,
-                    "episode": ep_num,
-                    "poster": poster,
-                    "slug": slug,
-                    "aired_ago": aired_ago,
-                    "genres": a.get("genres", []),
-                    "anilist_id": None,
-                })
-        except Exception as e:
-            logger.warning("AnimeSchedule failed for recent, falling back to AniList: %s", e)
-
-        # Fallback to AniList if AnimeSchedule returned nothing
-        if not episodes:
-            WEEK_SECONDS = 604800
-            try:
-                from app.services import anilist_client
-                fetch_limit = min(limit + 1, 50)
-                result = await anilist_client.get_schedule(page=page, per_page=fetch_limit)
-                media_list = result.get("Page", {}).get("media", [])
-
-                for m in media_list:
-                    next_ep = m.get("nextAiringEpisode")
-                    if not next_ep or not next_ep.get("episode"):
-                        continue
-
-                    ep_num = next_ep["episode"] - 1
-                    if ep_num < 1:
-                        continue
-
-                    time_until = next_ep.get("timeUntilAiring", 0) or 0
-                    aired_ago = WEEK_SECONDS - time_until if time_until > 0 else 0
-
-                    title_obj = m.get("title", {})
-                    title = title_obj.get("english") or title_obj.get("romaji") or ""
-                    title_jp = title_obj.get("romaji", "")
-
-                    poster, slug = _match_gogo(title, title_jp)
-                    if not poster:
-                        cover = m.get("coverImage", {})
-                        poster = cover.get("large") or cover.get("extraLarge")
-
-                    episodes.append({
-                        "title": title,
-                        "episode": ep_num,
-                        "poster": poster,
-                        "slug": slug,
-                        "aired_ago": aired_ago,
-                        "genres": m.get("genres", []),
-                        "anilist_id": m.get("id"),
-                    })
-            except Exception as e2:
-                logger.error("AniList fallback also failed: %s", e2)
-
-        has_next = len(episodes) >= limit
+        has_next = len(episodes) > limit
         return {
             "data": episodes[:limit],
             "page": page,
