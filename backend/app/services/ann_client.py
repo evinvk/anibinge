@@ -16,20 +16,27 @@ import httpx
 
 from app.core.cache import cached
 from app.core.config import get_settings
-from app.core.http import get_shared_client
 
 logger = logging.getLogger("anibinge.ann")
 settings = get_settings()
 
-_client = get_shared_client(
-    timeout=20.0,
-    follow_redirects=True,
-    headers={
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        "Accept": "application/rss+xml, application/xml, text/xml, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-    },
-)
+_ann_http: httpx.AsyncClient | None = None
+
+
+def _get_ann_client() -> httpx.AsyncClient:
+    """Dedicated httpx client for ANN — avoids shared client header contamination."""
+    global _ann_http
+    if _ann_http is None or _ann_http.is_closed:
+        _ann_http = httpx.AsyncClient(
+            timeout=20.0,
+            follow_redirects=True,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "application/rss+xml, application/xml, text/xml, */*",
+                "Accept-Language": "en-US,en;q=0.9",
+            },
+        )
+    return _ann_http
 
 _ANN_BASE = "https://www.animenewsnetwork.com"
 
@@ -40,9 +47,10 @@ _RSS_REVIEWS = "/review/rss.xml"
 async def _fetch_rss(path: str, retries: int = 3) -> str:
     """Fetch raw XML text from an ANN RSS endpoint."""
     last_exc = None
+    client = _get_ann_client()
     for attempt in range(retries + 1):
         try:
-            resp = await _client.get(f"{_ANN_BASE}{path}")
+            resp = await client.get(f"{_ANN_BASE}{path}")
             if resp.status_code == 429 and attempt < retries:
                 await asyncio.sleep(2 * (attempt + 1))
                 continue
