@@ -3,18 +3,15 @@
 import { useState, useEffect } from "react";
 import { api } from "@/lib/api";
 import { LatestReleasesRow } from "@/components/latest-releases-row";
-import type { GogoAnimeItem } from "@/lib/api";
-
-const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+import type { RecentEpisode } from "@/lib/api";
 
 export function LatestReleasesSection() {
-  const [items, setItems] = useState<GogoAnimeItem[]>([]);
+  const [items, setItems] = useState<RecentEpisode[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const today = DAYS[new Date().getDay()];
     api
-      .gogoanimeLatest(today)
+      .recentEpisodes(20)
       .then((res) => setItems(res.data || []))
       .catch(() => setItems([]))
       .finally(() => setLoading(false));

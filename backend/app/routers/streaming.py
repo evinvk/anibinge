@@ -138,14 +138,80 @@ async def get_recent_episodes(
     limit: int = Query(20, ge=1, le=50, description="Results per page"),
 ):
     """
-    Get recently uploaded episodes across all anime on Wibu.
-    
-    Useful for "Latest Episodes" section showing recently aired/uploaded content.
+    Get recently uploaded episodes across all anime.
+
+    Uses AniList for recently updated airing anime + GogoAnime catalog for
+    poster/slug matching. Returns episode-level cards with title, poster,
+    episode number, sub/dub indicator, and relative time.
     """
     try:
-        data = await wibu_client.get_recent_episodes(page=page, limit=limit)
-        return data
+        import time as _time
+        from app.services import anilist_client, gogoanime_client
+
+        WEEK_SECONDS = 604800
+
+        result = await anilist_client.get_schedule(page=page, per_page=limit)
+        media_list = result.get("Page", {}).get("media", [])
+
+        gogo_catalog = gogoanime_client.get_catalog()
+        gogo_index: dict[str, dict] = {}
+        for item in gogo_catalog:
+            title_key = gogoanime_client._normalize(item.get("title", ""))
+            if title_key:
+                gogo_index[title_key] = item
+
+        episodes = []
+        for m in media_list:
+            next_ep = m.get("nextAiringEpisode")
+            if not next_ep or not next_ep.get("episode"):
+                continue
+
+            ep_num = next_ep["episode"] - 1
+            if ep_num < 1:
+                continue
+
+            time_until = next_ep.get("timeUntilAiring", 0) or 0
+
+            # Estimate when the latest episode aired relative to now.
+            # Weekly anime: last ep aired ~7 days before the next one.
+            if time_until > 0:
+                aired_ago = WEEK_SECONDS - time_until
+            else:
+                aired_ago = 0
+
+            title_obj = m.get("title", {})
+            title = title_obj.get("english") or title_obj.get("romaji") or ""
+            title_jp = title_obj.get("romaji", "")
+
+            # Cross-reference with GogoAnime catalog for poster/slug
+            poster = None
+            slug = None
+            for try_title in [title, title_jp, title_obj.get("english", "")]:
+                norm = gogoanime_client._normalize(try_title)
+                if norm and norm in gogo_index:
+                    item = gogo_index[norm]
+                    poster = item.get("poster") or item.get("image")
+                    slug = item.get("slug")
+                    break
+
+            # Fall back to AniList cover image
+            if not poster:
+                cover = m.get("coverImage", {})
+                poster = cover.get("large") or cover.get("extraLarge")
+
+            episodes.append({
+                "title": title,
+                "episode": ep_num,
+                "poster": poster,
+                "slug": slug,
+                "aired_ago": aired_ago,
+                "genres": m.get("genres", []),
+                "anilist_id": m.get("id"),
+            })
+
+        return {"data": episodes}
     except Exception as e:
+        logger.warning("Recent episodes failed: %s", e)
         raise HTTPException(status_code=503, detail="Recent episodes unavailable")
 
 

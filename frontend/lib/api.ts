@@ -33,6 +33,16 @@ export interface GogoAnimeItem {
   status: string | null;
 }
 
+export interface RecentEpisode {
+  title: string;
+  episode: number;
+  poster: string | null;
+  slug: string | null;
+  aired_ago: number;
+  genres: string[];
+  anilist_id: number | null;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -222,6 +232,13 @@ export const api = {
     ),
   gogoanimeHealth: () =>
     request<{ healthy: boolean; reason?: string }>(`/api/v1/streaming/gogoanime/health`, 120),
+
+  // Recent episodes (episode-level data from AniList + GogoAnime catalog)
+  recentEpisodes: (limit = 20) =>
+    request<{ data: RecentEpisode[] }>(
+      `/api/v1/streaming/recent?limit=${limit}`,
+      300
+    ),
 
   // Anivexa fallback streaming
   anivexaSearch: (q: string) =>
