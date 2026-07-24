@@ -40,13 +40,7 @@ export function BrowseFilters() {
       <div className="flex flex-1 min-w-[200px] items-center gap-2 rounded-full bg-surface-hi px-4 py-2">
         <Search className="h-4 w-4 text-mist" />
         <input
-          value={currentQ}
-          onChange={(e) => {
-            const params = new URLSearchParams(searchParams.toString());
-            if (e.target.value) params.set("q", e.target.value);
-            else params.delete("q");
-            router.push(`${pathname}?${params.toString()}`);
-          }}
+          defaultValue={currentQ}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               setParam("q", (e.target as HTMLInputElement).value);
