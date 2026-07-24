@@ -25,6 +25,17 @@ def _is_valid_results(results: list[dict]) -> bool:
     return any(r.get("id") is not None for r in results)
 
 
+_anilist_http: httpx.AsyncClient | None = None
+
+
+def _get_anilist_client() -> httpx.AsyncClient:
+    """Dedicated httpx client for AniList — no AnimeSchedule Bearer token."""
+    global _anilist_http
+    if _anilist_http is None or _anilist_http.is_closed:
+        _anilist_http = httpx.AsyncClient(timeout=20)
+    return _anilist_http
+
+
 async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
     """Replace broken/animeschedule images with AniList CDN images using MAL IDs."""
     mal_ids = [r["id"] for r in results if isinstance(r.get("id"), int)]
@@ -43,7 +54,7 @@ async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
           }
         }
         """
-        client = get_shared_client()
+        client = _get_anilist_client()
         resp = await client.post(
             "https://graphql.anilist.co",
             json={"query": query, "variables": {"ids": mal_ids}},
@@ -64,6 +75,30 @@ async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
         logger.info("Enriched %d results with AniList images", len(image_map))
     except Exception as e:
         logger.warning("AniList image enrichment failed: %s", e)
+        # Fallback: try MAL API for images in small batches
+        await _enrich_images_mal(results)
+    return results
+
+
+async def _enrich_images_mal(results: list[dict]) -> list[dict]:
+    """Fallback: enrich images via MyAnimeList API when AniList fails."""
+    missing = [r for r in results if not r.get("image") and isinstance(r.get("id"), int)]
+    if not missing:
+        return results
+    mal_client_mod = mal_client
+    enriched = 0
+    for r in missing[:12]:
+        try:
+            data = await mal_client_mod.get_anime_details(r["id"])
+            pic = data.get("main_picture", {})
+            img = pic.get("large") or pic.get("medium")
+            if img:
+                r["image"] = img
+                enriched += 1
+        except Exception as e:
+            logger.debug("MAL image fetch failed for %s: %s", r["id"], e)
+    if enriched:
+        logger.info("MAL fallback enriched %d images", enriched)
     return results
 
 
