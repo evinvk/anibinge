@@ -44,9 +44,10 @@ export function useHlsPlayer(
     let lastTimeChange = Date.now();
     let rafId: number;
     const checkFreeze = () => {
-      if (!video || video.paused || video.ended || video.readyState < 2) {
+      if (!video || video.paused || video.ended || video.readyState < 2 || isSeekingRef.current) {
         lastTime = video.currentTime;
         lastTimeChange = Date.now();
+        bufferingStartRef.current = 0;
         rafId = requestAnimationFrame(checkFreeze);
         return;
       }
@@ -100,9 +101,25 @@ export function useHlsPlayer(
       lastTimeChange = Date.now();
     };
     const onPause = () => {};
+    const isSeekingRef = { current: false };
+    let seekTimer: ReturnType<typeof setTimeout> | null = null;
+    const onSeeking = () => {
+      isSeekingRef.current = true;
+      bufferingStartRef.current = 0;
+      freezeRecoveryRef.current = 0;
+      if (seekTimer) clearTimeout(seekTimer);
+    };
+    const onSeeked = () => {
+      lastTime = video.currentTime;
+      lastTimeChange = Date.now();
+      if (seekTimer) clearTimeout(seekTimer);
+      seekTimer = setTimeout(() => { isSeekingRef.current = false; }, 1000);
+    };
     const onWaiting = () => {
       setPlayerStatus("buffering");
-      if (!bufferingStartRef.current) bufferingStartRef.current = Date.now();
+      if (!isSeekingRef.current && !bufferingStartRef.current) {
+        bufferingStartRef.current = Date.now();
+      }
     };
     const onPlaying = () => {
       setPlayerStatus("playing");
@@ -119,7 +136,7 @@ export function useHlsPlayer(
       setPlayerStatus("buffering");
       if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
       stallTimerRef.current = setTimeout(() => {
-        if (!video || video.paused || video.ended) return;
+        if (!video || video.paused || video.ended || isSeekingRef.current) return;
         const currentTime = video.currentTime;
         const buffered = video.buffered;
         if (buffered.length > 0) {
@@ -143,15 +160,20 @@ export function useHlsPlayer(
     };
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
+    video.addEventListener("seeking", onSeeking);
+    video.addEventListener("seeked", onSeeked);
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("stalled", onStalled);
     return () => {
       cancelAnimationFrame(rafId);
+      if (seekTimer) clearTimeout(seekTimer);
       bufferingStartRef.current = 0;
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
+      video.removeEventListener("seeking", onSeeking);
+      video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
