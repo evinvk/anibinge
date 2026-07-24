@@ -33,6 +33,7 @@ export function useHlsPlayer(
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaErrorRetryRef = useRef(0);
   const freezeRecoveryRef = useRef(0);
+  const bufferingStartRef = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
 
@@ -83,6 +84,12 @@ export function useHlsPlayer(
           }
         }
       }
+      if (bufferingStartRef.current > 0 && Date.now() - bufferingStartRef.current > 8000) {
+        bufferingStartRef.current = 0;
+        if (onFatalErrorRef.current) {
+          onFatalErrorRef.current("videoFreeze");
+        }
+      }
       rafId = requestAnimationFrame(checkFreeze);
     };
     rafId = requestAnimationFrame(checkFreeze);
@@ -93,15 +100,20 @@ export function useHlsPlayer(
       lastTimeChange = Date.now();
     };
     const onPause = () => {};
-    const onWaiting = () => setPlayerStatus("buffering");
+    const onWaiting = () => {
+      setPlayerStatus("buffering");
+      if (!bufferingStartRef.current) bufferingStartRef.current = Date.now();
+    };
     const onPlaying = () => {
       setPlayerStatus("playing");
+      bufferingStartRef.current = 0;
       mediaErrorRetryRef.current = 0;
       lastTime = video.currentTime;
       lastTimeChange = Date.now();
     };
     const onCanPlay = () => {
       setPlayerStatus("playing");
+      bufferingStartRef.current = 0;
     };
     const onStalled = () => {
       setPlayerStatus("buffering");
@@ -137,6 +149,7 @@ export function useHlsPlayer(
     video.addEventListener("stalled", onStalled);
     return () => {
       cancelAnimationFrame(rafId);
+      bufferingStartRef.current = 0;
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("waiting", onWaiting);

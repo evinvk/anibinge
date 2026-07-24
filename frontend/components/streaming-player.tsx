@@ -223,19 +223,25 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
-    if (player.sourceRef.current === "gogoanime") {
+    player.destroyHls();
+    player.setStreamData(null);
+    player.setMasterUrl(null);
+    player.setError(null);
+    player.setPlayerStatus("idle");
+
+    if (errorType === "videoFreeze" && embedUrlRef.current) {
+      player.setLoadingStream(false);
+      setStatusText("");
+      return;
+    }
+
+    if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === "anivexa") {
       player.sourceRef.current = null;
-      player.destroyHls();
       player.setLoadingStream(true);
-      player.setStreamData(null);
-      player.setMasterUrl(null);
-      player.setError(null);
-      player.setPlayerStatus("idle");
-      setStatusText("Trying Anivexa...");
+      setStatusText("Trying other sources...");
       const ok = await tryAnivexaOnly(currentEpRef.current);
       if (!ok) {
         if (embedUrlRef.current) {
-          player.setError(null);
           player.setLoadingStream(false);
           setStatusText("");
           return;
@@ -244,24 +250,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setLoadingStream(false);
         setStatusText("");
       }
-    } else if (errorType === "videoFreeze" && player.masterUrl) {
-      const savedUrl = player.masterUrl;
-      player.destroyHls();
-      player.setStreamData(null);
-      player.setMasterUrl(null);
-      player.setError(null);
-      player.setPlayerStatus("idle");
-      if (embedUrlRef.current) {
-        player.setLoadingStream(false);
-        setStatusText("");
-        return;
-      }
-      setStatusText("Restarting stream...");
-      await new Promise(r => setTimeout(r, 500));
-      player.setMasterUrl(savedUrl);
     } else {
       if (embedUrlRef.current) {
-        player.setError(null);
         player.setLoadingStream(false);
         setStatusText("");
         return;

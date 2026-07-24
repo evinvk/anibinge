@@ -473,7 +473,8 @@ def _denormalize_anilist_detail(m: dict) -> dict:
     title = m.get("title") or {}
     score = m.get("averageScore")
     return {
-        "mal_id": m.get("id"),
+        "mal_id": m.get("idMal"),
+        "anilist_id": m.get("id"),
         "title": title.get("romaji") or title.get("english"),
         "title_english": title.get("english"),
         "title_japanese": title.get("native"),
@@ -563,6 +564,31 @@ async def get_detail(id_: int, source: str = "mal") -> dict:
     for fn in chain:
         result = await fn()
         if result:
+            # Ensure anilist_id is populated for streaming player
+            if not result.get("anilist_id"):
+                mal_id = result.get("mal_id")
+                if mal_id:
+                    try:
+                        query = """
+                        query($ids:[Int]){
+                          Page(page:1,perPage:1){
+                            media(idMal_in:$ids,type:ANIME){
+                              idMal
+                              id
+                            }
+                          }
+                        }
+                        """
+                        client = _get_anilist_client()
+                        resp = await client.post(
+                            "https://graphql.anilist.co",
+                            json={"query": query, "variables": {"ids": [mal_id]}},
+                        )
+                        media = resp.json().get("data", {}).get("Page", {}).get("media", [])
+                        if media:
+                            result["anilist_id"] = media[0].get("id")
+                    except Exception:
+                        pass
             return result
 
     logger.error("All detail sources failed for %s (tried: %s)", id_, tried)

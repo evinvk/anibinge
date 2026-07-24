@@ -349,6 +349,7 @@ class AniListClient:
         query($id:Int){
           Media(id:$id,type:ANIME){
             id
+            idMal
             title{
               romaji
               english
