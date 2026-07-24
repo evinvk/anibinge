@@ -254,6 +254,10 @@ export const api = {
   anivexaSubtitleProxy: (url: string) =>
     `${API_BASE}/api/v1/streaming/anivexa/subtitle?url=${encodeURIComponent(btoa(url))}`,
 
+  // Wibu streaming (3rd fallback)
+  wibuStream: (q: string, ep: number, server: string = "vidstream") =>
+    request<any>(`/api/v1/streaming/wibu/stream?q=${encodeURIComponent(q)}&ep=${ep}&server=${server}`, 30),
+
   // Fallback (tries GogoAnime, then Anivexa)
   fallbackSearch: (q: string) =>
     request<{ data: any[]; source: string }>(`/api/v1/streaming/fallback/search?q=${encodeURIComponent(q)}`, 300),

@@ -232,6 +232,75 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     return false;
   }, [animeTitle]);
 
+  const tryWibuOnly = useCallback(async (ep: number): Promise<boolean> => {
+    setStatusText("Trying Wibu...");
+    try {
+      const res = await api.wibuStream(animeTitle, ep).catch(() => null);
+      if (res && (res.stream_url || res.embed_url)) {
+        if (res.embed_url) {
+          setEmbedUrl(res.embed_url);
+          embedUrlRef.current = res.embed_url;
+        }
+        if (!res.stream_url) return false;
+        subs.setSubs((res.subtitles || []).map((s: any) => {
+          const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+          return { ...s, file: proxySubUrl };
+        }));
+        player.sourceRef.current = "anivexa";
+
+        if (res.stream_type === "mp4") {
+          const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+          player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+          player.setLoadingStream(false);
+          setStatusText("");
+          await new Promise(r => setTimeout(r, 100));
+          if (videoRef.current) {
+            videoRef.current.src = mp4Url;
+            videoRef.current.play().catch(() => {});
+          }
+          return true;
+        }
+
+        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+        let qualities = [{ quality: "Auto", url: hlsUrl }];
+        try {
+          const m3u8Resp = await fetch(hlsUrl);
+          if (m3u8Resp.ok) {
+            const m3u8Text = await m3u8Resp.text();
+            const parsed: { quality: string; url: string }[] = [];
+            const lines = m3u8Text.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                const bwMatch = line.match(/BANDWIDTH=(\d+)/);
+                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
+                const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
+                if (bwMatch && nextLine && !nextLine.startsWith("#")) {
+                  const bw = parseInt(bwMatch[1]);
+                  let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
+                  if (resMatch) label += ` (${resMatch[1]})`;
+                  const variantUrl = nextLine.startsWith("http")
+                    ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
+                    : nextLine.startsWith("/") ? nextLine : hlsUrl;
+                  parsed.push({ quality: label, url: variantUrl });
+                }
+              }
+            }
+            if (parsed.length > 1) qualities = parsed;
+          }
+        } catch { /* keep auto */ }
+
+        player.setMasterUrl(hlsUrl);
+        player.setStreamData({ qualities });
+        player.setLoadingStream(false);
+        setStatusText("");
+        return true;
+      }
+    } catch { /* fallback failed */ }
+    setStatusText("");
+    return false;
+  }, [animeTitle]);
+
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
     player.destroyHls();
@@ -249,18 +318,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === "anivexa") {
       player.sourceRef.current = null;
       player.setLoadingStream(true);
-      setStatusText("Trying other sources...");
-      const ok = await tryAnivexaOnly(currentEpRef.current);
-      if (!ok) {
-        if (embedUrlRef.current) {
-          player.setLoadingStream(false);
-          setStatusText("");
-          return;
-        }
-        player.setError(friendlyError("Playback error: " + errorType));
+
+      // Try all remaining sources
+      setStatusText("Trying Animetsu...");
+      const animetsuOk = await tryAnitsuOnly(currentEpRef.current);
+      if (animetsuOk) return;
+
+      setStatusText("Trying Anivexa...");
+      const anivexaOk = await tryAnivexaOnly(currentEpRef.current);
+      if (anivexaOk) return;
+
+      setStatusText("Trying Wibu...");
+      const wibuOk = await tryWibuOnly(currentEpRef.current);
+      if (wibuOk) return;
+
+      if (embedUrlRef.current) {
         player.setLoadingStream(false);
         setStatusText("");
+        return;
       }
+      player.setError(friendlyError("Playback error: " + errorType));
+      player.setLoadingStream(false);
+      setStatusText("");
     } else {
       if (embedUrlRef.current) {
         player.setLoadingStream(false);
@@ -271,7 +350,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setLoadingStream(false);
       setStatusText("");
     }
-  }, [tryAnivexaOnly]);
+  }, [tryAnitsuOnly, tryAnivexaOnly, tryWibuOnly]);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
@@ -327,6 +406,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.setPlayerStatus("idle");
 
     // 1. Try Animetsu (kwik/anipm) first
+    setStatusText("Trying Animetsu...");
     const anitsuOk = await tryAnitsuOnly(ep);
     if (anitsuOk) return;
 
@@ -346,15 +426,21 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     }
 
     // 3. Try Anivexa providers
+    setStatusText("Trying Anivexa...");
     const anivexaOk = await tryAnivexaOnly(ep);
     if (anivexaOk) return;
+
+    // 4. Try Wibu
+    setStatusText("Trying Wibu...");
+    const wibuOk = await tryWibuOnly(ep);
+    if (wibuOk) return;
 
     player.setLoadingStream(false);
     setStatusText("");
     if (!embedUrlRef.current) {
       player.setError("Streaming is temporarily unavailable. Try again later.");
     }
-  }, [tryAnitsuOnly, tryAnivexaOnly, animeTitle]);
+  }, [tryAnitsuOnly, tryAnivexaOnly, tryWibuOnly, animeTitle]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {

@@ -222,3 +222,111 @@ async def get_stream_url(anime_id: int, episode_number: int, server: str = "vids
     except Exception as e:
         logger.error("Get stream URL failed: %s", e)
         return {"error": str(e)}
+
+
+async def get_stream_data(anime_id: int, episode_number: int, server: str = "vidstream") -> dict:
+    """
+    Get normalized streaming data from Wibu API.
+    Returns format compatible with anivexa_client output:
+    {
+        "source": "wibu",
+        "provider": "vidstream",
+        "stream_url": "https://...",
+        "stream_type": "hls" | "mp4",
+        "referer": "",
+        "embed_url": null,
+        "subtitles": [...],
+    }
+    """
+    try:
+        sources = await get_episode_sources(anime_id, episode_number, server=server)
+        if "error" in sources and not sources.get("sources"):
+            # Try other servers
+            for fallback_server in ["streamtape", "doodstream", "mp4upload"]:
+                if fallback_server == server:
+                    continue
+                sources = await get_episode_sources(anime_id, episode_number, server=fallback_server)
+                if sources.get("sources"):
+                    server = fallback_server
+                    break
+            else:
+                return {}
+
+        if not sources.get("sources"):
+            return {}
+
+        stream_url = None
+        stream_type = "hls"
+        embed_url = None
+
+        for src in sources.get("sources", []):
+            url = src.get("url", "")
+            src_type = src.get("type", "")
+            if not url:
+                continue
+            if src_type == "embed":
+                if not embed_url:
+                    embed_url = url
+            elif "m3u8" in url or "hls" in src_type:
+                if not stream_url:
+                    stream_url = url
+                    stream_type = "hls"
+            elif "mp4" in url or src_type == "mp4":
+                if not stream_url:
+                    stream_url = url
+                    stream_type = "mp4"
+            else:
+                if not stream_url:
+                    stream_url = url
+
+        # Get subtitles
+        subtitles_data = await get_episode_subtitles(anime_id, episode_number)
+        subtitles = []
+        for sub in subtitles_data.get("subtitles", []):
+            if sub.get("url"):
+                subtitles.append({
+                    "file": sub["url"],
+                    "label": sub.get("label", sub.get("lang", "Unknown")),
+                    "language": sub.get("language", sub.get("lang", "en")),
+                    "kind": "captions",
+                    "default": sub.get("default", sub.get("lang", "").lower().startswith("english")),
+                    "source": "wibu",
+                    "referer": "",
+                })
+
+        if stream_url or embed_url:
+            return {
+                "source": "wibu",
+                "provider": server,
+                "stream_url": stream_url,
+                "stream_type": stream_type,
+                "referer": "",
+                "embed_url": embed_url,
+                "subtitles": subtitles,
+            }
+        return {}
+    except Exception as e:
+        logger.error("Wibu get_stream_data failed: %s", e)
+        return {}
+
+
+async def search_and_get_stream(query: str, episode: int, server: str = "vidstream") -> dict:
+    """
+    Search Wibu by title, then get stream data for the episode.
+    Returns normalized stream data or empty dict.
+    """
+    try:
+        search_result = await search_anime(query)
+        results = search_result.get("data", [])
+        if not results:
+            return {}
+
+        # Use the first match
+        anime_id = results[0].get("id")
+        if not anime_id:
+            return {}
+
+        return await get_stream_data(anime_id, episode, server)
+    except Exception as e:
+        logger.error("Wibu search_and_get_stream failed: %s", e)
+        return {}

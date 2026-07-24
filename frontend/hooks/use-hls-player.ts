@@ -253,8 +253,17 @@ export function useHlsPlayer(
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error("[HLS] Network error, retrying...", data.details);
-              hls.startLoad();
+              if (data.response?.code === 410) {
+                setPlayerStatus("error");
+                if (onFatalErrorRef.current) {
+                  onFatalErrorRef.current(data.type);
+                } else {
+                  setError("Playback error: " + data.type);
+                }
+              } else {
+                console.error("[HLS] Network error, retrying...", data.details);
+                hls.startLoad();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               mediaErrorRetryRef.current++;

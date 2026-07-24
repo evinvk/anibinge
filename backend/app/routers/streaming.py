@@ -517,6 +517,11 @@ _PROXY_ALLOWED_HOSTS = {
     "ani.pm", "cdn.ani.pm", "kwik.cx", "animepahe.ru",
     "animetsu-scraper-nine.vercel.app",
     "megaplay.buzz",
+    # Wibu/streaming CDN hosts
+    "vidcache.net", "sbplay.com", "sbplay2.com", "sbvideo.net",
+    "streamtape.com", "doodstream.com", "mp4upload.com", "streamsb.com",
+    "streamwish.to", "dood.pm", "dood.wf", "dood.watch",
+    "embtaku.pro", "kwik.cx", "pahe.win",
 }
 
 
@@ -686,6 +691,27 @@ async def anivexa_stream(
         raise HTTPException(status_code=503, detail="Anivexa stream unavailable")
 
 
+@router.get("/wibu/stream")
+@limiter.limit("30/minute")
+async def wibu_stream(
+    request: Request,
+    q: str = Query(..., min_length=2, description="Anime title to search"),
+    ep: int = Query(..., ge=1, description="Episode number"),
+    server: str = Query("vidstream", description="Streaming server"),
+):
+    """Search Wibu by title and get streaming URL for an episode.
+    Used as a third fallback source when Animetsu and Anivexa both fail."""
+    try:
+        result = await wibu_client.search_and_get_stream(q, ep, server)
+        if not result or (not result.get("stream_url") and not result.get("embed_url")):
+            raise HTTPException(status_code=404, detail="Stream not available on Wibu")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Wibu stream unavailable")
+
+
 @router.get("/anivexa/subtitle")
 @limiter.limit("120/minute")
 async def anivexa_subtitle_proxy(
@@ -775,6 +801,20 @@ _REFERER_MAP = {
     "hls.anidb.app": "https://anidb.app/",
     "fxpy7.watching.onl": "https://anidb.app/",
     "megaplay.buzz": "https://ani.pm/",
+    "vidcache.net": "https://wibuapi.com/",
+    "sbplay.com": "https://wibuapi.com/",
+    "sbplay2.com": "https://wibuapi.com/",
+    "sbvideo.net": "https://wibuapi.com/",
+    "streamtape.com": "https://wibuapi.com/",
+    "doodstream.com": "https://wibuapi.com/",
+    "dood.pm": "https://wibuapi.com/",
+    "dood.wf": "https://wibuapi.com/",
+    "dood.watch": "https://wibuapi.com/",
+    "mp4upload.com": "https://wibuapi.com/",
+    "streamsb.com": "https://wibuapi.com/",
+    "streamwish.to": "https://wibuapi.com/",
+    "embtaku.pro": "https://wibuapi.com/",
+    "pahe.win": "https://wibuapi.com/",
 }
 
 
