@@ -489,7 +489,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             onClick={() => {
               const dlUrl = api.downloadUrl({
                 slug,
-                anilistId: resolvedAnilistRef.current || undefined,
+                anilist_id: resolvedAnilistRef.current || undefined,
                 ep: currentEp,
                 audio,
                 filename: `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
