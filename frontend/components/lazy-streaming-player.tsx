@@ -7,6 +7,6 @@ const StreamingPlayer = dynamic(
   { ssr: false, loading: () => <div className="aspect-video w-full animate-pulse rounded-xl2 bg-surface-hi" /> }
 );
 
-export function LazyStreamingPlayer({ animeTitle, anilistId }: { animeTitle: string; anilistId: number }) {
+export function LazyStreamingPlayer({ animeTitle, anilistId }: { animeTitle: string; anilistId?: number }) {
   return <StreamingPlayer animeTitle={animeTitle} anilistId={anilistId} />;
 }
