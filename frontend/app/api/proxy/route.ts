@@ -18,6 +18,13 @@ function isBlockedHost(hostname: string): boolean {
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
 
+const AD_DOMAINS = new Set([
+  "p16-ad-sg.ibyteimg.com",
+  "p16-ad-sg.tiktokcdn.com",
+  "ad.doubleclick.net",
+  "ad.lgappstv.com",
+]);
+
 function proxyUrl(target: string, referer: string) {
   return `/api/proxy?url=${encodeURIComponent(target)}&referer=${encodeURIComponent(referer)}`;
 }
@@ -67,22 +74,51 @@ export async function GET(req: NextRequest) {
       const text = await resp.text();
       const baseUrl = url.substring(0, url.lastIndexOf("/") + 1);
 
-      let rewritten = text.replace(/^(?!#)(\S+)$/gm, (line) => {
-        try {
-          const absolute = line.startsWith("http://") || line.startsWith("https://")
-            ? line
-            : new URL(line, baseUrl).href;
-          return proxyUrl(absolute, referer);
-        } catch {
-          return line;
+      const lines = text.split("\n");
+      const filtered: string[] = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (line === "" || line.startsWith("#")) {
+          if (line.startsWith("#EXTINF")) {
+            const next = (i + 1 < lines.length) ? lines[i + 1].trim() : "";
+            if (next && !next.startsWith("#")) {
+              try {
+                const absolute = next.startsWith("http://") || next.startsWith("https://")
+                  ? next
+                  : new URL(next, baseUrl).href;
+                const host = new URL(absolute).hostname;
+                if (AD_DOMAINS.has(host) || host.endsWith(".ibyteimg.com")) {
+                  i++;
+                  continue;
+                }
+              } catch {}
+            }
+          }
+          filtered.push(line);
+        } else {
+          try {
+            const absolute = line.startsWith("http://") || line.startsWith("https://")
+              ? line
+              : new URL(line, baseUrl).href;
+            const host = new URL(absolute).hostname;
+            if (AD_DOMAINS.has(host) || host.endsWith(".ibyteimg.com")) continue;
+            filtered.push(proxyUrl(absolute, referer));
+          } catch {
+            filtered.push(line);
+          }
         }
-      });
+      }
+
+      let rewritten = filtered.join("\n");
 
       rewritten = rewritten.replace(/URI="([^"]+)"/g, (_match, uri: string) => {
         try {
           const absolute = uri.startsWith("http://") || uri.startsWith("https://")
             ? uri
             : new URL(uri, baseUrl).href;
+          const host = new URL(absolute).hostname;
+          if (AD_DOMAINS.has(host) || host.endsWith(".ibyteimg.com")) return _match;
           return `URI="${proxyUrl(absolute, referer)}"`;
         } catch {
           return _match;
@@ -106,7 +142,7 @@ export async function GET(req: NextRequest) {
     return new Response(resp.body, {
       status: 200,
       headers: {
-        "Content-Type": contentType || "video/mp2t",
+        "Content-Type": "video/mp2t",
         "Cache-Control": "public, max-age=3600",
         "Access-Control-Allow-Origin": "*",
       },

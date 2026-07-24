@@ -124,13 +124,28 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     return false;
   }, [slug, audio]);
 
+  const fallbackAttemptedRef = useRef(false);
+
   const onFatalError = useCallback(async (errorType: string) => {
-    console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
-    if (player.sourceRef.current === "gogoanime") {
-      player.sourceRef.current = null;
-      player.destroyHls();
-      player.setLoadingStream(true);
-      player.setError(null);
+    console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: fallbackAttemptedRef.current });
+    if (fallbackAttemptedRef.current) {
+      player.setError("Playback error: " + errorType);
+      player.setLoadingStream(false);
+      return;
+    }
+    fallbackAttemptedRef.current = true;
+    player.destroyHls();
+    player.setLoadingStream(true);
+    player.setError(null);
+
+    const currentSource = player.sourceRef.current;
+    if (currentSource === "anivexa") {
+      const ok = await tryGogoanime(currentEpRef.current);
+      if (!ok) {
+        player.setError("Playback error: " + errorType);
+        player.setLoadingStream(false);
+      }
+    } else if (currentSource === "gogoanime") {
       const ok = await tryAnivexa(currentEpRef.current);
       if (!ok) {
         player.setError("Playback error: " + errorType);
@@ -140,7 +155,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       player.setError("Playback error: " + errorType);
       player.setLoadingStream(false);
     }
-  }, [tryAnivexa]);
+  }, [tryAnivexa, tryGogoanime]);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
@@ -199,6 +214,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
+    fallbackAttemptedRef.current = false;
 
     const ok = await tryAnivexa(ep);
     if (ok) return;
