@@ -666,7 +666,7 @@ async def anivexa_stream(
         if source == "anitsu":
             from app.services import anitsu_client
             result = await anitsu_client.get_stream(anilist_id, ep)
-            if not result or not result.get("stream_url"):
+            if not result or (not result.get("stream_url") and not result.get("embed_url")):
                 raise HTTPException(status_code=404, detail="Stream not available on Animetsu")
             return result
         if source == "anivexa":

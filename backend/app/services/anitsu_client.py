@@ -120,9 +120,9 @@ async def _try_provider(
     if not sources:
         return None
 
+    has_ani_pm = any("ani.pm" in (s.get("originalUrl") or s.get("url", "")) for s in sources)
+
     # Pick the best source: prefer ani.pm HLS > other master HLS > mp4
-    # Master M3U8 always wins over iframe (which are embed pages, not playable streams)
-    # megap.kotocdn.site has ad segments (PNG images) but is still playable via hls.js
     best_source = None
     best_priority = 999
     for src in sources:
@@ -133,7 +133,8 @@ async def _try_provider(
             if "ani.pm" in url:
                 priority = 0
             elif "megap.kotocdn.site" in url:
-                priority = 1  # playable M3U8, has some ad segments but hls.js handles it
+                # Only usable when ani.pm variants exist; otherwise ad-filled segments freeze playback
+                priority = 0 if has_ani_pm else 98
             else:
                 priority = 1
         elif stype == "hls":
@@ -141,13 +142,37 @@ async def _try_provider(
         elif stype == "mp4":
             priority = 3
         elif stype == "iframe":
-            priority = 99  # last resort — embed pages, not directly playable
+            priority = 99
         else:
             priority = 99
 
         if priority < best_priority:
             best_priority = priority
             best_source = src
+
+    # megap.kotocdn.site without ani.pm has ad PNG segments — skip to iframe/embed only
+    if best_source and "megap.kotocdn.site" in (best_source.get("originalUrl") or best_source.get("url", "")) and not has_ani_pm:
+        logger.info("Animetsu %s/%s: megap.kotocdn.site without ani.pm, using embed for al:%d ep%d", provider, server, anilist_id, episode)
+        # Extract embed_url from iframe source
+        embed_url = None
+        for src in sources:
+            if src.get("type") == "iframe":
+                raw_embed = src.get("originalUrl") or src.get("url", "")
+                if raw_embed:
+                    embed_url = _extract_original_url(raw_embed)
+                break
+        if embed_url:
+            return {
+                "source": "anitsu",
+                "provider": f"{provider}/{server}",
+                "stream_url": None,
+                "stream_type": "embed",
+                "referer": "",
+                "embed_url": embed_url,
+                "subtitles": [],
+                "skip_markers": {},
+            }
+        return None
 
     # If only iframe sources exist, skip this provider entirely
     if best_source and best_source.get("type") == "iframe":
