@@ -18,7 +18,7 @@ class User(Base):
     google_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
     avatar_url: Mapped[str | None] = mapped_column(String, nullable=True)
     is_admin: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     watchlist_entries: Mapped[list["WatchlistEntry"]] = relationship(back_populates="user")
     push_subscriptions: Mapped[list["PushSubscription"]] = relationship(back_populates="user")
@@ -35,7 +35,7 @@ class WatchlistEntry(Base):
     status: Mapped[str] = mapped_column(String)  # planning|watching|completed|dropped|favorites
     progress: Mapped[int] = mapped_column(Integer, default=0)
     rating: Mapped[float | None] = mapped_column(Float, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship(back_populates="watchlist_entries")
 
@@ -48,7 +48,7 @@ class Review(Base):
     anime_id: Mapped[int] = mapped_column(Integer, index=True)
     rating: Mapped[float] = mapped_column(Float)
     body: Mapped[str] = mapped_column(String)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class PushSubscription(Base):
@@ -61,6 +61,6 @@ class PushSubscription(Base):
     p256dh: Mapped[str] = mapped_column(String)
     auth: Mapped[str] = mapped_column(String)
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship(back_populates="push_subscriptions")

@@ -90,7 +90,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}"}
+        content={"detail": "Internal server error"}
     )
 
 
@@ -202,6 +202,11 @@ async def startup_event():
         "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION",
         "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
         "ALTER TABLE watchlist_entries ADD CONSTRAINT uq_user_anime UNIQUE (user_id, anime_id)",
+        # Convert existing TIMESTAMP WITHOUT TIME ZONE columns to TIMESTAMPTZ
+        "ALTER TABLE users ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
+        "ALTER TABLE watchlist_entries ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'",
+        "ALTER TABLE reviews ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
+        "ALTER TABLE push_subscriptions ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
     ]
     async with AsyncSessionLocal() as session:
         for stmt in _migrations:
