@@ -12,7 +12,7 @@ const sora = Sora({ subsets: ["latin"], variable: "--font-sora", display: "swap"
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.app";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

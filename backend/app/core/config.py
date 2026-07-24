@@ -79,8 +79,8 @@ class Settings(BaseSettings):
         "http://localhost:8000",
         "https://anibinge-nine.vercel.app",
         "https://anibinge.app",
-        "https://www.anibinge.fun",
         "https://anibinge.fun",
+        "https://www.anibinge.fun",
     ]
 
     @validator("CORS_ORIGINS", pre=True)
