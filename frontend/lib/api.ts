@@ -143,7 +143,7 @@ export const api = {
   // Seasonal & Schedule
   currentSeason: (page = 1) => request<any>(`/api/v1/seasonal/current?page=${page}`, 3600),
   season: (year: number, season: string, page = 1) =>
-    request<any>(`/api/v1/seasonal/${year}/${season}?page=${page}`, 3600),
+    request<any>(`/api/v1/seasonal/${year}/${season}?page=${page}`, 300),
   weeklySchedule: () => request<any>(`/api/v1/schedule/weekly`, 300),
   daySchedule: (day: string) => request<any>(`/api/v1/schedule/${day}`, 300),
   
