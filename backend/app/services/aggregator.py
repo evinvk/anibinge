@@ -537,32 +537,42 @@ async def get_upcoming(page: int = 1) -> list[dict]:
 
 @cached("agg:seasonal", ttl=settings.CACHE_TTL_MEDIUM)
 async def get_seasonal(year: int, season: str, page: int = 1) -> list[dict]:
-    """Get seasonal anime: MAL → AniList → Jikan."""
+    """Get seasonal anime: AnimeSchedule (primary) → AniList → MAL → Jikan."""
     try:
-        data = await mal_client.get_seasonal_anime(year, season.lower(), page=page)
-        results = [_normalize_mal(x) for x in data.get("data", [])]
+        data = await animeschedule_client.animeschedule.get_seasonal(year, season.lower(), page=page)
+        results = [_normalize_animeschedule(x) for x in data]
+        results = await _enrich_images_anilist(results)
         if _is_valid_results(results):
-            logger.info("Seasonal %s %d from MAL: %d results", season, year, len(results))
+            logger.info("Seasonal %s %d from AnimeSchedule: %d results", season, year, len(results))
             return results
-        logger.warning("MAL seasonal returned invalid data for %s %d, falling back to AniList", season, year)
+        logger.warning("AnimeSchedule seasonal returned invalid data for %s %d, falling back to AniList", season, year)
     except Exception as e:
-        logger.warning("MAL seasonal failed (%s), falling back to AniList", e)
+        logger.warning("AnimeSchedule seasonal failed (%s), falling back to AniList", e)
     try:
         data = await anilist_client.get_seasonal(year, season, page=page)
         results = [_normalize_anilist(x) for x in data.get("Page", {}).get("media", [])]
         if _is_valid_results(results):
             logger.info("Seasonal %s %d from AniList: %d results", season, year, len(results))
             return results
-        logger.warning("AniList seasonal returned invalid data for %s %d, falling back to Jikan", season, year)
+        logger.warning("AniList seasonal returned invalid data for %s %d, falling back to MAL", season, year)
     except Exception as e2:
-        logger.warning("AniList seasonal failed (%s), falling back to Jikan", e2)
+        logger.warning("AniList seasonal failed (%s), falling back to MAL", e2)
+    try:
+        data = await mal_client.get_seasonal_anime(year, season.lower(), page=page)
+        results = [_normalize_mal(x) for x in data.get("data", [])]
+        if _is_valid_results(results):
+            logger.info("Seasonal %s %d from MAL: %d results", season, year, len(results))
+            return results
+        logger.warning("MAL seasonal returned invalid data for %s %d, falling back to Jikan", season, year)
+    except Exception as e3:
+        logger.warning("MAL seasonal failed (%s), falling back to Jikan", e3)
     try:
         data = await jikan_client.get_seasonal_anime(year, season.lower(), page=page)
         results = [_normalize_jikan(x) for x in data.get("data", [])]
         logger.info("Seasonal %s %d from Jikan: %d results", season, year, len(results))
         return results
-    except Exception as e3:
-        logger.error("All seasonal sources failed for %s %d: %s", season, year, e3)
+    except Exception as e4:
+        logger.error("All seasonal sources failed for %s %d: %s", season, year, e4)
         return []
 
 

@@ -11,7 +11,7 @@ interface SeasonTabsProps {
 
 export function SeasonTabs({ currentYear, currentSeason, seasons }: SeasonTabsProps) {
   const router = useRouter();
-  const years = Array.from({ length: 6 }, (_, i) => currentYear - 2 + i);
+  const years = Array.from({ length: 12 }, (_, i) => currentYear - 10 + i);
 
   return (
     <div className="mt-6 flex flex-wrap items-center gap-3">

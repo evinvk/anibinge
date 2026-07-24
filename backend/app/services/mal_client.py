@@ -214,6 +214,7 @@ async def get_seasonal_anime(year: int, season: str, page: int = 1, limit: int =
     """
     Get anime for a specific season.
 
+    Uses MAL v2 /anime/seasons/{year}/{season} endpoint.
     season: "winter", "spring", "summer", "fall"
     """
     try:
@@ -221,7 +222,7 @@ async def get_seasonal_anime(year: int, season: str, page: int = 1, limit: int =
         fields = (
             "id,title,main_picture,alternative_titles,start_date,synopsis,"
             "mean,rank,popularity,num_list_users,status,num_episodes,"
-            "genres,media_type"
+            "genres,media_type,season"
         )
         params = {
             "sort": "anime_score",
@@ -229,7 +230,7 @@ async def get_seasonal_anime(year: int, season: str, page: int = 1, limit: int =
             "offset": offset,
             "fields": fields,
         }
-        result = await _get("/anime/ranking", params={**params, "ranking_type": "airing"})
+        result = await _get(f"/anime/seasons/{year}/{season}", params=params)
         result["data"] = [item.get("node", item) for item in result.get("data", [])]
         return result
     except Exception as e:

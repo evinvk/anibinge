@@ -60,7 +60,41 @@ class AnimeScheduleClient:
 
     @retry(
         stop=stop_after_attempt(2),
-        wait=wait_exponential(multiplier=1, min=1, max=5),
+        wait=wait_exponential(multiplier=1, max=5),
+        retry=retry_if_not_exception_type(httpx.HTTPStatusError),
+    )
+    async def get_seasonal(
+        self,
+        year: int,
+        season: str,
+        page: int = 1,
+        per_page: int = 18,
+    ) -> list[dict[str, Any]]:
+        """Fetch seasonal anime filtered by year and season.
+
+        season: winter | spring | summer | fall
+        """
+        try:
+            params: dict[str, Any] = {
+                "seasons": season.lower(),
+                "years": year,
+                "st": "score",
+                "page": page,
+                "perPage": per_page,
+            }
+            response = await self.client.get(f"{BASE_URL}/anime", params=params)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, list):
+                return data
+            return data.get("anime", data.get("data", []))
+        except httpx.HTTPStatusError as e:
+            logger.error("AnimeSchedule seasonal HTTP error: %s", e)
+            raise
+
+    @retry(
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, max=5),
         retry=retry_if_not_exception_type(httpx.HTTPStatusError),
     )
     async def get_anime(self, route: str) -> dict[str, Any]:
