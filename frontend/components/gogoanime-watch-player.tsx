@@ -22,6 +22,7 @@ interface Props {
   title: string;
   totalEps: number | null;
   anilistId?: number | null;
+  initialEp?: number;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -45,8 +46,8 @@ function friendlyError(raw: string): string {
   return raw;
 }
 
-export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props) {
-  const [currentEp, setCurrentEp] = useState(1);
+export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initialEp = 1 }: Props) {
+  const [currentEp, setCurrentEp] = useState(initialEp);
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);

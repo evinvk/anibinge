@@ -35,7 +35,7 @@ function SkeletonCard() {
 }
 
 function EpisodeCard({ item }: { item: RecentEpisode }) {
-  const href = item.slug ? `/watch/${item.slug}` : `/anime/${item.anilist_id}`;
+  const href = item.slug ? `/watch/${item.slug}?ep=${item.episode}` : `/anime/${item.anilist_id}`;
   const genre = item.genres?.[0] || null;
 
   return (

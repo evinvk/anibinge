@@ -1,7 +1,8 @@
 "use client";
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { AdsterraAd } from "@/components/adsterra-ad";
@@ -10,8 +11,9 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export default function WatchPage({ params }: PageProps) {
-  const { slug } = use(params);
+function WatchPageInner({ slug }: { slug: string }) {
+  const searchParams = useSearchParams();
+  const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
   const [title, setTitle] = useState<string | null>(null);
   const [totalEps, setTotalEps] = useState<number | null>(null);
   const [anilistId, setAnilistId] = useState<number | null>(null);
@@ -100,12 +102,25 @@ export default function WatchPage({ params }: PageProps) {
           Back
         </Link>
         <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
-        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} />
+        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} />
 
         <div className="mt-8 flex justify-center">
           <AdsterraAd />
         </div>
       </div>
     </div>
+  );
+}
+
+export default function WatchPage({ params }: PageProps) {
+  const { slug } = use(params);
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center bg-void">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
+      </div>
+    }>
+      <WatchPageInner slug={slug} />
+    </Suspense>
   );
 }
