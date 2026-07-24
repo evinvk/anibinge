@@ -27,14 +27,14 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h4 className="font-display text-sm font-semibold text-paper">Anibinge</h4>
+          <h4 className="font-display text-sm font-semibold text-paper">About</h4>
           <p className="mt-3 text-sm text-mist">
             Anime data via MyAnimeList (Jikan) &amp; AniList. Not affiliated with either.
           </p>
         </div>
       </div>
       <p className="border-t border-white/10 px-6 py-4 text-center text-xs text-mist">
-        © {new Date().getFullYear()} Anibinge. Built for the community.
+        © {new Date().getFullYear()} Built for the community.
       </p>
     </footer>
   );
