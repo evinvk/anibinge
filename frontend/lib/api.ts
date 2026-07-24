@@ -234,9 +234,9 @@ export const api = {
     request<{ healthy: boolean; reason?: string }>(`/api/v1/streaming/gogoanime/health`, 120),
 
   // Recent episodes (episode-level data from AniList + GogoAnime catalog)
-  recentEpisodes: (limit = 20) =>
-    request<{ data: RecentEpisode[] }>(
-      `/api/v1/streaming/recent?limit=${limit}`,
+  recentEpisodes: (page = 1, limit = 20) =>
+    request<{ data: RecentEpisode[]; page: number; has_next: boolean }>(
+      `/api/v1/streaming/recent?page=${page}&limit=${limit}`,
       300
     ),
 

@@ -1,12 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, Play, Clock } from "lucide-react";
+import { ChevronRight, ChevronLeft, Play, Clock, Loader2 } from "lucide-react";
 import { needsUnoptimized } from "@/lib/utils";
 import type { RecentEpisode } from "@/lib/api";
 
 interface LatestReleasesRowProps {
   items: RecentEpisode[];
   loading?: boolean;
+  loadingMore?: boolean;
+  hasNext?: boolean;
+  onLoadMore?: () => void;
 }
 
 function timeAgo(seconds: number): string {
@@ -100,7 +103,7 @@ function EpisodeCard({ item }: { item: RecentEpisode }) {
   );
 }
 
-export function LatestReleasesRow({ items, loading }: LatestReleasesRowProps) {
+export function LatestReleasesRow({ items, loading, loadingMore, hasNext, onLoadMore }: LatestReleasesRowProps) {
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex items-end justify-between">
@@ -133,6 +136,31 @@ export function LatestReleasesRow({ items, loading }: LatestReleasesRowProps) {
               />
             ))}
       </div>
+
+      {/* Load More */}
+      {!loading && items.length > 0 && (
+        <div className="mt-10 flex justify-center">
+          <button
+            onClick={onLoadMore}
+            disabled={loadingMore || !hasNext}
+            className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-mist backdrop-blur-md transition-all hover:border-primary-400/40 hover:bg-primary-600/10 hover:text-primary-400 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {loadingMore ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : hasNext ? (
+              <>
+                <ChevronLeft className="h-4 w-4 -rotate-90" />
+                Load more episodes
+              </>
+            ) : (
+              "No more episodes"
+            )}
+          </button>
+        </div>
+      )}
     </section>
   );
 }

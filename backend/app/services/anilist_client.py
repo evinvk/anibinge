@@ -133,8 +133,14 @@ class AniListClient:
     ) -> dict:
         """Get trending anime."""
         query = """
-        query ($page:Int,$perPage:Int){
+        query($page:Int,$perPage:Int){
           Page(page:$page,perPage:$perPage){
+            pageInfo{
+              total
+              currentPage
+              hasNextPage
+              lastPage
+            }
             media(
               type:ANIME,
               sort:TRENDING_DESC

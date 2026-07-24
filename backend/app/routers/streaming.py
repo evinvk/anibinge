@@ -150,7 +150,10 @@ async def get_recent_episodes(
 
         WEEK_SECONDS = 604800
 
-        result = await anilist_client.get_schedule(page=page, per_page=limit)
+        # AniList max per_page is 50; we request one extra to detect if there's a next page
+        fetch_limit = min(limit + 1, 50)
+        result = await anilist_client.get_schedule(page=page, per_page=fetch_limit)
+        page_info = result.get("Page", {}).get("pageInfo", {})
         media_list = result.get("Page", {}).get("media", [])
 
         gogo_catalog = gogoanime_client.get_catalog()
@@ -209,7 +212,11 @@ async def get_recent_episodes(
                 "anilist_id": m.get("id"),
             })
 
-        return {"data": episodes}
+        return {
+            "data": episodes[:limit],
+            "page": page,
+            "has_next": len(episodes) > limit,
+        }
     except Exception as e:
         logger.warning("Recent episodes failed: %s", e)
         raise HTTPException(status_code=503, detail="Recent episodes unavailable")
