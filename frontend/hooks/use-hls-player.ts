@@ -41,20 +41,17 @@ export function useHlsPlayer(
     if (!video) return;
     let lastTime = video.currentTime;
     let lastTimeChange = Date.now();
-    let wallStart = Date.now();
     let rafId: number;
     const checkFreeze = () => {
       if (!video || video.paused || video.ended || video.readyState < 2) {
         lastTime = video.currentTime;
         lastTimeChange = Date.now();
-        wallStart = Date.now();
         rafId = requestAnimationFrame(checkFreeze);
         return;
       }
       if (video.currentTime !== lastTime) {
         lastTime = video.currentTime;
         lastTimeChange = Date.now();
-        wallStart = Date.now();
         freezeRecoveryRef.current = 0;
       } else if (Date.now() - lastTimeChange > 2000) {
         const buffered = video.buffered;
@@ -81,18 +78,6 @@ export function useHlsPlayer(
         lastTimeChange = Date.now();
         if (freezeRecoveryRef.current >= 3) {
           freezeRecoveryRef.current = 0;
-          if (onFatalErrorRef.current) {
-            onFatalErrorRef.current("videoFreeze");
-          }
-        }
-      }
-      // Detect abnormally slow playback (ad segments cause slow time advancement)
-      const wallElapsed = (Date.now() - wallStart) / 1000;
-      if (wallElapsed > 8 && video.currentTime < 2) {
-        freezeRecoveryRef.current++;
-        if (freezeRecoveryRef.current >= 2) {
-          freezeRecoveryRef.current = 0;
-          wallStart = Date.now();
           if (onFatalErrorRef.current) {
             onFatalErrorRef.current("videoFreeze");
           }
