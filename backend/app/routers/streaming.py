@@ -513,6 +513,9 @@ _PROXY_ALLOWED_HOSTS = {
     "anivexa-api-eight.vercel.app",
     "megap.kotocdn.site", "fxpy7.watching.onl", "lostproject.club",
     "hls.anidb.app", "anidb.app", "1oe.lostproject.club",
+    "ani.pm", "cdn.ani.pm", "kwik.cx", "animepahe.ru",
+    "animetsu-scraper-nine.vercel.app",
+    "megaplay.buzz",
 }
 
 
@@ -749,13 +752,40 @@ async def anivexa_master_m3u8(
         raise HTTPException(status_code=503, detail="Anivexa master M3U8 unavailable")
 
 
+_REFERER_MAP = {
+    "megap.kotocdn.site": "https://megaplay.buzz/",
+    "ani.pm": "https://ani.pm/",
+    "cdn.ani.pm": "https://ani.pm/",
+    "kwik.cx": "https://animepahe.ru/",
+    "1oe.lostproject.club": "https://megaplay.buzz/",
+    "hls.anidb.app": "https://anidb.app/",
+    "fxpy7.watching.onl": "https://anidb.app/",
+    "megaplay.buzz": "https://ani.pm/",
+}
+
+
+def _get_upstream_referer(url: str) -> str:
+    """Determine the correct Referer header for a given upstream URL."""
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+    except Exception:
+        return "https://gogoanimehd.to/"
+    for domain, referer in _REFERER_MAP.items():
+        if host == domain or host.endswith("." + domain):
+            return referer
+    return "https://gogoanimehd.to/"
+
+
 @router.get("/anivexa/proxy")
 @limiter.limit("120/minute")
 async def anivexa_proxy(
     request: Request,
     url: str = Query(..., description="Base64-encoded URL to proxy"),
+    referer: str = Query("", description="Optional referer override"),
 ):
-    """CORS proxy for Anivexa M3U8 and .ts segment requests."""
+    """CORS proxy for Anivexa M3U8 and .ts segment requests.
+    Automatically selects the correct Referer header based on the upstream domain."""
     try:
         decoded_url = _b64.urlsafe_b64decode(url.encode()).decode()
     except Exception:
@@ -764,8 +794,11 @@ async def anivexa_proxy(
     if not _is_proxy_url_allowed(decoded_url):
         raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
 
+    upstream_referer = referer or _get_upstream_referer(decoded_url)
+    fetch_headers = {**_PROXY_HEADERS, "Referer": upstream_referer}
+
     try:
-        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=fetch_headers, follow_redirects=True)
         resp = await client.get(decoded_url)
         resp.raise_for_status()
 

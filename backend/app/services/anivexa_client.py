@@ -1,7 +1,7 @@
 """
 Client for the Anivexa API — anime streaming aggregator.
 Provides fallback streaming when GogoAnime CDN is down.
-Uses AniList IDs for all lookups. Primary provider: anidbapp.
+Uses AniList IDs for all lookups. Primary: Animetsu (anipm/kwik), fallback: Anivexa providers.
 """
 import logging
 from typing import Any
@@ -10,6 +10,7 @@ import httpx
 
 from app.core.config import get_settings
 from app.core.http import get_shared_client
+from app.services import anitsu_client
 
 logger = logging.getLogger("anibinge.anivexa_client")
 settings = get_settings()
@@ -20,15 +21,15 @@ _client = get_shared_client(timeout=30.0, headers={
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 })
 
-# Providers ordered by reliability
-# animegg: Direct MP4 from vidcache.net (WORKING - no HLS transmux needed, native playback)
+# Anivexa providers ordered by reliability (used as fallback after Animetsu)
 # anidbapp: HLS from hls.anidb.app (MPEG-TS, may freeze with hls.js transmuxer)
 # anikoto: HLS from megap.kotocdn.site (mixed with ads) + subtitles
+# animegg: Direct MP4 from vidcache.net (reliable but deprioritized per user request)
 # anibd: HLS from playeng.animeapps.top (broken R2)
 # anineko: HLS from vivibebe.site (all ad PNGs)
 # anizone: returns 500
 # senshi, kaa, animenosub, allmanga, reanime: return 500
-_PROVIDERS = ["animegg", "anidbapp", "anikoto", "anibd", "anineko", "anizone"]
+_PROVIDERS = ["anidbapp", "anikoto", "animegg", "anibd", "anineko", "anizone"]
 
 
 async def _get(path: str, params: dict | None = None) -> dict[str, Any]:
@@ -59,7 +60,22 @@ async def get_stream_data(anilist_id: int, episode: int, provider: str = "anikot
 
 
 async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "sub") -> dict[str, Any]:
-    """Try multiple providers until one returns a stream. Returns stream URL + subtitles + embed URL."""
+    """Try multiple providers until one returns a stream. Returns stream URL + subtitles + embed URL.
+    
+    Priority order:
+    1. Animetsu (anipm/animeyubi) — multi-provider aggregator with HLS/MP4 + subtitles
+    2. Anivexa providers (anidbapp, anikoto, animegg, etc.) — legacy fallback
+    """
+    # 1. Try Animetsu first (anipm, animeyubi — best quality, subtitles, skip markers)
+    try:
+        result = await anitsu_client.get_stream(anilist_id, episode)
+        if result and result.get("stream_url"):
+            logger.info("Animetsu stream found: %s via %s", result.get("stream_type"), result.get("provider"))
+            return result
+    except Exception as e:
+        logger.warning("Animetsu failed for al:%d ep%d: %s", anilist_id, episode, e)
+
+    # 2. Fall back to Anivexa providers
     for provider in _PROVIDERS:
         data = await get_stream_data(anilist_id, episode, provider, audio)
         if data and not data.get("error"):
