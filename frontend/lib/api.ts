@@ -279,6 +279,13 @@ export const api = {
       body: JSON.stringify(subscription),
     }),
 
-  downloadUrl: (streamUrl: string, referer: string, filename: string) =>
-    `${API_BASE}/api/v1/streaming/download?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}&filename=${encodeURIComponent(filename)}`,
+  downloadUrl: (params: { slug?: string; anilist_id?: number; ep: number; audio: string; filename: string }) => {
+    const q = new URLSearchParams();
+    if (params.slug) q.set("slug", params.slug);
+    if (params.anilist_id) q.set("anilist_id", String(params.anilist_id));
+    q.set("ep", String(params.ep));
+    q.set("audio", params.audio);
+    q.set("filename", params.filename);
+    return `${API_BASE}/api/v1/streaming/download?${q.toString()}`;
+  },
 };

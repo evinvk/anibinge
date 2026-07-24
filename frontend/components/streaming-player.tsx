@@ -616,21 +616,22 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
       {player.streamData && (
         <div className="mt-3 flex gap-2">
-          {player.masterUrl && (
-            <button
-              onClick={() => {
-                const url = player.masterUrl || player.streamData?.qualities?.[0]?.url;
-                if (!url) return;
-                const referer = player.sourceRef.current === "gogoanime" ? "https://gogoanimehd.to/" : "";
-                const dlUrl = api.downloadUrl(url, referer, `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`);
-                window.open(dlUrl, "_blank");
-              }}
-              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
-            >
-              <Download className="h-3 w-3" />
-              Download
-            </button>
-          )}
+          <button
+            onClick={() => {
+              const dlUrl = api.downloadUrl({
+                slug: selectedSlug || undefined,
+                anilist_id: resolvedAnilistRef.current || undefined,
+                ep: currentEp,
+                audio: "sub",
+                filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
+              });
+              window.open(dlUrl, "_blank");
+            }}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+          >
+            <Download className="h-3 w-3" />
+            Download
+          </button>
         </div>
       )}
 

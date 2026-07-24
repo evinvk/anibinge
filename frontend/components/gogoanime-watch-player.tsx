@@ -487,10 +487,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         {player.streamData && (
           <button
             onClick={() => {
-              const url = player.masterUrl || player.streamData?.qualities?.[0]?.url;
-              if (!url) return;
-              const referer = player.sourceRef.current === "gogoanime" ? "https://gogoanimehd.to/" : "";
-              const dlUrl = api.downloadUrl(url, referer, `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`);
+              const dlUrl = api.downloadUrl({
+                slug,
+                anilistId: resolvedAnilistRef.current || undefined,
+                ep: currentEp,
+                audio,
+                filename: `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
+              });
               window.open(dlUrl, "_blank");
             }}
             disabled={downloading}
