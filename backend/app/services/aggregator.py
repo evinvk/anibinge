@@ -75,8 +75,53 @@ async def _enrich_images_anilist(results: list[dict]) -> list[dict]:
         logger.info("Enriched %d results with AniList images", len(image_map))
     except Exception as e:
         logger.warning("AniList image enrichment failed: %s", e)
-        # Fallback: try MAL API for images in small batches
-        await _enrich_images_mal(results)
+    # Fallback 1: title-based AniList search for items still missing images
+    await _enrich_images_anilist_title(results)
+    # Fallback 2: MAL API for any remaining items without images
+    await _enrich_images_mal(results)
+    return results
+
+
+async def _enrich_images_anilist_title(results: list[dict]) -> list[dict]:
+    """Search AniList by title for items still missing images (e.g. upcoming anime not yet indexed by idMal)."""
+    missing = [r for r in results if not r.get("image") and r.get("title")]
+    if not missing:
+        return results
+    client = _get_anilist_client()
+    search_query = """
+    query($q:String){
+      Page(page:1,perPage:1){
+        media(search:$q,type:ANIME){
+          coverImage{ large }
+          bannerImage
+        }
+      }
+    }
+    """
+    enriched = 0
+    for r in missing[:15]:
+        title = r.get("title_english") or r.get("title") or ""
+        if not title or len(title) < 3:
+            continue
+        try:
+            resp = await client.post(
+                "https://graphql.anilist.co",
+                json={"query": search_query, "variables": {"q": title}},
+            )
+            resp.raise_for_status()
+            media = resp.json().get("data", {}).get("Page", {}).get("media", [])
+            if media:
+                m = media[0]
+                img = m.get("coverImage", {}).get("large")
+                if img:
+                    r["image"] = img
+                    enriched += 1
+                if m.get("bannerImage") and not r.get("banner"):
+                    r["banner"] = m["bannerImage"]
+        except Exception as e:
+            logger.debug("AniList title search failed for '%s': %s", title, e)
+    if enriched:
+        logger.info("AniList title search enriched %d images", enriched)
     return results
 
 
