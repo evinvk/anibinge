@@ -3,11 +3,13 @@ Streaming router — integrates Wibu API for episode streaming and video sources
 Also provides GogoAnime endpoints for search, episodes, and HLS streaming.
 """
 from fastapi import APIRouter, HTTPException, Query, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 import base64 as _b64
 import httpx as _httpx
+import re as _re
+import asyncio as _asyncio
 import logging
 
 from app.core.config import get_settings
@@ -957,3 +959,104 @@ async def fallback_stream(
             pass
 
     raise HTTPException(status_code=404, detail="No streaming sources available from any provider")
+
+
+@router.get("/download")
+@limiter.limit("10/minute")
+async def download_episode(
+    request: Request,
+    url: str = Query(..., description="Direct video or m3u8 master URL"),
+    referer: str = Query("", description="Referer header for upstream"),
+    filename: str = Query("episode", description="Download filename"),
+):
+    """
+    Proxy a video URL and force browser download via Content-Disposition.
+    For m3u8 master playlists, resolves to the best variant and downloads all .ts segments.
+    """
+    from urllib.parse import urlparse, urljoin
+
+    try:
+        headers = {**_PROXY_HEADERS}
+        if referer:
+            headers["Referer"] = referer
+
+        client = get_shared_client(timeout=_httpx.Timeout(60.0, connect=15.0), headers=headers, follow_redirects=True)
+
+        content_type = ""
+        is_hls = False
+        playlist_url = url
+
+        try:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "")
+            body = resp.text
+            is_hls = "mpegurl" in content_type or body.strip().startswith("#EXTM3U")
+        except Exception:
+            raise HTTPException(status_code=502, detail="Failed to fetch stream")
+
+        if not is_hls:
+            safe_name = _re.sub(r'[^\w\-]', '_', filename)
+            return Response(
+                content=resp.content,
+                media_type=content_type or "video/mp4",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
+                    "Content-Length": str(len(resp.content)),
+                },
+            )
+
+        parsed_base = urlparse(playlist_url)
+        base_origin = f"{parsed_base.scheme}://{parsed_base.netloc}"
+
+        variant_url = None
+        for line in body.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                variant_url = urljoin(playlist_url, line)
+                break
+
+        if variant_url:
+            try:
+                var_resp = await client.get(variant_url, headers=headers)
+                var_resp.raise_for_status()
+                body = var_resp.text
+                playlist_url = variant_url
+            except Exception:
+                pass
+
+        parsed_base2 = urlparse(playlist_url)
+        base_origin2 = f"{parsed_base2.scheme}://{parsed_base2.netloc}"
+
+        segment_urls = []
+        for line in body.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                seg = urljoin(playlist_url, line)
+                segment_urls.append(seg)
+
+        if not segment_urls:
+            raise HTTPException(status_code=404, detail="No segments found in playlist")
+
+        async def stream_segments():
+            for seg_url in segment_urls:
+                try:
+                    seg_resp = await client.get(seg_url, headers={"Referer": referer or base_origin2})
+                    seg_resp.raise_for_status()
+                    yield seg_resp.content
+                except Exception:
+                    continue
+
+        safe_name = _re.sub(r'[^\w\-]', '_', filename)
+        return StreamingResponse(
+            stream_segments(),
+            media_type="video/mp2t",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_name}.ts"',
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("Download failed: %s", e)
+        raise HTTPException(status_code=502, detail="Download failed")

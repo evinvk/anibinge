@@ -278,4 +278,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(subscription),
     }),
+
+  downloadUrl: (streamUrl: string, referer: string, filename: string) =>
+    `${API_BASE}/api/v1/streaming/download?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}&filename=${encodeURIComponent(filename)}`,
 };

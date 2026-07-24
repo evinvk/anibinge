@@ -59,7 +59,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const embedUrlRef = useRef<string | null>(null);
   const [embedReferer, setEmbedReferer] = useState<string>("");
   const [statusText, setStatusText] = useState<string>("");
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   const subs = useSubtitles(videoRef);
 
@@ -108,7 +108,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         if (res.stream_type === "mp4") {
           const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
           player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
-          setDownloadUrl(mp4Url);
           player.setLoadingStream(false);
           setStatusText("");
           await new Promise(r => setTimeout(r, 100));
@@ -301,7 +300,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     fallbackAttemptedRef.current = false;
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
-    setDownloadUrl(null);
 
     setStatusText("Searching for stream...");
     const ok = await tryAnivexa(ep);
@@ -486,17 +484,17 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             {opt === "sub" ? "Sub" : "Dub"}
           </button>
         ))}
-        {downloadUrl && (
+        {player.streamData && (
           <button
             onClick={() => {
-              const a = document.createElement("a");
-              a.href = downloadUrl;
-              a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}.mp4`;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
+              const url = player.masterUrl || player.streamData?.qualities?.[0]?.url;
+              if (!url) return;
+              const referer = player.sourceRef.current === "gogoanime" ? "https://gogoanimehd.to/" : "";
+              const dlUrl = api.downloadUrl(url, referer, `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`);
+              window.open(dlUrl, "_blank");
             }}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+            disabled={downloading}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition disabled:opacity-50"
           >
             <Download className="h-3 w-3" />
             Download
