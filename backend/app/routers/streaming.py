@@ -644,9 +644,11 @@ async def anivexa_stream(
     ep: int = Query(..., ge=1, description="Episode number"),
     audio: str = Query("sub", description="Audio type: sub or dub"),
     provider: str | None = Query(None, description="Optional: force specific provider"),
+    source: str | None = Query(None, description="Force source: 'anitsu' (Animetsu only) or 'anivexa' (Anivexa providers only)"),
 ):
     """Get streaming URL + subtitles from Anivexa for a specific episode.
-    Uses provider fallback chain if no specific provider is given (anidbapp → anikoto → ...)."""
+    Uses provider fallback chain if no specific provider is given (anidbapp → anikoto → ...).
+    Use source=anitsu to only try Animetsu, source=anivexa to only try Anivexa providers."""
     try:
         if provider:
             data = await anivexa_client.get_stream_data(anilist_id, ep, provider, audio)
@@ -661,6 +663,17 @@ async def anivexa_stream(
                 "referer": referer,
                 "embed_url": embed_url,
             }
+        if source == "anitsu":
+            from app.services import anitsu_client
+            result = await anitsu_client.get_stream(anilist_id, ep)
+            if not result or not result.get("stream_url"):
+                raise HTTPException(status_code=404, detail="Stream not available on Animetsu")
+            return result
+        if source == "anivexa":
+            result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio, skip_anitsu=True)
+            if not result or (not result.get("stream_url") and not result.get("embed_url")):
+                raise HTTPException(status_code=404, detail="Stream not available on Anivexa providers")
+            return result
         result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
         if not result or (not result.get("stream_url") and not result.get("embed_url")):
             raise HTTPException(status_code=404, detail="Stream not available on Anivexa")

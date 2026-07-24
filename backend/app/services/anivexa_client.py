@@ -59,21 +59,23 @@ async def get_stream_data(anilist_id: int, episode: int, provider: str = "anikot
     return {}
 
 
-async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "sub") -> dict[str, Any]:
+async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "sub", skip_anitsu: bool = False) -> dict[str, Any]:
     """Try multiple providers until one returns a stream. Returns stream URL + subtitles + embed URL.
     
     Priority order:
     1. Animetsu (anipm/animeyubi) — multi-provider aggregator with HLS/MP4 + subtitles
     2. Anivexa providers (anidbapp, anikoto, animegg, etc.) — legacy fallback
+    Set skip_anitsu=True to only try Anivexa providers (for multi-source fallback chains).
     """
     # 1. Try Animetsu first (anipm, animeyubi — best quality, subtitles, skip markers)
-    try:
-        result = await anitsu_client.get_stream(anilist_id, episode)
-        if result and result.get("stream_url"):
-            logger.info("Animetsu stream found: %s via %s", result.get("stream_type"), result.get("provider"))
-            return result
-    except Exception as e:
-        logger.warning("Animetsu failed for al:%d ep%d: %s", anilist_id, episode, e)
+    if not skip_anitsu:
+        try:
+            result = await anitsu_client.get_stream(anilist_id, episode)
+            if result and result.get("stream_url"):
+                logger.info("Animetsu stream found: %s via %s", result.get("stream_type"), result.get("provider"))
+                return result
+        except Exception as e:
+            logger.warning("Animetsu failed for al:%d ep%d: %s", anilist_id, episode, e)
 
     # 2. Fall back to Anivexa providers
     for provider in _PROVIDERS:
