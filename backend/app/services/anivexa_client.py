@@ -1,7 +1,7 @@
 """
 Client for the Anivexa API — anime streaming aggregator.
 Provides fallback streaming when GogoAnime CDN is down.
-Uses AniList IDs for all lookups. Primary provider: anikoto.
+Uses AniList IDs for all lookups. Primary provider: anidbapp.
 """
 import logging
 from typing import Any
@@ -20,15 +20,15 @@ _client = get_shared_client(timeout=30.0, headers={
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 })
 
-# Providers ordered by reliability
-# anikoto: HLS from megap.kotocdn.site (may return PNGs) + embed from megaplay.buzz
-# anibd: HLS from playeng.animeapps.top (may be broken R2) + embed from playeng.animeapps.top
+# Providers ordered by reliability (verified working CDN in bold)
+# anidbapp: HLS from hls.anidb.app (WORKING - real MPEG-TS segments) + embed from anidb.app
+# anikoto: HLS from megap.kotocdn.site (mixed with ads) + embed from megaplay.buzz + subtitles
+# anibd: HLS from playeng.animeapps.top (broken R2)
 # animegg: HLS from animegg.org (may 500)
-# anidbapp: HLS from hls.anidb.app (may 403) + embed from anidb.app
-# anineko: HLS from vivibebe.site (ad-heavy)
+# anineko: HLS from vivibebe.site (all ad PNGs)
 # anizone: returns 500
 # senshi, kaa, animenosub, allmanga, reanime: return 500
-_PROVIDERS = ["anikoto", "anibd", "animegg", "anidbapp", "anineko", "anizone"]
+_PROVIDERS = ["anidbapp", "anikoto", "anibd", "animegg", "anineko", "anizone"]
 
 
 async def _get(path: str, params: dict | None = None) -> dict[str, Any]:
@@ -65,6 +65,16 @@ async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "
         if data and not data.get("error"):
             m3u8_url, subtitles, m3u8_referer, embed_url = _extract_stream_info(data, audio)
             if m3u8_url or embed_url:
+                # If provider doesn't have subtitles, try to get them from anikoto
+                if not subtitles and provider != "anikoto":
+                    try:
+                        anikoto_data = await get_stream_data(anilist_id, episode, "anikoto", audio)
+                        if anikoto_data and not anikoto_data.get("error"):
+                            _, anikoto_subs, _, _ = _extract_stream_info(anikoto_data, audio)
+                            if anikoto_subs:
+                                subtitles = anikoto_subs
+                    except Exception:
+                        pass
                 return {
                     "source": "anivexa",
                     "provider": provider,

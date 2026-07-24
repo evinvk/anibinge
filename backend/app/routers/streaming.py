@@ -446,6 +446,7 @@ _PROXY_ALLOWED_HOSTS = {
     "vidstreaming.io", "gogoservers.mema",
     "anivexa-api-eight.vercel.app",
     "megap.kotocdn.site", "fxpy7.watching.onl", "lostproject.club",
+    "hls.anidb.app", "anidb.app", "1oe.lostproject.club",
 }
 
 
