@@ -173,7 +173,6 @@ export function useHlsPlayer(
         maxBufferHole: 1.0,
         stretchShortVideoTrack: true,
         backBufferLength: 0,
-        maxSeekHole: 2.0,
       });
       hlsRef.current = hls;
 
