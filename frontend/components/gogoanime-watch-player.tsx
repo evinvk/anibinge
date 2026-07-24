@@ -59,6 +59,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const embedUrlRef = useRef<string | null>(null);
   const [embedReferer, setEmbedReferer] = useState<string>("");
   const [statusText, setStatusText] = useState<string>("");
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
   const subs = useSubtitles(videoRef);
 
@@ -107,6 +108,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         if (res.stream_type === "mp4") {
           const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
           player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+          setDownloadUrl(mp4Url);
           player.setLoadingStream(false);
           setStatusText("");
           await new Promise(r => setTimeout(r, 100));
@@ -299,6 +301,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     fallbackAttemptedRef.current = false;
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
+    setDownloadUrl(null);
 
     setStatusText("Searching for stream...");
     const ok = await tryAnivexa(ep);
@@ -483,22 +486,15 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             {opt === "sub" ? "Sub" : "Dub"}
           </button>
         ))}
-        {player.masterUrl && (
+        {downloadUrl && (
           <button
             onClick={() => {
-              const url = player.masterUrl!;
-              if (player.sourceRef.current === "anivexa" && !url.includes(".m3u8")) {
-                fetch(url).then(r => r.blob()).then(blob => {
-                  const ext = blob.type.includes("mp4") ? ".mp4" : blob.type.includes("mkv") ? ".mkv" : ".ts";
-                  const a = document.createElement("a");
-                  a.href = URL.createObjectURL(blob);
-                  a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}${ext}`;
-                  a.click();
-                  URL.revokeObjectURL(a.href);
-                }).catch(() => window.open(url, "_blank"));
-              } else {
-                window.open(url, "_blank");
-              }
+              const a = document.createElement("a");
+              a.href = downloadUrl;
+              a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}.mp4`;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
             }}
             className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
           >
