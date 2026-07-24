@@ -133,7 +133,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
             <dl className="mt-6 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
               <Field label="Studios" value={detail.studios?.map((s: any) => s.name).join(", ")} />
               <Field label="Status" value={detail.status} />
-              <Field label="Episodes" value={detail.episodes} />
+              <Field label="Episodes" value={detail.episodes ?? (detail.status === "currently_airing" ? "Ongoing" : "—")} />
               <Field label="Rating" value={detail.rating} />
             </dl>
           </div>
@@ -172,11 +172,11 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         />
 
         {/* Recommendations */}
-        {recsRes.data?.filter((r: any) => r.id && r.title).length > 0 && (
+        {recsRes.data?.filter((r: any) => r.id && r.title && typeof r.title === "string" && r.title.length > 0).length > 0 && (
           <section className="mt-12 pb-12">
             <h2 className="font-display text-xl font-bold">You Might Also Like</h2>
             <AnimeGrid className="mt-4">
-              {recsRes.data.filter((r: any) => r.id && r.title).slice(0, 12).map((r: any) => (
+              {recsRes.data.filter((r: any) => r.id && r.title && typeof r.title === "string" && r.title.length > 0).slice(0, 12).map((r: any) => (
                 <AnimeCard
                   key={r.id}
                   anime={r}
