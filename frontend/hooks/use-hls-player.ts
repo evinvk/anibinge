@@ -102,18 +102,14 @@ export function useHlsPlayer(
     };
     const onPause = () => {};
     const isSeekingRef = { current: false };
-    let seekTimer: ReturnType<typeof setTimeout> | null = null;
     const onSeeking = () => {
       isSeekingRef.current = true;
       bufferingStartRef.current = 0;
       freezeRecoveryRef.current = 0;
-      if (seekTimer) clearTimeout(seekTimer);
     };
     const onSeeked = () => {
       lastTime = video.currentTime;
       lastTimeChange = Date.now();
-      if (seekTimer) clearTimeout(seekTimer);
-      seekTimer = setTimeout(() => { isSeekingRef.current = false; }, 1000);
     };
     const onWaiting = () => {
       setPlayerStatus("buffering");
@@ -123,6 +119,7 @@ export function useHlsPlayer(
     };
     const onPlaying = () => {
       setPlayerStatus("playing");
+      isSeekingRef.current = false;
       bufferingStartRef.current = 0;
       mediaErrorRetryRef.current = 0;
       lastTime = video.currentTime;
@@ -168,7 +165,6 @@ export function useHlsPlayer(
     video.addEventListener("stalled", onStalled);
     return () => {
       cancelAnimationFrame(rafId);
-      if (seekTimer) clearTimeout(seekTimer);
       bufferingStartRef.current = 0;
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
