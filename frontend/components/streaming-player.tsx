@@ -147,6 +147,17 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const tryAnivexaOnly = useCallback(async (ep: number): Promise<boolean> => {
     let aid = resolvedAnilistRef.current;
+    if (!aid) {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
+        ).then(r => r.json());
+        if (res.anilist_id) {
+          aid = res.anilist_id;
+          resolvedAnilistRef.current = aid;
+        }
+      } catch { /* not critical */ }
+    }
     if (!aid) return false;
     setStatusText("Trying Anivexa providers...");
     try {
