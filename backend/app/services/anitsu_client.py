@@ -120,8 +120,9 @@ async def _try_provider(
     if not sources:
         return None
 
-    # Pick the best source: prefer ani.pm HLS > other master HLS > mp4 > iframe
-    # megap.kotocdn.site has ad segments (PNG images), so deprioritize it
+    # Pick the best source: prefer ani.pm HLS > other master HLS > mp4
+    # Master M3U8 always wins over iframe (which are embed pages, not playable streams)
+    # megap.kotocdn.site has ad segments (PNG images) but is still playable via hls.js
     best_source = None
     best_priority = 999
     for src in sources:
@@ -129,11 +130,10 @@ async def _try_provider(
         url = src.get("originalUrl") or src.get("url", "")
 
         if stype == "master":
-            # Prefer ani.pm over megap.kotocdn.site (latter has ad segments)
             if "ani.pm" in url:
                 priority = 0
             elif "megap.kotocdn.site" in url:
-                priority = 5  # deprioritized — has ad PNG segments
+                priority = 1  # playable M3U8, has some ad segments but hls.js handles it
             else:
                 priority = 1
         elif stype == "hls":
@@ -141,13 +141,18 @@ async def _try_provider(
         elif stype == "mp4":
             priority = 3
         elif stype == "iframe":
-            priority = 4
+            priority = 99  # last resort — embed pages, not directly playable
         else:
-            priority = 9
+            priority = 99
 
         if priority < best_priority:
             best_priority = priority
             best_source = src
+
+    # If only iframe sources exist, skip this provider entirely
+    if best_source and best_source.get("type") == "iframe":
+        logger.info("Animetsu %s/%s: only iframe sources for al:%d ep%d, skipping", provider, server, anilist_id, episode)
+        return None
 
     if not best_source:
         return None
@@ -158,8 +163,8 @@ async def _try_provider(
     stream_type = "mp4" if best_source.get("type") == "mp4" else "hls"
     referer = best_source.get("upstreamReferer") or _get_referer_for_url(stream_url)
 
-    # For iframe sources, we can't extract the video URL — skip this provider
-    if best_source.get("type") == "iframe" and not stream_url:
+    # Sanity check: stream_url must look like a playable URL
+    if not stream_url or (not stream_url.startswith("http") and not stream_url.startswith("/")):
         return None
 
     # Extract subtitles — use original upstream URLs, not proxied ones
@@ -190,13 +195,24 @@ async def _try_provider(
     if skips.get("outro"):
         skip_markers["outro"] = skips["outro"]
 
+    # Find an iframe source to use as embed_url fallback
+    # (useful when the primary M3U8 has ad segments or fails)
+    embed_url = None
+    if stream_type != "iframe":
+        for src in sources:
+            if src.get("type") == "iframe":
+                raw_embed = src.get("originalUrl") or src.get("url", "")
+                if raw_embed:
+                    embed_url = _extract_original_url(raw_embed)
+                break
+
     return {
         "source": "anitsu",
         "provider": f"{provider}/{server}",
         "stream_url": stream_url,
         "stream_type": stream_type,
         "referer": referer,
-        "embed_url": None if stream_type != "iframe" else stream_url,
+        "embed_url": embed_url,
         "subtitles": subtitles,
         "skip_markers": skip_markers,
     }
