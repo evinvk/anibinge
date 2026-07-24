@@ -42,7 +42,16 @@ export function useHlsPlayer(
     if (!video) return;
     let lastTime = video.currentTime;
     let lastTimeChange = Date.now();
+    let lastVideoFrameTime = Date.now();
     let rafId: number;
+    const onVFrame = () => {
+      lastVideoFrameTime = Date.now();
+      try { video.requestVideoFrameCallback(onVFrame); } catch {}
+    };
+    if (typeof video.requestVideoFrameCallback === "function") {
+      video.requestVideoFrameCallback(onVFrame);
+    }
+
     const checkFreeze = () => {
       if (!video || video.paused || video.ended || video.readyState < 2 || isSeekingRef.current) {
         lastTime = video.currentTime;
@@ -55,6 +64,13 @@ export function useHlsPlayer(
         lastTime = video.currentTime;
         lastTimeChange = Date.now();
         freezeRecoveryRef.current = 0;
+        // Video frame not rendering while time advances → audio-only playback
+        if (Date.now() - lastVideoFrameTime > 2000) {
+          lastVideoFrameTime = Date.now();
+          if (onFatalErrorRef.current) {
+            onFatalErrorRef.current("videoFreeze");
+          }
+        }
       } else if (Date.now() - lastTimeChange > 2000) {
         const buffered = video.buffered;
         let seeked = false;
@@ -124,6 +140,10 @@ export function useHlsPlayer(
       mediaErrorRetryRef.current = 0;
       lastTime = video.currentTime;
       lastTimeChange = Date.now();
+      lastVideoFrameTime = Date.now();
+      if (typeof video.requestVideoFrameCallback === "function") {
+        try { video.requestVideoFrameCallback(onVFrame); } catch {}
+      }
     };
     const onCanPlay = () => {
       setPlayerStatus("playing");
