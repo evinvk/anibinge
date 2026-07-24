@@ -89,9 +89,12 @@ async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "
 def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict], str | None, str | None]:
     """Extract M3U8 URL, subtitles, referer, and embed URL from provider response."""
     # anikoto returns {ssub: {streams: [...], subtitles: [...]}}
+    # anidbapp returns {streams: [...], ...} at top level
     ssub = data.get(audio) or data.get("ssub") or data.get("sub") or {}
     if not isinstance(ssub, dict):
-        # anizone returns {streams: [...], subtitles: [...]}
+        ssub = data
+    # anidbapp / anizone: streams are at top level, not nested under an audio key
+    if not ssub and isinstance(data.get("streams"), list):
         ssub = data
 
     m3u8_url = None
