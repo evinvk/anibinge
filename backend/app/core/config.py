@@ -83,6 +83,22 @@ class Settings(BaseSettings):
         "https://anibinge.fun",
     ]
 
+    @validator("CORS_ORIGINS", pre=True)
+    def _parse_cors_origins(cls, v):
+        """Handle CORS_ORIGINS as JSON array, comma-separated string, or list."""
+        if isinstance(v, str):
+            import json
+            v = v.strip()
+            # Try JSON parse first: ["https://..."]
+            if v.startswith("["):
+                try:
+                    return json.loads(v)
+                except json.JSONDecodeError:
+                    pass
+            # Fall back to comma-separated: "https://a.com,https://b.com"
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
+
 
 @lru_cache
 def get_settings() -> Settings:
