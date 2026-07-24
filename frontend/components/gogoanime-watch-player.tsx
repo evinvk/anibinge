@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw } from "lucide-react";
+import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
@@ -483,6 +483,17 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             {opt === "sub" ? "Sub" : "Dub"}
           </button>
         ))}
+        {player.masterUrl && (
+          <a
+            href={player.masterUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+          >
+            <Download className="h-3 w-3" />
+            Download
+          </a>
+        )}
       </div>
 
       {totalEps && totalEps > 1 && (
