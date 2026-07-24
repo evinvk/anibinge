@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Play, ChevronDown, Loader2, AlertTriangle, Monitor, RotateCcw } from "lucide-react";
+import { Play, ChevronDown, Loader2, AlertTriangle, Monitor, RotateCcw, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
@@ -613,6 +613,26 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           </div>
         );
       })()}
+
+      {player.streamData && (
+        <div className="mt-3 flex gap-2">
+          {player.masterUrl && (
+            <button
+              onClick={() => {
+                const url = player.masterUrl || player.streamData?.qualities?.[0]?.url;
+                if (!url) return;
+                const referer = player.sourceRef.current === "gogoanime" ? "https://gogoanimehd.to/" : "";
+                const dlUrl = api.downloadUrl(url, referer, `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`);
+                window.open(dlUrl, "_blank");
+              }}
+              className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+            >
+              <Download className="h-3 w-3" />
+              Download
+            </button>
+          )}
+        </div>
+      )}
 
       {totalEps && totalEps > 1 && (
         <div className="mt-3">
