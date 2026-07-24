@@ -303,45 +303,74 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
-    player.destroyHls();
-    player.setStreamData(null);
-    player.setMasterUrl(null);
-    player.setError(null);
-    player.setPlayerStatus("idle");
 
-    if (errorType === "videoFreeze" && embedUrlRef.current) {
+    if (player.sourceRef.current === "gogoanime") {
+      player.sourceRef.current = null;
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      player.setLoadingStream(true);
+      setStatusText("Trying Anivexa...");
+      const ok = await tryAnivexaOnly(currentEpRef.current);
+      if (!ok) {
+        setStatusText("Trying Wibu...");
+        const wibuOk = await tryWibuOnly(currentEpRef.current);
+        if (!wibuOk) {
+          if (embedUrlRef.current) {
+            player.setError(null);
+            player.setLoadingStream(false);
+            setStatusText("");
+            return;
+          }
+          player.setError(friendlyError("Playback error: " + errorType));
+          player.setLoadingStream(false);
+          setStatusText("");
+        }
+      }
+    } else if (errorType === "videoFreeze" && player.masterUrl) {
+      if (embedUrlRef.current) {
+        player.destroyHls();
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        player.setError(null);
+        player.setPlayerStatus("idle");
+        player.setLoadingStream(false);
+        setStatusText("");
+        return;
+      }
+      player.setError("Video playback has frozen. Try a different source or episode.");
       player.setLoadingStream(false);
       setStatusText("");
-      return;
-    }
-
-    if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === "anivexa") {
+    } else if (player.sourceRef.current === "anivexa") {
       player.sourceRef.current = null;
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
       player.setLoadingStream(true);
-
-      // Try all remaining sources
-      setStatusText("Trying Animetsu...");
-      const animetsuOk = await tryAnitsuOnly(currentEpRef.current);
-      if (animetsuOk) return;
-
-      setStatusText("Trying Anivexa...");
-      const anivexaOk = await tryAnivexaOnly(currentEpRef.current);
-      if (anivexaOk) return;
-
       setStatusText("Trying Wibu...");
       const wibuOk = await tryWibuOnly(currentEpRef.current);
-      if (wibuOk) return;
-
-      if (embedUrlRef.current) {
+      if (!wibuOk) {
+        if (embedUrlRef.current) {
+          player.setError(null);
+          player.setLoadingStream(false);
+          setStatusText("");
+          return;
+        }
+        player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
         setStatusText("");
-        return;
       }
-      player.setError(friendlyError("Playback error: " + errorType));
-      player.setLoadingStream(false);
-      setStatusText("");
     } else {
       if (embedUrlRef.current) {
+        player.destroyHls();
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        player.setError(null);
+        player.setPlayerStatus("idle");
         player.setLoadingStream(false);
         setStatusText("");
         return;
@@ -350,7 +379,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setLoadingStream(false);
       setStatusText("");
     }
-  }, [tryAnitsuOnly, tryAnivexaOnly, tryWibuOnly]);
+  }, [tryAnivexaOnly, tryWibuOnly]);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
