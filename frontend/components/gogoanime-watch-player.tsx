@@ -51,7 +51,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);
-  const currentEpRef = useRef(1);
+  const currentEpRef = useRef(initialEp);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");

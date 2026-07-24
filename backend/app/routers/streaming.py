@@ -201,7 +201,7 @@ async def get_recent_episodes(
                 "anilist_id": m.get("id"),
             })
 
-        episodes.sort(key=lambda e: e["aired_ago"], reverse=True)
+        episodes.sort(key=lambda e: e["aired_ago"])
 
         has_next = len(episodes) > limit
         return {
