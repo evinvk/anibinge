@@ -388,25 +388,45 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         </div>
       )}
 
-      {player.streamData && player.streamData.qualities.length > 1 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {player.streamData.qualities.map((s, i) => (
+      {player.streamData && (() => {
+        const hls = player.hlsRef.current;
+        const levels = hls?.levels;
+        if (!levels || levels.length < 2) return null;
+        return (
+          <div className="mt-3 flex flex-wrap gap-2">
             <button
-              key={i}
-              onClick={() => player.setQuality(i)}
+              onClick={() => player.setQuality(-1)}
               className={clsx(
                 "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
-                player.selectedQuality === i
+                player.selectedQuality === -1
                   ? "bg-primary-600 text-white"
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
             >
               <Monitor className="h-3 w-3" />
-              {s.quality}
+              Auto
             </button>
-          ))}
-        </div>
-      )}
+            {levels.map((level: any, i: number) => {
+              const label = level.height ? `${level.height}p` : level.bitrate ? `${Math.round(level.bitrate / 1000)}kbps` : `Level ${i}`;
+              return (
+                <button
+                  key={i}
+                  onClick={() => player.setQuality(i)}
+                  className={clsx(
+                    "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition",
+                    player.selectedQuality === i
+                      ? "bg-primary-600 text-white"
+                      : "bg-white/5 text-mist hover:bg-white/10"
+                  )}
+                >
+                  <Monitor className="h-3 w-3" />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       <div className="mt-3 flex gap-2">
         {(["sub", "dub"] as const).map((opt) => (
