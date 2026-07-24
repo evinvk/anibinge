@@ -329,20 +329,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           setStatusText("");
         }
       }
-    } else if (errorType === "videoFreeze" && player.masterUrl) {
-      if (embedUrlRef.current) {
-        player.destroyHls();
-        player.setStreamData(null);
-        player.setMasterUrl(null);
-        player.setError(null);
-        player.setPlayerStatus("idle");
-        player.setLoadingStream(false);
-        setStatusText("");
-        return;
-      }
-      player.setError("Video playback has frozen. Try a different source or episode.");
-      player.setLoadingStream(false);
-      setStatusText("");
     } else if (player.sourceRef.current === "anivexa") {
       player.sourceRef.current = null;
       player.destroyHls();
@@ -364,6 +350,20 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setLoadingStream(false);
         setStatusText("");
       }
+    } else if (errorType === "videoFreeze" && player.masterUrl) {
+      if (embedUrlRef.current) {
+        player.destroyHls();
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        player.setError(null);
+        player.setPlayerStatus("idle");
+        player.setLoadingStream(false);
+        setStatusText("");
+        return;
+      }
+      player.setError("Video playback has frozen. Try a different source or episode.");
+      player.setLoadingStream(false);
+      setStatusText("");
     } else {
       if (embedUrlRef.current) {
         player.destroyHls();

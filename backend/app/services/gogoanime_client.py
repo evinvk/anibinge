@@ -233,18 +233,54 @@ def _resolve_url(base: str, relative: str) -> str:
     return base_path + relative
 
 
+_AD_DOMAINS = {
+    "p16-ad-sg.ibyteimg.com",
+    "p16-ad-sg.tiktokcdn.com",
+    "ad.doubleclick.net",
+}
+
+
+def _is_ad_url(url: str) -> bool:
+    """Check if a URL belongs to an ad CDN that serves PNG/image ads instead of video segments."""
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+        if host in _AD_DOMAINS or host.endswith(".ibyteimg.com"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _rewrite_m3u8_urls(content: str, base_url: str) -> str:
-    """Rewrite M3U8 URLs to go through our CORS proxy endpoint."""
+    """Rewrite M3U8 URLs to go through our CORS proxy endpoint. Filters out ad segments."""
+    from urllib.parse import urlparse
     lines = content.splitlines()
     result = []
-    for line in lines:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
         if stripped and not stripped.startswith("#"):
             resolved = _resolve_url(base_url, stripped)
+            if _is_ad_url(resolved):
+                i += 1
+                continue
             encoded = base64.urlsafe_b64encode(resolved.encode()).decode()
             result.append(f"/api/v1/streaming/gogoanime/proxy?url={encoded}")
+        elif stripped.startswith("#EXTINF"):
+            result.append(line)
+            # Check if the next line (segment URL) is an ad
+            if i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line and not next_line.startswith("#"):
+                    resolved = _resolve_url(base_url, next_line)
+                    if _is_ad_url(resolved):
+                        i += 2
+                        continue
         else:
             result.append(line)
+        i += 1
     return "\n".join(result)
 
 

@@ -890,19 +890,29 @@ async def anivexa_proxy(
 
 
 def _rewrite_anivexa_m3u8(m3u8_text: str, current_url: str, base_url: str) -> str:
-    """Rewrite relative URLs in M3U8 to go through the anivexa proxy endpoint."""
+    """Rewrite relative URLs in M3U8 to go through the anivexa proxy endpoint. Filters ad segments."""
     from urllib.parse import urljoin, urlparse
     import re
 
     proxy_base = "/api/v1/streaming/anivexa/proxy"
     lines = m3u8_text.split("\n")
     result = []
-
-    for line in lines:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         stripped = line.strip()
-        # Skip empty lines and tags
+
+        # Skip empty lines and tags (but check #EXTINF for ad following it)
         if not stripped or stripped.startswith("#"):
+            if stripped.startswith("#EXTINF") and i + 1 < len(lines):
+                next_line = lines[i + 1].strip()
+                if next_line and not next_line.startswith("#"):
+                    resolved = urljoin(current_url, next_line) if not next_line.startswith("http") else next_line
+                    if gogoanime_client._is_ad_url(resolved):
+                        i += 2
+                        continue
             result.append(line)
+            i += 1
             continue
 
         # Resolve relative URLs
@@ -911,9 +921,15 @@ def _rewrite_anivexa_m3u8(m3u8_text: str, current_url: str, base_url: str) -> st
         else:
             resolved = stripped
 
+        # Filter ad segments
+        if gogoanime_client._is_ad_url(resolved):
+            i += 1
+            continue
+
         # Encode and rewrite to proxy
         encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
         result.append(f"{proxy_base}?url={encoded}")
+        i += 1
 
     return "\n".join(result)
 

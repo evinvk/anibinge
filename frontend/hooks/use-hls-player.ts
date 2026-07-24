@@ -57,8 +57,13 @@ export function useHlsPlayer(
         lastTime = video.currentTime;
         lastTimeChange = Date.now();
         bufferingStartRef.current = 0;
-        rafId = requestAnimationFrame(checkFreeze);
-        return;
+        // Safety: if seeking stuck for >15s, unfreeze so detection can run
+        if (isSeekingRef.current && seekingStartedRef.current && Date.now() - seekingStartedRef.current > 15000) {
+          isSeekingRef.current = false;
+        } else {
+          rafId = requestAnimationFrame(checkFreeze);
+          return;
+        }
       }
       if (video.currentTime !== lastTime) {
         lastTime = video.currentTime;
@@ -118,8 +123,10 @@ export function useHlsPlayer(
     };
     const onPause = () => {};
     const isSeekingRef = { current: false };
+    const seekingStartedRef = { current: 0 };
     const onSeeking = () => {
       isSeekingRef.current = true;
+      seekingStartedRef.current = Date.now();
       bufferingStartRef.current = 0;
       freezeRecoveryRef.current = 0;
     };
