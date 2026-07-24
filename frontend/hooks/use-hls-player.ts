@@ -32,18 +32,73 @@ export function useHlsPlayer(
   const loadGenRef = useRef(0);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaErrorRetryRef = useRef(0);
+  const freezeRecoveryRef = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const onPlay = () => setPlayerStatus("playing");
+    let lastTime = video.currentTime;
+    let lastTimeChange = Date.now();
+    let rafId: number;
+    const checkFreeze = () => {
+      if (!video || video.paused || video.ended || video.readyState < 2) {
+        lastTime = video.currentTime;
+        lastTimeChange = Date.now();
+        rafId = requestAnimationFrame(checkFreeze);
+        return;
+      }
+      if (video.currentTime !== lastTime) {
+        lastTime = video.currentTime;
+        lastTimeChange = Date.now();
+        freezeRecoveryRef.current = 0;
+      } else if (Date.now() - lastTimeChange > 4000) {
+        const buffered = video.buffered;
+        let seeked = false;
+        for (let i = 0; i < buffered.length; i++) {
+          if (video.currentTime >= buffered.start(i) && video.currentTime < buffered.end(i)) {
+            const ahead = buffered.end(i) - video.currentTime;
+            if (ahead > 1) {
+              video.currentTime = buffered.end(i) - 0.5;
+              seeked = true;
+              freezeRecoveryRef.current++;
+            }
+            break;
+          }
+        }
+        if (!seeked && buffered.length > 0) {
+          const lastEnd = buffered.end(buffered.length - 1);
+          if (lastEnd > video.currentTime) {
+            video.currentTime = lastEnd - 0.5;
+            seeked = true;
+            freezeRecoveryRef.current++;
+          }
+        }
+        lastTimeChange = Date.now();
+        if (freezeRecoveryRef.current >= 5) {
+          freezeRecoveryRef.current = 0;
+          if (onFatalErrorRef.current) {
+            onFatalErrorRef.current("videoFreeze");
+          }
+        }
+      }
+      rafId = requestAnimationFrame(checkFreeze);
+    };
+    rafId = requestAnimationFrame(checkFreeze);
+
+    const onPlay = () => {
+      setPlayerStatus("playing");
+      lastTime = video.currentTime;
+      lastTimeChange = Date.now();
+    };
     const onPause = () => {};
     const onWaiting = () => setPlayerStatus("buffering");
     const onPlaying = () => {
       setPlayerStatus("playing");
       mediaErrorRetryRef.current = 0;
+      lastTime = video.currentTime;
+      lastTimeChange = Date.now();
     };
     const onCanPlay = () => {
       setPlayerStatus("playing");
@@ -81,6 +136,7 @@ export function useHlsPlayer(
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("stalled", onStalled);
     return () => {
+      cancelAnimationFrame(rafId);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("waiting", onWaiting);
@@ -111,11 +167,13 @@ export function useHlsPlayer(
         enableWorker: true,
         lowLatencyMode: false,
         maxBufferLength: 30,
-        maxMaxBufferLength: 120,
+        maxMaxBufferLength: 60,
         startLevel: -1,
         capLevelToPlayerSize: true,
-        maxBufferHole: 0.5,
+        maxBufferHole: 1.0,
         stretchShortVideoTrack: true,
+        backBufferLength: 0,
+        maxSeekHole: 2.0,
       });
       hlsRef.current = hls;
 
