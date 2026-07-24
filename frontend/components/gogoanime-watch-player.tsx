@@ -101,9 +101,22 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
           ...s,
           file: proxySubUrl(s.file, s.referer),
         })));
-        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
         player.sourceRef.current = "anivexa";
 
+        if (res.stream_type === "mp4") {
+          const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+          player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+          player.setLoadingStream(false);
+          setStatusText("");
+          await new Promise(r => setTimeout(r, 100));
+          if (videoRef.current) {
+            videoRef.current.src = mp4Url;
+            videoRef.current.play().catch(() => {});
+          }
+          return true;
+        }
+
+        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
         let qualities = [{ quality: "Auto", url: hlsUrl }];
         try {
           const m3u8Resp = await fetch(hlsUrl);

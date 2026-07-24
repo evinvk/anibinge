@@ -584,9 +584,10 @@ async def anivexa_stream(
             data = await anivexa_client.get_stream_data(anilist_id, ep, provider, audio)
             if not data or data.get("error"):
                 raise HTTPException(status_code=404, detail="Stream not available on Anivexa")
-            m3u8_url, subtitles, referer, embed_url = anivexa_client._extract_stream_info(data, audio)
+            m3u8_url, subtitles, referer, embed_url, stream_type = anivexa_client._extract_stream_info(data, audio)
             return {
                 "stream_url": m3u8_url,
+                "stream_type": stream_type,
                 "subtitles": subtitles,
                 "provider": provider,
                 "referer": referer,

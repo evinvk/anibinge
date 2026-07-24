@@ -144,9 +144,12 @@ export async function GET(req: NextRequest) {
     return new Response(resp.body, {
       status: 200,
       headers: {
-        "Content-Type": "video/mp2t",
+        "Content-Type": contentType || "application/octet-stream",
         "Cache-Control": "public, max-age=3600",
         "Access-Control-Allow-Origin": "*",
+        ...(resp.headers.get("Content-Length") ? { "Content-Length": resp.headers.get("Content-Length")! } : {}),
+        ...(resp.headers.get("Content-Range") ? { "Content-Range": resp.headers.get("Content-Range")! } : {}),
+        ...(resp.headers.get("Accept-Ranges") ? { "Accept-Ranges": resp.headers.get("Accept-Ranges")! } : {}),
       },
     });
   } catch (e: any) {
