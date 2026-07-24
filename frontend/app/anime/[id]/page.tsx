@@ -168,7 +168,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         {/* GogoAnime Streaming Player */}
         <LazyStreamingPlayer
           animeTitle={detail.title_english || detail.title}
-          anilistId={detail.anilist_id || detail.id}
+          anilistId={detail.anilist_id}
         />
 
         {/* Recommendations */}
