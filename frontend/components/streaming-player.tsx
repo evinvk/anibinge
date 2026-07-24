@@ -77,35 +77,20 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle]);
 
   const onFatalError = useCallback(async (errorType: string) => {
-    console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: player.fallbackAttemptedRef.current });
-    if (!player.fallbackAttemptedRef.current) {
-      player.fallbackAttemptedRef.current = true;
+    console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
+    if (player.sourceRef.current === "gogoanime") {
+      player.sourceRef.current = null;
       player.destroyHls();
       player.setLoadingStream(true);
       player.setError(null);
-
-      if (!resolvedAnilistRef.current) {
-        try {
-          const res = await fetch(
-            `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
-          ).then(r => r.json());
-          if (res.anilist_id) resolvedAnilistRef.current = res.anilist_id;
-        } catch {}
-      }
-
-      if (resolvedAnilistRef.current) {
-        const ok = await loadAnivexaFallback(currentEpRef.current);
-        if (!ok) {
-          player.setError("Streaming unavailable from all providers");
-          player.setLoadingStream(false);
-        }
-      } else {
-        player.setError("Streaming unavailable from all providers");
+      const ok = await loadAnivexaFallback(currentEpRef.current);
+      if (!ok) {
+        player.setError("Playback error: " + errorType);
         player.setLoadingStream(false);
       }
     } else {
-      console.error("[onFatalError] fallback already attempted, showing error");
       player.setError("Playback error: " + errorType);
+      player.setLoadingStream(false);
     }
   }, [loadAnivexaFallback]);
 
