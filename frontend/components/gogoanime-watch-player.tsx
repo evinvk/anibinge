@@ -30,6 +30,21 @@ function proxySubUrl(file: string, referer: string) {
   return `/api/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
 }
 
+const FRIENDLY_ERRORS: Record<string, string> = {
+  networkError: "Streaming is temporarily unavailable",
+  mediaError: "Video playback error",
+  sourceError: "Source not supported",
+  hlsError: "Unable to load video stream",
+};
+
+function friendlyError(raw: string): string {
+  if (raw.startsWith("Playback error: ")) {
+    const code = raw.slice("Playback error: ".length);
+    return FRIENDLY_ERRORS[code] || "Streaming is temporarily unavailable";
+  }
+  return raw;
+}
+
 export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props) {
   const [currentEp, setCurrentEp] = useState(1);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -39,6 +54,9 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
+  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+  const embedUrlRef = useRef<string | null>(null);
+  const [embedReferer, setEmbedReferer] = useState<string>("");
 
   const subs = useSubtitles(videoRef);
 
@@ -63,7 +81,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         if (!r.ok) throw new Error("not ok");
         return r.json();
       });
-      if (res && res.stream_url) {
+      if (res && (res.stream_url || res.embed_url)) {
+        if (res.embed_url) {
+          setEmbedUrl(res.embed_url);
+          embedUrlRef.current = res.embed_url;
+          setEmbedReferer(res.referer || "");
+        }
+        if (!res.stream_url) {
+          player.setLoadingStream(false);
+          player.setStreamData(null);
+          player.setMasterUrl(null);
+          return false;
+        }
         subs.setSubs((res.subtitles || []).map((s: any) => ({
           ...s,
           file: proxySubUrl(s.file, s.referer),
@@ -129,7 +158,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: fallbackAttemptedRef.current });
     if (fallbackAttemptedRef.current) {
-      player.setError("Playback error: " + errorType);
+      if (embedUrlRef.current) {
+        player.setLoadingStream(false);
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        return;
+      }
+      player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
       return;
     }
@@ -142,17 +177,35 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     if (currentSource === "anivexa") {
       const ok = await tryGogoanime(currentEpRef.current);
       if (!ok) {
-        player.setError("Playback error: " + errorType);
+        if (embedUrlRef.current) {
+          player.setLoadingStream(false);
+          player.setStreamData(null);
+          player.setMasterUrl(null);
+          return;
+        }
+        player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
       }
     } else if (currentSource === "gogoanime") {
       const ok = await tryAnivexa(currentEpRef.current);
       if (!ok) {
-        player.setError("Playback error: " + errorType);
+        if (embedUrlRef.current) {
+          player.setLoadingStream(false);
+          player.setStreamData(null);
+          player.setMasterUrl(null);
+          return;
+        }
+        player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
       }
     } else {
-      player.setError("Playback error: " + errorType);
+      if (embedUrlRef.current) {
+        player.setLoadingStream(false);
+        player.setStreamData(null);
+        player.setMasterUrl(null);
+        return;
+      }
+      player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
     }
   }, [tryAnivexa, tryGogoanime]);
@@ -214,6 +267,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
+    setEmbedUrl(null);
+    embedUrlRef.current = null;
     fallbackAttemptedRef.current = false;
 
     const ok = await tryAnivexa(ep);
@@ -221,8 +276,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
 
     const gogoOk = await tryGogoanime(ep);
     if (!gogoOk) {
-      player.setError("No streaming sources available for this episode");
       player.setLoadingStream(false);
+      if (!embedUrlRef.current) {
+        player.setError("Streaming is temporarily unavailable. Try again later.");
+      }
     }
   }, [tryAnivexa, tryGogoanime]);
 
@@ -262,10 +319,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
               fsTargetRef.current
             )}
           </>
+        ) : embedUrl ? (
+          <iframe
+            src={embedUrl}
+            className="h-full w-full border-0"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="no-referrer"
+          />
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
-            <span className="text-sm">{player.error}</span>
+            <span className="text-sm text-center px-4">{friendlyError(player.error)}</span>
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-mist text-sm">
@@ -383,7 +448,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       {player.error && !player.loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="text-xs">{player.error}</span>
+          <span className="text-xs">{friendlyError(player.error)}</span>
         </div>
       )}
     </div>

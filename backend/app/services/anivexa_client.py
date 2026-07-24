@@ -21,7 +21,14 @@ _client = get_shared_client(timeout=30.0, headers={
 })
 
 # Providers ordered by reliability
-_PROVIDERS = ["anikoto", "animegg", "anineko", "anizone"]
+# anikoto: HLS from megap.kotocdn.site (may return PNGs) + embed from megaplay.buzz
+# anibd: HLS from playeng.animeapps.top (may be broken R2) + embed from playeng.animeapps.top
+# animegg: HLS from animegg.org (may 500)
+# anidbapp: HLS from hls.anidb.app (may 403) + embed from anidb.app
+# anineko: HLS from vivibebe.site (ad-heavy)
+# anizone: returns 500
+# senshi, kaa, animenosub, allmanga, reanime: return 500
+_PROVIDERS = ["anikoto", "anibd", "animegg", "anidbapp", "anineko", "anizone"]
 
 
 async def _get(path: str, params: dict | None = None) -> dict[str, Any]:
@@ -52,24 +59,25 @@ async def get_stream_data(anilist_id: int, episode: int, provider: str = "anikot
 
 
 async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "sub") -> dict[str, Any]:
-    """Try multiple providers until one returns a stream. Returns stream URL + subtitles."""
+    """Try multiple providers until one returns a stream. Returns stream URL + subtitles + embed URL."""
     for provider in _PROVIDERS:
         data = await get_stream_data(anilist_id, episode, provider, audio)
         if data and not data.get("error"):
-            m3u8_url, subtitles, m3u8_referer = _extract_stream_info(data, audio)
-            if m3u8_url:
+            m3u8_url, subtitles, m3u8_referer, embed_url = _extract_stream_info(data, audio)
+            if m3u8_url or embed_url:
                 return {
                     "source": "anivexa",
                     "provider": provider,
                     "stream_url": m3u8_url,
                     "referer": m3u8_referer,
+                    "embed_url": embed_url,
                     "subtitles": subtitles,
                 }
     return {}
 
 
-def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict], str | None]:
-    """Extract M3U8 URL and subtitles from provider response."""
+def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict], str | None, str | None]:
+    """Extract M3U8 URL, subtitles, referer, and embed URL from provider response."""
     # anikoto returns {ssub: {streams: [...], subtitles: [...]}}
     ssub = data.get(audio) or data.get("ssub") or data.get("sub") or {}
     if not isinstance(ssub, dict):
@@ -78,11 +86,17 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
 
     m3u8_url = None
     m3u8_referer = None
+    embed_url = None
+    embed_referer = None
     streams = ssub.get("streams", [])
     for s in streams:
-        if s.get("type") == "hls" and s.get("url"):
+        if s.get("type") == "hls" and s.get("url") and not m3u8_url:
             m3u8_url = s["url"]
             m3u8_referer = s.get("referer")
+        if s.get("type") == "embed" and s.get("url") and not embed_url:
+            embed_url = s["url"]
+            embed_referer = s.get("referer")
+        if m3u8_url and embed_url:
             break
 
     # Extract subtitles with referer from matching stream source
@@ -108,7 +122,7 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
                 "referer": referer,
             })
 
-    return m3u8_url, subtitles, m3u8_referer
+    return m3u8_url, subtitles, m3u8_referer, embed_url
 
 
 async def health_check() -> bool:

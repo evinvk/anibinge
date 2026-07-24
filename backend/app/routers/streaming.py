@@ -268,7 +268,7 @@ async def gogoanime_health(request: Request):
             variant_url = base + variant_url
 
         # Fetch variant M3U8
-        client = get_shared_client(timeout=_TIMEOUT, headers=_HEADERS)
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS)
         resp = await client.get(variant_url)
         resp.raise_for_status()
         vlines = resp.text.strip().split("\n")
@@ -581,12 +581,13 @@ async def anivexa_stream(
         data = await anivexa_client.get_stream_data(anilist_id, ep, provider, audio)
         if not data or data.get("error"):
             raise HTTPException(status_code=404, detail="Stream not available on Anivexa")
-        m3u8_url, subtitles, referer = anivexa_client._extract_stream_info(data, audio)
+        m3u8_url, subtitles, referer, embed_url = anivexa_client._extract_stream_info(data, audio)
         return {
             "stream_url": m3u8_url,
             "subtitles": subtitles,
             "provider": provider,
             "referer": referer,
+            "embed_url": embed_url,
         }
     except HTTPException:
         raise
@@ -822,13 +823,14 @@ async def fallback_stream(
     if anilist_id:
         try:
             result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
-            if result and result.get("stream_url"):
+            if result and (result.get("stream_url") or result.get("embed_url")):
                 master_path = f"/api/v1/streaming/anivexa/{anilist_id}/master?ep={ep}&audio={audio}"
                 return {
                     "source": "anivexa",
                     "provider": result.get("provider", "anikoto"),
-                    "master_url": master_path,
-                    "stream_url": result["stream_url"],
+                    "master_url": master_path if result.get("stream_url") else None,
+                    "stream_url": result.get("stream_url"),
+                    "embed_url": result.get("embed_url"),
                     "subtitles": result.get("subtitles", []),
                     "anilist_id": anilist_id,
                 }
