@@ -140,21 +140,18 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    Uses AniList for recently updated airing anime + GogoAnime catalog for
-    poster/slug matching. Returns episode-level cards with title, poster,
-    episode number, sub/dub indicator, and relative time.
+    Uses AnimeSchedule API (ongoing anime sorted by subTime) for accurate
+    subtitle release timestamps + GogoAnime catalog for poster/slug matching.
+    Returns episode-level cards with title, poster, episode number, and relative time.
     """
     try:
-        import time as _time
-        from app.services import anilist_client, gogoanime_client
+        import re as _re
+        from datetime import datetime, timezone
+        from app.services import animeschedule_client, gogoanime_client
 
-        WEEK_SECONDS = 604800
-
-        # AniList max per_page is 50; we request one extra to detect if there's a next page
-        fetch_limit = min(limit + 1, 50)
-        result = await anilist_client.get_schedule(page=page, per_page=fetch_limit)
-        page_info = result.get("Page", {}).get("pageInfo", {})
-        media_list = result.get("Page", {}).get("media", [])
+        result = await animeschedule_client.get_anime_list(
+            airing_statuses="ongoing", page=page, per_page=limit
+        )
 
         gogo_catalog = gogoanime_client.get_catalog()
         gogo_index: dict[str, dict] = {}
@@ -163,33 +160,37 @@ async def get_recent_episodes(
             if title_key:
                 gogo_index[title_key] = item
 
+        def _parse_sub_time_ago(sub_time_str: str) -> float:
+            """Parse AnimeSchedule subTime string like '2h15m', '45m', '1d3h' into seconds ago."""
+            if not sub_time_str:
+                return 0
+            total = 0
+            for match in _re.finditer(r"(\d+)([dhm])", sub_time_str.lower()):
+                val = int(match.group(1))
+                unit = match.group(2)
+                if unit == "d":
+                    total += val * 86400
+                elif unit == "h":
+                    total += val * 3600
+                elif unit == "m":
+                    total += val * 60
+            return total
+
         episodes = []
-        for m in media_list:
-            next_ep = m.get("nextAiringEpisode")
-            if not next_ep or not next_ep.get("episode"):
+        for a in result:
+            title = a.get("name") or a.get("title", "")
+            title_jp = a.get("name_japanese", "")
+            ep_num = a.get("episodeNumber") or a.get("episode")
+            if not ep_num:
                 continue
 
-            ep_num = next_ep["episode"] - 1
-            if ep_num < 1:
-                continue
-
-            time_until = next_ep.get("timeUntilAiring", 0) or 0
-
-            # Estimate when the latest episode aired relative to now.
-            # Weekly anime: last ep aired ~7 days before the next one.
-            if time_until > 0:
-                aired_ago = WEEK_SECONDS - time_until
-            else:
-                aired_ago = 0
-
-            title_obj = m.get("title", {})
-            title = title_obj.get("english") or title_obj.get("romaji") or ""
-            title_jp = title_obj.get("romaji", "")
+            sub_time_str = a.get("subTime", "")
+            aired_ago = _parse_sub_time_ago(sub_time_str)
 
             # Cross-reference with GogoAnime catalog for poster/slug
             poster = None
             slug = None
-            for try_title in [title, title_jp, title_obj.get("english", "")]:
+            for try_title in [title, title_jp]:
                 norm = gogoanime_client._normalize(try_title)
                 if norm and norm in gogo_index:
                     item = gogo_index[norm]
@@ -197,10 +198,9 @@ async def get_recent_episodes(
                     slug = item.get("slug")
                     break
 
-            # Fall back to AniList cover image
+            # Fall back to AnimeSchedule picture
             if not poster:
-                cover = m.get("coverImage", {})
-                poster = cover.get("large") or cover.get("extraLarge")
+                poster = a.get("picture") or a.get("image")
 
             episodes.append({
                 "title": title,
@@ -208,14 +208,15 @@ async def get_recent_episodes(
                 "poster": poster,
                 "slug": slug,
                 "aired_ago": aired_ago,
-                "genres": m.get("genres", []),
-                "anilist_id": m.get("id"),
+                "genres": a.get("genres", []),
+                "anilist_id": None,
             })
 
+        has_next = len(result) >= limit
         return {
-            "data": episodes[:limit],
+            "data": episodes,
             "page": page,
-            "has_next": len(episodes) > limit,
+            "has_next": has_next,
         }
     except Exception as e:
         logger.warning("Recent episodes failed: %s", e)

@@ -135,15 +135,10 @@ class AniListClient:
         query = """
         query($page:Int,$perPage:Int){
           Page(page:$page,perPage:$perPage){
-            pageInfo{
-              total
-              currentPage
-              hasNextPage
-              lastPage
-            }
             media(
               type:ANIME,
-              sort:TRENDING_DESC
+              status:RELEASING,
+              sort:POPULARITY_DESC
             ){
               id
               title{
