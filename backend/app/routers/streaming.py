@@ -140,18 +140,13 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    Uses AnimeSchedule API (ongoing anime sorted by subTime) for accurate
-    subtitle release timestamps + GogoAnime catalog for poster/slug matching.
-    Returns episode-level cards with title, poster, episode number, and relative time.
+    Primary: AnimeSchedule API (ongoing anime with subTime for accurate timestamps).
+    Fallback: AniList GraphQL (RELEASING + UPDATED_AT_DESC with timeUntilAiring heuristic).
+    Both cross-reference with GogoAnime catalog for poster/slug matching.
     """
     try:
         import re as _re
-        from datetime import datetime, timezone
-        from app.services import animeschedule_client, gogoanime_client
-
-        result = await animeschedule_client.get_anime_list(
-            airing_statuses="ongoing", page=page, per_page=limit
-        )
+        from app.services import gogoanime_client
 
         gogo_catalog = gogoanime_client.get_catalog()
         gogo_index: dict[str, dict] = {}
@@ -176,45 +171,93 @@ async def get_recent_episodes(
                     total += val * 60
             return total
 
-        episodes = []
-        for a in result:
-            title = a.get("name") or a.get("title", "")
-            title_jp = a.get("name_japanese", "")
-            ep_num = a.get("episodeNumber") or a.get("episode")
-            if not ep_num:
-                continue
-
-            sub_time_str = a.get("subTime", "")
-            aired_ago = _parse_sub_time_ago(sub_time_str)
-
-            # Cross-reference with GogoAnime catalog for poster/slug
-            poster = None
-            slug = None
+        def _match_gogo(title: str, title_jp: str = "") -> tuple[str | None, str | None]:
+            """Match title against GogoAnime catalog. Returns (poster, slug)."""
             for try_title in [title, title_jp]:
                 norm = gogoanime_client._normalize(try_title)
                 if norm and norm in gogo_index:
                     item = gogo_index[norm]
-                    poster = item.get("poster") or item.get("image")
-                    slug = item.get("slug")
-                    break
+                    return item.get("poster") or item.get("image"), item.get("slug")
+            return None, None
 
-            # Fall back to AnimeSchedule picture
-            if not poster:
-                poster = a.get("picture") or a.get("image")
+        # Try AnimeSchedule first
+        episodes = []
+        try:
+            from app.services import animeschedule_client
+            result = await animeschedule_client.get_anime_list(
+                airing_statuses="ongoing", page=page, per_page=limit
+            )
+            for a in result:
+                title = a.get("name") or a.get("title", "")
+                title_jp = a.get("name_japanese", "")
+                ep_num = a.get("episodeNumber") or a.get("episode")
+                if not ep_num:
+                    continue
 
-            episodes.append({
-                "title": title,
-                "episode": ep_num,
-                "poster": poster,
-                "slug": slug,
-                "aired_ago": aired_ago,
-                "genres": a.get("genres", []),
-                "anilist_id": None,
-            })
+                sub_time_str = a.get("subTime", "")
+                aired_ago = _parse_sub_time_ago(sub_time_str)
 
-        has_next = len(result) >= limit
+                poster, slug = _match_gogo(title, title_jp)
+                if not poster:
+                    poster = a.get("picture") or a.get("image")
+
+                episodes.append({
+                    "title": title,
+                    "episode": ep_num,
+                    "poster": poster,
+                    "slug": slug,
+                    "aired_ago": aired_ago,
+                    "genres": a.get("genres", []),
+                    "anilist_id": None,
+                })
+        except Exception as e:
+            logger.warning("AnimeSchedule failed for recent, falling back to AniList: %s", e)
+
+        # Fallback to AniList if AnimeSchedule returned nothing
+        if not episodes:
+            WEEK_SECONDS = 604800
+            try:
+                from app.services import anilist_client
+                fetch_limit = min(limit + 1, 50)
+                result = await anilist_client.get_schedule(page=page, per_page=fetch_limit)
+                media_list = result.get("Page", {}).get("media", [])
+
+                for m in media_list:
+                    next_ep = m.get("nextAiringEpisode")
+                    if not next_ep or not next_ep.get("episode"):
+                        continue
+
+                    ep_num = next_ep["episode"] - 1
+                    if ep_num < 1:
+                        continue
+
+                    time_until = next_ep.get("timeUntilAiring", 0) or 0
+                    aired_ago = WEEK_SECONDS - time_until if time_until > 0 else 0
+
+                    title_obj = m.get("title", {})
+                    title = title_obj.get("english") or title_obj.get("romaji") or ""
+                    title_jp = title_obj.get("romaji", "")
+
+                    poster, slug = _match_gogo(title, title_jp)
+                    if not poster:
+                        cover = m.get("coverImage", {})
+                        poster = cover.get("large") or cover.get("extraLarge")
+
+                    episodes.append({
+                        "title": title,
+                        "episode": ep_num,
+                        "poster": poster,
+                        "slug": slug,
+                        "aired_ago": aired_ago,
+                        "genres": m.get("genres", []),
+                        "anilist_id": m.get("id"),
+                    })
+            except Exception as e2:
+                logger.error("AniList fallback also failed: %s", e2)
+
+        has_next = len(episodes) >= limit
         return {
-            "data": episodes,
+            "data": episodes[:limit],
             "page": page,
             "has_next": has_next,
         }
