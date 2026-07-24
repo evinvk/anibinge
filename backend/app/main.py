@@ -189,6 +189,29 @@ async def startup_event():
         await conn.run_sync(Base.metadata.create_all)
     logger.info("Database tables ensured")
 
+    # Ensure all columns/constraints exist (create_all won't alter existing tables)
+    from sqlalchemy import text
+    from app.core.db import AsyncSessionLocal
+    _migrations = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+        "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS source VARCHAR DEFAULT 'jikan'",
+        "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0",
+        "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION",
+        "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
+        "ALTER TABLE watchlist_entries ADD CONSTRAINT uq_user_anime UNIQUE (user_id, anime_id)",
+    ]
+    async with AsyncSessionLocal() as session:
+        for stmt in _migrations:
+            try:
+                await session.execute(text(stmt))
+            except Exception:
+                pass
+        await session.commit()
+    logger.info("Database migration patches applied")
+
     # Invalidate stale cache on startup
     from app.core.cache import invalidate_prefix
     for prefix in ["agg:upcoming", "agg:trending", "agg:airing", "agg:seasonal", "agg:schedule"]:
