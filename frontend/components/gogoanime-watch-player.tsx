@@ -484,15 +484,27 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </button>
         ))}
         {player.masterUrl && (
-          <a
-            href={player.masterUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={() => {
+              const url = player.masterUrl!;
+              if (player.sourceRef.current === "anivexa" && !url.includes(".m3u8")) {
+                fetch(url).then(r => r.blob()).then(blob => {
+                  const ext = blob.type.includes("mp4") ? ".mp4" : blob.type.includes("mkv") ? ".mkv" : ".ts";
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}${ext}`;
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                }).catch(() => window.open(url, "_blank"));
+              } else {
+                window.open(url, "_blank");
+              }
+            }}
             className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
           >
             <Download className="h-3 w-3" />
             Download
-          </a>
+          </button>
         )}
       </div>
 
