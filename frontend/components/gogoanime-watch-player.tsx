@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Loader2, AlertTriangle, Monitor } from "lucide-react";
+import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
@@ -31,9 +31,9 @@ function proxySubUrl(file: string, referer: string) {
 }
 
 const FRIENDLY_ERRORS: Record<string, string> = {
-  networkError: "Streaming is temporarily unavailable",
-  mediaError: "Video playback error",
-  sourceError: "Source not supported",
+  networkError: "Streaming source is temporarily unavailable",
+  mediaError: "Video format not supported by this source",
+  sourceError: "Source format not supported",
   hlsError: "Unable to load video stream",
 };
 
@@ -57,12 +57,14 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const embedUrlRef = useRef<string | null>(null);
   const [embedReferer, setEmbedReferer] = useState<string>("");
+  const [statusText, setStatusText] = useState<string>("");
 
   const subs = useSubtitles(videoRef);
 
   const tryAnivexa = useCallback(async (ep: number): Promise<boolean> => {
     let aid = resolvedAnilistRef.current;
     if (!aid) {
+      setStatusText("Resolving anime...");
       try {
         const res = await fetch(
           `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
@@ -74,6 +76,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       } catch { /* not critical */ }
     }
     if (!aid) return false;
+    setStatusText("Loading stream...");
     try {
       const res = await fetch(
         `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`
@@ -91,6 +94,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
           player.setLoadingStream(false);
           player.setStreamData(null);
           player.setMasterUrl(null);
+          setStatusText("");
           return false;
         }
         subs.setSubs((res.subtitles || []).map((s: any) => ({
@@ -131,13 +135,16 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         player.setMasterUrl(hlsUrl);
         player.setStreamData({ qualities });
         player.setLoadingStream(false);
+        setStatusText("");
         return true;
       }
     } catch { /* failed */ }
+    setStatusText("");
     return false;
   }, [title, audio]);
 
   const tryGogoanime = useCallback(async (ep: number): Promise<boolean> => {
+    setStatusText("Trying alternate source...");
     try {
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
@@ -147,9 +154,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
         player.setStreamData({ qualities: data.qualities });
         player.setMasterUrl(api.gogoanimeMaster(slug, ep, audio));
         player.setLoadingStream(false);
+        setStatusText("");
         return true;
       }
     } catch { /* failed */ }
+    setStatusText("");
     return false;
   }, [slug, audio]);
 
@@ -157,56 +166,39 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
 
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: fallbackAttemptedRef.current });
+
     if (fallbackAttemptedRef.current) {
-      if (embedUrlRef.current) {
-        player.setLoadingStream(false);
-        player.setStreamData(null);
-        player.setMasterUrl(null);
-        return;
-      }
       player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
+      setStatusText("");
       return;
     }
     fallbackAttemptedRef.current = true;
     player.destroyHls();
     player.setLoadingStream(true);
+    player.setStreamData(null);
+    player.setMasterUrl(null);
     player.setError(null);
 
     const currentSource = player.sourceRef.current;
     if (currentSource === "anivexa") {
       const ok = await tryGogoanime(currentEpRef.current);
       if (!ok) {
-        if (embedUrlRef.current) {
-          player.setLoadingStream(false);
-          player.setStreamData(null);
-          player.setMasterUrl(null);
-          return;
-        }
         player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
+        setStatusText("");
       }
     } else if (currentSource === "gogoanime") {
       const ok = await tryAnivexa(currentEpRef.current);
       if (!ok) {
-        if (embedUrlRef.current) {
-          player.setLoadingStream(false);
-          player.setStreamData(null);
-          player.setMasterUrl(null);
-          return;
-        }
         player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
+        setStatusText("");
       }
     } else {
-      if (embedUrlRef.current) {
-        player.setLoadingStream(false);
-        player.setStreamData(null);
-        player.setMasterUrl(null);
-        return;
-      }
       player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
+      setStatusText("");
     }
   }, [tryAnivexa, tryGogoanime]);
 
@@ -270,29 +262,49 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
     setEmbedUrl(null);
     embedUrlRef.current = null;
     fallbackAttemptedRef.current = false;
+    player.sourceRef.current = null;
+    player.setPlayerStatus("idle");
 
+    setStatusText("Searching for stream...");
     const ok = await tryAnivexa(ep);
     if (ok) return;
 
+    setStatusText("Trying alternate source...");
     const gogoOk = await tryGogoanime(ep);
     if (!gogoOk) {
       player.setLoadingStream(false);
-      if (!embedUrlRef.current) {
-        player.setError("Streaming is temporarily unavailable. Try again later.");
-      }
+      setStatusText("");
+      player.setError("Streaming is temporarily unavailable. Try again later.");
     }
   }, [tryAnivexa, tryGogoanime]);
+
+  const handleRetry = useCallback(() => {
+    player.resetPlayer();
+    setEmbedUrl(null);
+    embedUrlRef.current = null;
+    loadStream(slug, currentEp);
+  }, [slug, currentEp, loadStream]);
 
   return (
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
         {player.loadingStream ? (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
+            {statusText && (
+              <span className="text-xs text-mist">{statusText}</span>
+            )}
           </div>
         ) : player.streamData ? (
           <>
             <video ref={videoRef} className="h-full w-full" controls playsInline />
+            {player.playerStatus === "buffering" && !player.error && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="rounded-full bg-black/50 p-3">
+                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+                </div>
+              </div>
+            )}
             {subs.activeCues.length > 0 && (
               <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-10">
                 {subs.activeCues.map((text, i) => (
@@ -328,9 +340,16 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
             referrerPolicy="no-referrer"
           />
         ) : player.error ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-mist">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
-            <span className="text-sm text-center px-4">{friendlyError(player.error)}</span>
+            <span className="text-sm text-center px-4 max-w-xs">{friendlyError(player.error)}</span>
+            <button
+              onClick={handleRetry}
+              className="mt-1 flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-500"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Try again
+            </button>
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-mist text-sm">
@@ -448,7 +467,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId }: Props
       {player.error && !player.loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="text-xs">{friendlyError(player.error)}</span>
+          <span className="text-xs flex-1">{friendlyError(player.error)}</span>
+          <button onClick={handleRetry} className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium hover:bg-amber-500/30 transition">
+            Retry
+          </button>
         </div>
       )}
     </div>

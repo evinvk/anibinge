@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 
 interface StreamSource {
   quality: string;
@@ -10,6 +10,8 @@ interface StreamSource {
 interface StreamData {
   qualities: StreamSource[];
 }
+
+export type PlayerStatus = "idle" | "buffering" | "playing" | "error";
 
 export function useHlsPlayer(
   videoRef: React.RefObject<HTMLVideoElement | null>,
@@ -21,6 +23,7 @@ export function useHlsPlayer(
   const [selectedQuality, setSelectedQuality] = useState(0);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
   const hlsRef = useRef<any>(null);
   const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
   const fallbackAttemptedRef = useRef(false);
@@ -29,6 +32,30 @@ export function useHlsPlayer(
   const loadGenRef = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onPlay = () => setPlayerStatus("playing");
+    const onPause = () => {};
+    const onWaiting = () => setPlayerStatus("buffering");
+    const onPlaying = () => setPlayerStatus("playing");
+    const onCanPlay = () => {
+      if (playerStatus === "buffering" || playerStatus === "idle") setPlayerStatus("playing");
+    };
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("playing", onPlaying);
+    video.addEventListener("canplay", onCanPlay);
+    return () => {
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("playing", onPlaying);
+      video.removeEventListener("canplay", onCanPlay);
+    };
+  });
 
   const loadPlayer = useCallback(async (url: string) => {
     if (hlsRef.current) {
@@ -39,6 +66,8 @@ export function useHlsPlayer(
     const video = videoRef.current;
     if (!video) return;
 
+    setPlayerStatus("buffering");
+
     const gen = ++loadGenRef.current;
     const Hls = (await import("hls.js")).default;
     if (gen !== loadGenRef.current) return;
@@ -47,33 +76,54 @@ export function useHlsPlayer(
       const hls = new Hls({
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
+        startLevel: -1,
+        capLevelToPlayerSize: true,
       });
       hlsRef.current = hls;
 
       hls.loadSource(url);
       hls.attachMedia(video);
+
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
         if (data.levels?.length > 1) {
-          hls.currentLevel = 0;
+          hls.currentLevel = -1;
         }
-        video.play().catch(() => {});
+        video.play().catch(() => {
+          setPlayerStatus("error");
+        });
       });
-      onLoadSubtitlesRef.current();
+
+      hls.on(Hls.Events.BUFFER_APPENDED, () => {
+        setPlayerStatus("playing");
+      });
+
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {
         if (data.fatal) {
+          setPlayerStatus("error");
           if (onFatalErrorRef.current) {
             onFatalErrorRef.current(data.type);
           } else {
             setError("Playback error: " + data.type);
           }
+        } else if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          setPlayerStatus("buffering");
         }
       });
+
+      onLoadSubtitlesRef.current();
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       video.src = url;
+      video.addEventListener("loadedmetadata", () => {
+        video.play().catch(() => {
+          setPlayerStatus("error");
+        });
+      }, { once: true });
+      video.addEventListener("waiting", () => setPlayerStatus("buffering"));
+      video.addEventListener("playing", () => setPlayerStatus("playing"));
       onLoadSubtitlesRef.current();
-      video.play().catch(() => {});
     } else {
       setError("HLS is not supported in this browser");
+      setPlayerStatus("error");
     }
   }, [videoRef]);
 
@@ -96,6 +146,7 @@ export function useHlsPlayer(
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(0);
+    setPlayerStatus("idle");
     sourceRef.current = null;
     fallbackAttemptedRef.current = false;
   }
@@ -110,6 +161,8 @@ export function useHlsPlayer(
     setLoadingStream,
     error,
     setError,
+    playerStatus,
+    setPlayerStatus,
     hlsRef,
     sourceRef,
     fallbackAttemptedRef,
