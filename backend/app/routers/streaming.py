@@ -517,12 +517,45 @@ async def get_gogoanime_stream(
     ep: int = Query(..., ge=1, description="Episode number"),
     audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
-    """Get M3U8 streaming URLs for an episode on GogoAnime."""
+    """Resolve GogoAnime embed URL for an episode. Returns the embed page URL for iframe playback."""
     try:
-        sources = await gogoanime_client.get_stream_sources(slug, ep, audio)
-        if not sources:
+        from app.services import gogoanime_client
+        episode = await gogoanime_client.get_episode(slug, ep)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        server_info = episode.get("server") or {}
+        qualities_list = server_info.get("qualities", [])
+        preferred = audio.upper()
+        ordered_groups = []
+        for qg in qualities_list:
+            if qg.get("title", "").upper() == preferred:
+                ordered_groups.insert(0, qg)
+            else:
+                ordered_groups.append(qg)
+
+        embed_url = None
+        for quality_group in ordered_groups:
+            if embed_url:
+                break
+            for server in quality_group.get("serverList", []):
+                sid = server.get("serverId", "")
+                if sid.startswith("anivexa:"):
+                    continue
+                resolved = await gogoanime_client.resolve_server_url(sid)
+                if resolved:
+                    embed_url = resolved
+                    break
+
+        if not embed_url:
+            proxy_url = episode.get("defaultStreamingUrl", "")
+            if proxy_url:
+                full = proxy_url if proxy_url.startswith("http") else f"{gogoanime_client._BASE_URL}{proxy_url}"
+                return {"data": {"embed_url": full}}
+
             raise HTTPException(status_code=404, detail="No streaming sources found")
-        return {"data": sources}
+
+        return {"data": {"embed_url": embed_url}}
     except HTTPException:
         raise
     except Exception as e:
