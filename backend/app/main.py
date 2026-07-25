@@ -227,17 +227,13 @@ async def startup_event():
         "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS rating DOUBLE PRECISION",
         "ALTER TABLE watchlist_entries ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ",
         "ALTER TABLE watchlist_entries ADD CONSTRAINT uq_user_anime UNIQUE (user_id, anime_id)",
-        # Convert existing TIMESTAMP WITHOUT TIME ZONE columns to TIMESTAMPTZ
-        "ALTER TABLE users ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
-        "ALTER TABLE watchlist_entries ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'",
-        "ALTER TABLE reviews ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
-        "ALTER TABLE push_subscriptions ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
-        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL REFERENCES users(id)",
-        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS slug VARCHAR NOT NULL",
-        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS episode_number INTEGER NOT NULL",
-        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS body VARCHAR(2000) NOT NULL",
+        # episode_comments — ensure all columns exist (table may have been created with subset)
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id)",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS slug VARCHAR NOT NULL DEFAULT ''",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS episode_number INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS body VARCHAR(2000) NOT NULL DEFAULT ''",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS tag VARCHAR DEFAULT 'comment'",
-        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES episode_comments(id)",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS likes INTEGER DEFAULT 0",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS replies_count INTEGER DEFAULT 0",
@@ -249,9 +245,10 @@ async def startup_event():
         for stmt in _migrations:
             try:
                 await session.execute(text(stmt))
-            except Exception:
-                pass
-        await session.commit()
+                await session.commit()
+            except Exception as e:
+                logger.warning("Migration skipped (%s): %s", stmt[:60], e)
+                await session.rollback()
     logger.info("Database migration patches applied")
 
     # Invalidate stale cache on startup
