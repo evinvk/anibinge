@@ -19,9 +19,20 @@ export function DownloadButton({ title, anilistId, totalEpisodes, slug }: Props)
     setLoading(true);
     try {
       let resolvedSlug = slug;
-      if (!resolvedSlug) {
-        const searchRes = await api.gogoanimeSearch(title).catch(() => null);
-        resolvedSlug = searchRes?.data?.[0]?.slug || title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      let resolvedAnilistId = anilistId;
+
+      const searchRes = await api.gogoanimeSearch(title).catch(() => null);
+      if (searchRes?.data?.[0]?.slug) {
+        resolvedSlug = searchRes.data[0].slug;
+      } else if (!resolvedSlug) {
+        resolvedSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      }
+
+      if (!resolvedAnilistId) {
+        const resolveRes = await api.anivexaResolve(title).catch(() => null);
+        if (resolveRes?.anilist_id) {
+          resolvedAnilistId = resolveRes.anilist_id;
+        }
       }
 
       const epCount = totalEpisodes && totalEpisodes > 0 ? totalEpisodes : 1;
@@ -30,7 +41,7 @@ export function DownloadButton({ title, anilistId, totalEpisodes, slug }: Props)
       if (epCount === 1) {
         const dlUrl = api.downloadUrl({
           slug: resolvedSlug,
-          anilist_id: anilistId || undefined,
+          anilist_id: resolvedAnilistId || undefined,
           ep: 1,
           audio: "sub",
           filename: `${cleanTitle}_E1`,
@@ -42,7 +53,7 @@ export function DownloadButton({ title, anilistId, totalEpisodes, slug }: Props)
           setProgress({ current: ep, total: epCount });
           const dlUrl = api.downloadUrl({
             slug: resolvedSlug,
-            anilist_id: anilistId || undefined,
+            anilist_id: resolvedAnilistId || undefined,
             ep,
             audio: "sub",
             filename: `${cleanTitle}_E${ep}`,
