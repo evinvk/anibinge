@@ -313,6 +313,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setError(null);
       player.setPlayerStatus("idle");
       player.setLoadingStream(true);
+      setStatusText("Trying Animetsu...");
+      const anitsuOk = await tryAnitsuOnly(currentEpRef.current);
+      if (anitsuOk) return;
       setStatusText("Trying Anivexa...");
       const ok = await tryAnivexaOnly(currentEpRef.current);
       if (!ok) {
@@ -380,7 +383,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setLoadingStream(false);
       setStatusText("");
     }
-  }, [tryAnivexaOnly, tryWibuOnly]);
+  }, [tryAnitsuOnly, tryAnivexaOnly, tryWibuOnly]);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
@@ -436,12 +439,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    // 1. Try Animetsu (kwik/anipm) first
-    setStatusText("Trying Animetsu...");
-    const anitsuOk = await tryAnitsuOnly(ep);
-    if (anitsuOk) return;
-
-    // 2. Try GogoAnime
+    // 1. Try GogoAnime first (most reliable)
     if (slug) {
       setStatusText("Trying GogoAnime...");
       const streamRes = await api.gogoanimeStream(slug, ep).catch(() => null);
@@ -455,6 +453,11 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         return;
       }
     }
+
+    // 2. Try Animetsu
+    setStatusText("Trying Animetsu...");
+    const anitsuOk = await tryAnitsuOnly(ep);
+    if (anitsuOk) return;
 
     // 3. Try Anivexa providers
     setStatusText("Trying Anivexa...");
