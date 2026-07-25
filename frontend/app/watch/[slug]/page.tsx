@@ -58,10 +58,10 @@ function WatchPageInner({ slug }: { slug: string }) {
           const match = data.data?.find((a: any) => a.slug === slug);
           if (match) {
             resolvedTitle = match.title;
-            setTotalEps((prev) => prev ?? match.episodes_count || match.actual_episodes_count || match.latest_episode || null);
+            setTotalEps((prev) => prev ?? (match.episodes_count || match.actual_episodes_count || match.latest_episode || null));
           } else if (data.data?.length > 0) {
             resolvedTitle = data.data[0].title;
-            setTotalEps((prev) => prev ?? data.data[0].episodes_count || data.data[0].actual_episodes_count || data.data[0].latest_episode || null);
+            setTotalEps((prev) => prev ?? (data.data[0].episodes_count || data.data[0].actual_episodes_count || data.data[0].latest_episode || null));
           } else {
             setError("Anime not found");
           }
