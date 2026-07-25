@@ -521,13 +521,19 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       } catch { /* not critical */ }
     }
 
-    player.setLoadingStream(false);
     setStatusText("");
 
-    // If GogoAnime had no results, we can't use useEffect on selectedSlug to trigger loadStream.
-    // Start loading directly via anitsu/anivexa.
-    if (!gogoSlug && resolvedAnilistRef.current) {
+    // If GogoAnime found a slug, the useEffect on selectedSlug will trigger loadStream.
+    // Don't set loadingStream=false here — loadStream needs it true for the loading UI.
+    if (gogoSlug) {
+      return;
+    }
+
+    // If GogoAnime had no results, start loading directly via anitsu/anivexa.
+    if (resolvedAnilistRef.current) {
       loadStream(null, 1);
+    } else {
+      player.setLoadingStream(false);
     }
   }
 

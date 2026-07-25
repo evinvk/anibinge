@@ -34,6 +34,7 @@ export function useHlsPlayer(
   const mediaErrorRetryRef = useRef(0);
   const freezeRecoveryRef = useRef(0);
   const bufferingStartRef = useRef(0);
+  const consecutive410Ref = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
 
@@ -145,6 +146,7 @@ export function useHlsPlayer(
       isSeekingRef.current = false;
       bufferingStartRef.current = 0;
       mediaErrorRetryRef.current = 0;
+      consecutive410Ref.current = 0;
       lastTime = video.currentTime;
       lastTimeChange = Date.now();
       lastVideoFrameTime = Date.now();
@@ -297,7 +299,31 @@ export function useHlsPlayer(
           }
         } else {
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            setPlayerStatus("buffering");
+            // 410 on non-fatal = segment permanently deleted, skip ahead or fallback
+            if (data.response?.code === 410) {
+              consecutive410Ref.current++;
+              if (consecutive410Ref.current >= 3) {
+                consecutive410Ref.current = 0;
+                setPlayerStatus("error");
+                if (onFatalErrorRef.current) {
+                  onFatalErrorRef.current("networkError");
+                }
+              } else {
+                // Try to skip ahead past the deleted segment
+                const video = videoRef.current;
+                if (video && video.buffered.length > 0) {
+                  for (let i = 0; i < video.buffered.length; i++) {
+                    if (video.buffered.start(i) > video.currentTime) {
+                      video.currentTime = video.buffered.start(i);
+                      break;
+                    }
+                  }
+                }
+              }
+            } else {
+              consecutive410Ref.current = 0;
+              setPlayerStatus("buffering");
+            }
           }
         }
       });
