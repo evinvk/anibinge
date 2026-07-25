@@ -507,40 +507,69 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         </button>
       </div>
 
-      {totalEps && totalEps > 1 && (
+      {(totalEps && totalEps > 1) || currentEp > 1 ? (
         <div className="mt-3">
-          <button
-            onClick={() => setShowEpisodes((p) => !p)}
-            className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10"
-          >
-            Episode {currentEp} / {totalEps}
-            <ChevronDown className={clsx("h-3.5 w-3.5 transition-transform", showEpisodes && "rotate-180")} />
-          </button>
+          {totalEps && totalEps > 1 ? (
+            <>
+              <button
+                onClick={() => setShowEpisodes((p) => !p)}
+                className="flex items-center gap-2 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10"
+              >
+                Episode {currentEp} / {totalEps}
+                <ChevronDown className={clsx("h-3.5 w-3.5 transition-transform", showEpisodes && "rotate-180")} />
+              </button>
 
-          {showEpisodes && (
-            <div className="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg bg-void/80 p-2 scrollbar-thin">
-              {Array.from({ length: totalEps }, (_, i) => i + 1).map((ep) => (
-                <button
-                  key={ep}
-                  onClick={() => {
-                    setCurrentEp(ep);
-                    onEpisodeChange?.(ep);
-                    setShowEpisodes(false);
-                  }}
-                  className={clsx(
-                    "flex h-8 min-w-[2rem] items-center justify-center rounded-md px-2 text-xs font-mono font-medium transition",
-                    ep === currentEp
-                      ? "bg-primary-600 text-white"
-                      : "bg-white/5 text-mist hover:bg-white/10"
-                  )}
-                >
-                  {ep}
-                </button>
-              ))}
+              {showEpisodes && (
+                <div className="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg bg-void/80 p-2 scrollbar-thin">
+                  {Array.from({ length: totalEps }, (_, i) => i + 1).map((ep) => (
+                    <button
+                      key={ep}
+                      onClick={() => {
+                        setCurrentEp(ep);
+                        onEpisodeChange?.(ep);
+                        setShowEpisodes(false);
+                      }}
+                      className={clsx(
+                        "flex h-8 min-w-[2rem] items-center justify-center rounded-md px-2 text-xs font-mono font-medium transition",
+                        ep === currentEp
+                          ? "bg-primary-600 text-white"
+                          : "bg-white/5 text-mist hover:bg-white/10"
+                      )}
+                    >
+                      {ep}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const prev = Math.max(1, currentEp - 1);
+                  setCurrentEp(prev);
+                  onEpisodeChange?.(prev);
+                }}
+                disabled={currentEp <= 1}
+                className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10 disabled:opacity-30"
+              >
+                Prev
+              </button>
+              <span className="text-sm font-mono text-mist">Ep {currentEp}</span>
+              <button
+                onClick={() => {
+                  const next = currentEp + 1;
+                  setCurrentEp(next);
+                  onEpisodeChange?.(next);
+                }}
+                className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10"
+              >
+                Next
+              </button>
             </div>
           )}
         </div>
-      )}
+      ) : null}
 
       {player.error && !player.loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">

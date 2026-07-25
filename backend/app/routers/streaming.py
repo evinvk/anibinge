@@ -463,7 +463,7 @@ async def gogoanime_info(
             "data": {
                 "slug": slug,
                 "title": info.get("title"),
-                "episodes_count": info.get("episodes_count"),
+                "episodes_count": info.get("episodes_count") or None,
             }
         }
     return {"data": None}
