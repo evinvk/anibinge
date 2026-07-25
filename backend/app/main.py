@@ -91,7 +91,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     from fastapi.responses import JSONResponse as JR
     response = JR(
         status_code=500,
-        content={"detail": "Internal server error"}
+        content={"detail": str(exc)[:500], "type": type(exc).__name__}
     )
     origin = request.headers.get("origin", "")
     allowed = origin in settings.CORS_ORIGINS or bool(
