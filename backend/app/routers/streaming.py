@@ -527,11 +527,13 @@ _PROXY_ALLOWED_HOSTS = {
     # Additional provider CDN hosts
     "animeyubi.com", "cdn.animeyubi.com", "anigamers.app", "hls.anigamers.app",
     "omegatroupe.com", "cdn.omegatroupe.com",
-    # Wibu/streaming CDN hosts
-    "vidcache.net", "sbplay.com", "sbplay2.com", "sbvideo.net",
+    # Embed server CDN domains (extracted stream URLs)
+    "cdn-video.xyz", "cdn77.org", "sw-cdnstreamwish.com",
     "streamtape.com", "doodstream.com", "mp4upload.com", "streamsb.com",
     "streamwish.to", "dood.pm", "dood.wf", "dood.watch",
     "embtaku.pro", "kwik.cx", "pahe.win",
+    # Wibu/streaming CDN hosts
+    "vidcache.net", "sbplay.com", "sbplay2.com", "sbvideo.net",
 }
 
 
@@ -607,6 +609,110 @@ async def gogoanime_proxy(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail="Proxy request failed")
+
+
+@router.get("/gogoanime/embed-proxy")
+@limiter.limit("120/minute")
+async def gogoanime_embed_proxy(
+    request: Request,
+    url: str = Query(..., description="Base64-encoded URL to proxy"),
+    referer: str = Query("", description="Referer header for upstream request"),
+):
+    """CORS proxy for GogoAnime embed server streams (M3U8 + segments).
+    Spoofs Referer/Origin headers so CDN tokens work."""
+    try:
+        decoded_url = _b64.urlsafe_b64decode(url.encode()).decode()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid proxy URL encoding")
+
+    if not _is_proxy_url_allowed(decoded_url):
+        from urllib.parse import urlparse
+        blocked_host = urlparse(decoded_url).hostname
+        logger.warning("Embed proxy blocked host: %s (URL: %.200s)", blocked_host, decoded_url)
+        raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
+
+    upstream_referer = referer or "https://megaplay.buzz/"
+    fetch_headers = {**_PROXY_HEADERS, "Referer": upstream_referer, "Origin": upstream_referer.rstrip("/")}
+
+    try:
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=fetch_headers, follow_redirects=True)
+        resp = await client.get(decoded_url)
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "")
+        body = resp.text
+
+        if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
+            from urllib.parse import urlparse
+            parsed = urlparse(decoded_url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+
+            # Rewrite segment/variant URLs to go through our embed-proxy
+            proxy_base = "/api/v1/streaming/gogoanime/embed-proxy"
+            lines = body.split("\n")
+            rewritten = []
+            i = 0
+            while i < len(lines):
+                line = lines[i]
+                stripped = line.strip()
+
+                if stripped and not stripped.startswith("#"):
+                    # Resolve relative URL
+                    if not stripped.startswith("http"):
+                        from urllib.parse import urljoin
+                        resolved = urljoin(decoded_url, stripped)
+                    else:
+                        resolved = stripped
+
+                    if gogoanime_client._is_ad_url(resolved):
+                        i += 1
+                        continue
+
+                    encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
+                    rewritten.append(f"{proxy_base}?url={encoded}&referer={_b64.urlsafe_b64encode(upstream_referer.encode()).decode()}")
+                elif stripped.startswith("#EXTINF") and i + 1 < len(lines):
+                    rewritten.append(line)
+                    next_line = lines[i + 1].strip()
+                    if next_line and not next_line.startswith("#"):
+                        if not next_line.startswith("http"):
+                            from urllib.parse import urljoin
+                            resolved = urljoin(decoded_url, next_line)
+                        else:
+                            resolved = next_line
+                        if gogoanime_client._is_ad_url(resolved):
+                            i += 2
+                            continue
+                else:
+                    rewritten.append(line)
+                i += 1
+
+            body = "\n".join(rewritten)
+
+            if "#EXTINF" not in body:
+                raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
+
+            return Response(
+                content=body,
+                media_type="application/vnd.apple.mpegurl",
+                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
+            )
+
+        # Binary content (.ts segments, etc.)
+        return Response(
+            content=resp.content,
+            media_type=content_type or "video/mp2t",
+            headers={
+                **_CORS_HEADERS,
+                "Cache-Control": "public, max-age=86400",
+                "Content-Length": str(len(resp.content)),
+            },
+        )
+    except _httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Embed proxy request failed")
 
 
 # ── Anivexa fallback endpoints ──────────────────────────────────────

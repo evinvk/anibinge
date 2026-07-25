@@ -163,6 +163,42 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     try {
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
+
+      // Direct stream extracted from embed page — play natively, no ads
+      if (data?.direct_stream?.stream_url) {
+        subs.setSubs([]);
+        player.sourceRef.current = "gogoanime";
+        const referer = data.direct_stream.referer || "";
+        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, referer);
+        let qualities = [{ quality: "Auto", url: proxiedUrl }];
+        try {
+          const m3u8Resp = await fetch(proxiedUrl);
+          if (m3u8Resp.ok) {
+            const m3u8Text = await m3u8Resp.text();
+            const parsed: { quality: string; url: string }[] = [];
+            const lines = m3u8Text.split("\n");
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                const bwMatch = line.match(/BANDWIDTH=(\d+)/);
+                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
+                const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
+                if (bwMatch && nextLine && !nextLine.startsWith("#")) {
+                  let label = resMatch ? resMatch[1].split("x")[1] + "p" : `${Math.round(parseInt(bwMatch[1]) / 1000)}kbps`;
+                  parsed.push({ quality: label, url: proxiedUrl });
+                }
+              }
+            }
+            if (parsed.length > 1) qualities = parsed;
+          }
+        } catch { /* keep auto */ }
+        player.setStreamData({ qualities });
+        player.setMasterUrl(proxiedUrl);
+        player.setLoadingStream(false);
+        setStatusText("");
+        return true;
+      }
+
       if (data?.embed_url) {
         subs.setSubs([]);
         player.sourceRef.current = "gogoanime";

@@ -222,9 +222,14 @@ export const api = {
   gogoanimeSearch: (q: string) =>
     request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
   gogoanimeStream: (slug: string, ep: number, audio: string = "sub") =>
-    request<{ data: { master_m3u8: string | null; qualities: { quality: string; url: string }[]; embed_url?: string | null } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}&audio=${audio}`, 60),
+    request<{ data: { master_m3u8: string | null; qualities: { quality: string; url: string }[]; embed_url?: string | null; direct_stream?: { stream_url: string; referer: string } | null } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}&audio=${audio}`, 60),
   gogoanimeMaster: (slug: string, ep: number, audio: string = "sub") =>
     `${API_BASE}/api/v1/streaming/gogoanime/${slug}/master?ep=${ep}&audio=${audio}`,
+  gogoanimeEmbedProxy: (url: string, referer: string = "") => {
+    const encoded = btoa(url).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+    const refParam = referer ? `&referer=${encodeURIComponent(referer)}` : "";
+    return `${API_BASE}/api/v1/streaming/gogoanime/embed-proxy?url=${encoded}${refParam}`;
+  },
   gogoanimeLatest: (day?: string) =>
     request<{ data: GogoAnimeItem[]; day?: string }>(
       `/api/v1/streaming/gogoanime/latest${day ? `?day=${day}` : ""}`,

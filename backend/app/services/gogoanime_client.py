@@ -336,9 +336,129 @@ async def resolve_server_url(server_id: str) -> str | None:
         return None
 
 
+def _get_embed_domain(embed_url: str) -> str:
+    """Extract the domain from an embed URL for Referer spoofing."""
+    from urllib.parse import urlparse
+    parsed = urlparse(embed_url)
+    return f"{parsed.scheme}://{parsed.netloc}/"
+
+
+def _extract_m3u8_from_html(html: str, embed_url: str) -> str | None:
+    """Extract M3U8 URL from embed page HTML/JS source.
+    Tries multiple patterns common across VidTube, MegaPlay, VidWish."""
+    from urllib.parse import urlparse
+
+    # Pattern 1: Direct M3U8 URL in page source
+    m3u8_match = re.search(
+        r'https?://[^\s"\'<>\\]+\.m3u8[^\s"\'<>\\]*', html
+    )
+    if m3u8_match:
+        url = m3u8_match.group(0)
+        # Skip tiny/obvious non-video URLs
+        parsed_url = urlparse(url)
+        if parsed_url.hostname and any(
+            ad in (parsed_url.hostname or "")
+            for ad in ["ad", "track", "pixel", "analytics", "doubleclick"]
+        ):
+            pass  # skip ad M3U8s
+        else:
+            return url
+
+    # Pattern 2: base64-encoded config (VidTube, some others)
+    b64_patterns = [
+        r'window\["[^"]+"\]\s*=\s*"([A-Za-z0-9+/=]{20,})"',
+        r'atob\(\s*"([A-Za-z0-9+/=]{20,})"\s*\)',
+        r'decodeURIComponent\(escape\(atob\("([A-Za-z0-9+/=]{20,})"\)\)',
+    ]
+    for pat in b64_patterns:
+        b64_match = re.search(pat, html)
+        if b64_match:
+            try:
+                decoded = base64.b64decode(b64_match.group(1)).decode("utf-8", errors="ignore")
+                inner = re.search(r'https?://[^\s"\'<>\\]+\.m3u8[^\s"\'<>\\]*', decoded)
+                if inner:
+                    return inner.group(0)
+            except Exception:
+                continue
+
+    # Pattern 3: JSON config with source/stream URL
+    json_patterns = [
+        r'"(?:source|stream|src|file|url)"\s*:\s*"(https?://[^"]+\.m3u8[^"]*)"',
+        r'source\s*:\s*"(https?://[^"]+\.m3u8[^"]*)"',
+    ]
+    for pat in json_patterns:
+        j_match = re.search(pat, html)
+        if j_match:
+            return j_match.group(1)
+
+    # Pattern 4: MP4 direct link (some servers)
+    mp4_match = re.search(
+        r'https?://[^\s"\'<>\\]+\.mp4[^\s"\'<>\\]*', html
+    )
+    if mp4_match:
+        url = mp4_match.group(0)
+        parsed_url = urlparse(url)
+        host = parsed_url.hostname or ""
+        if not any(ad in host for ad in ["ad", "track", "pixel"]):
+            return url
+
+    return None
+
+
+async def extract_embed_stream(embed_url: str) -> dict | None:
+    """Try to extract direct video URL from a GogoAnime embed server page.
+    Returns {stream_url: str, referer: str} or None."""
+    client = await _get_client()
+    referer = _get_embed_domain(embed_url)
+    try:
+        resp = await client.get(
+            embed_url,
+            headers={
+                "Referer": _BASE_URL + "/",
+                "Origin": _BASE_URL,
+            },
+            timeout=_TIMEOUT,
+        )
+        html = resp.text
+
+        # Check for Cloudflare challenge
+        if "challenge-platform" in html or "cf-browser-verification" in html:
+            logger.info("GogoAnime embed has Cloudflare challenge: %s", embed_url)
+            return None
+
+        stream_url = _extract_m3u8_from_html(html, embed_url)
+        if stream_url:
+            logger.info("GogoAnime extracted stream from embed: %s → %.200s", embed_url, stream_url)
+            return {"stream_url": stream_url, "referer": referer}
+
+        # Some embed pages use iframes themselves — fetch sub-iframe src
+        iframe_match = re.search(r'<iframe[^>]+src="([^"]+)"', html, re.IGNORECASE)
+        if iframe_match:
+            sub_url = iframe_match.group(1)
+            if not sub_url.startswith("http"):
+                from urllib.parse import urljoin
+                sub_url = urljoin(embed_url, sub_url)
+            resp2 = await client.get(
+                sub_url,
+                headers={"Referer": referer, "Origin": referer.rstrip("/")},
+                timeout=_TIMEOUT,
+            )
+            stream_url = _extract_m3u8_from_html(resp2.text, sub_url)
+            if stream_url:
+                logger.info("GogoAnime extracted stream from sub-iframe: %s → %.200s", sub_url, stream_url)
+                return {"stream_url": stream_url, "referer": referer}
+
+        logger.info("GogoAnime: no stream URL found in embed page: %s", embed_url)
+        return None
+    except Exception as e:
+        logger.warning("GogoAnime embed extraction failed for %s: %s", embed_url, e)
+        return None
+
+
 async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub") -> dict | None:
     """Get quality-tagged streaming sources for an episode.
-    Returns {master_m3u8: str, qualities: [{quality, url}], embed_url: str|None, server_id: str|None} or None."""
+    Returns {master_m3u8, qualities, embed_url, server_id, direct_stream} or None.
+    direct_stream = {stream_url, referer} when extraction succeeds (no iframe needed)."""
     episode = await get_episode(slug, episode_number)
     if not episode:
         return None
@@ -387,6 +507,16 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
 
     # Skip broken M3U8 resolution if we already have an embed URL
     if embed_url:
+        # Try to extract direct stream URL from the embed page
+        extracted = await extract_embed_stream(embed_url)
+        if extracted:
+            return {
+                "master_m3u8": None,
+                "qualities": [],
+                "embed_url": None,
+                "server_id": embed_server_id,
+                "direct_stream": extracted,
+            }
         return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
 
     result = await resolve_m3u8(proxy_url)
