@@ -1207,9 +1207,9 @@ async def download_episode(
 ):
     """
     Resolve a stream internally and force browser download via Content-Disposition.
+    Uses the same fallback chain as the watch player: GogoAnime -> Anivexa.
     For m3u8, downloads all .ts segments and concatenates them.
     """
-    from urllib.parse import urlparse, urljoin
     from app.services import gogoanime_client, anivexa_client
 
     dl_client = _httpx.AsyncClient(
@@ -1227,6 +1227,30 @@ async def download_episode(
             try:
                 episode_data = await gogoanime_client.get_episode(effective, ep)
                 if episode_data:
+                    server_info = episode_data.get("serverInfo") or {}
+                    embed_url = None
+
+                    qualities_list = server_info.get("qualities", [])
+                    preferred = audio.upper()
+                    ordered_groups = []
+                    for qg in qualities_list:
+                        if qg.get("title", "").upper() == preferred:
+                            ordered_groups.insert(0, qg)
+                        else:
+                            ordered_groups.append(qg)
+
+                    for quality_group in ordered_groups:
+                        if embed_url:
+                            break
+                        for server in quality_group.get("serverList", []):
+                            sid = server.get("serverId", "")
+                            if sid.startswith("anivexa:"):
+                                continue
+                            resolved = await gogoanime_client.resolve_server_url(sid)
+                            if resolved:
+                                embed_url = resolved
+                                break
+
                     proxy_url = episode_data.get("defaultStreamingUrl", "")
                     if proxy_url:
                         full = proxy_url if proxy_url.startswith("http") else f"{gogoanime_client._BASE_URL}{proxy_url}"
@@ -1237,19 +1261,39 @@ async def download_episode(
                         if m3u8_match:
                             stream_url = m3u8_match.group(0)
                             referer = gogoanime_client._BASE_URL + "/"
+
+                    if not stream_url and embed_url:
+                        try:
+                            resp2 = await dl_client.get(embed_url)
+                            resp2.raise_for_status()
+                            text2 = resp2.text
+                            m3u8_match2 = _re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', text2)
+                            if m3u8_match2:
+                                stream_url = m3u8_match2.group(0)
+                                referer = embed_url
+                        except Exception:
+                            pass
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s: %s", slug, e)
+
+        if not stream_url and not anilist_id:
+            try:
+                from app.services import anilist_client as _al_client
+                title_from_filename = filename.rsplit("_E", 1)[0].replace("_", " ")
+                result = await _al_client.search_anime(title_from_filename, per_page=1)
+                media = result.get("Page", {}).get("media", [])
+                if media:
+                    anilist_id = media[0]["id"]
+            except Exception:
+                pass
 
         if not stream_url and anilist_id:
             try:
                 result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
-                if result and result.get("stream_url"):
-                    stream_url = result["stream_url"]
-                    referer = result.get("referer", "")
-
-                    if result.get("stream_type") == "mp4":
-                        headers = {"Referer": referer} if referer else {}
-                        resp = await dl_client.get(stream_url, headers=headers)
+                if result:
+                    if result.get("stream_type") == "mp4" and result.get("stream_url"):
+                        headers = {"Referer": result.get("referer", "")} if result.get("referer") else {}
+                        resp = await dl_client.get(result["stream_url"], headers=headers)
                         resp.raise_for_status()
                         safe_name = _re.sub(r'[^\w\-]', '_', filename)
                         return Response(
@@ -1260,6 +1304,9 @@ async def download_episode(
                                 "Content-Length": str(len(resp.content)),
                             },
                         )
+                    elif result.get("stream_url"):
+                        stream_url = result["stream_url"]
+                        referer = result.get("referer", "")
             except Exception as e:
                 logger.warning("Anivexa download resolve failed: %s", e)
 
