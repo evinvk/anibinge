@@ -36,15 +36,13 @@ function SkeletonCard() {
 }
 
 function EpisodeCard({ item }: { item: RecentEpisode }) {
-  const href = item.slug ? `/watch/${item.slug}?ep=${item.episode}` : `/anime/${item.anilist_id}`;
+  const watchHref = item.slug ? `/watch/${item.slug}?ep=${item.episode}` : `/anime/${item.anilist_id}`;
+  const animeHref = `/anime/${item.anilist_id}`;
   const genre = item.genres?.[0] || null;
 
   return (
-    <Link
-      href={href}
-      className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]"
-    >
-      <div className="relative w-full overflow-hidden aspect-[2/3]">
+    <div className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]">
+      <Link href={watchHref} className="relative block w-full overflow-hidden aspect-[2/3]">
         {item.poster && item.poster.startsWith("http") ? (
           <Image
             src={item.poster}
@@ -87,9 +85,15 @@ function EpisodeCard({ item }: { item: RecentEpisode }) {
 
         {/* Title + time at bottom */}
         <div className="absolute inset-x-0 bottom-0 z-10 p-3">
-          <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 group-hover:text-primary-300 transition-colors">
-            {item.title}
-          </h3>
+          <Link
+            href={animeHref}
+            onClick={(e) => e.stopPropagation()}
+            className="block"
+          >
+            <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 hover:text-primary-300 transition-colors">
+              {item.title}
+            </h3>
+          </Link>
           <div className="mt-1.5 flex items-center gap-2">
             {genre && (
               <span className="text-[10px] font-medium uppercase tracking-wider text-mist">{genre}</span>
@@ -99,8 +103,8 @@ function EpisodeCard({ item }: { item: RecentEpisode }) {
             </span>
           </div>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </div>
   );
 }
 
