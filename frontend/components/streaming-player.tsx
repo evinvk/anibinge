@@ -59,7 +59,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
 
-  const tryAnivexaOnly = useCallback(async (ep: number): Promise<boolean> => {
+  const tryAnivexaFallback = useCallback(async (ep: number): Promise<boolean> => {
     let aid = resolvedAnilistRef.current;
     if (!aid) {
       try {
@@ -84,7 +84,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       if (res && (res.stream_url || res.embed_url)) {
         player.sourceRef.current = "anivexa";
 
-        // Prefer native HLS playback — embed iframes often block cross-origin
         if (res.stream_url) {
           subs.setSubs((res.subtitles || []).map((s: any) => {
             const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
@@ -140,7 +139,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           return true;
         }
 
-        // Fallback: embed iframe if no stream_url
         if (res.embed_url) {
           setEmbedUrl(res.embed_url);
           embedUrlRef.current = res.embed_url;
@@ -168,50 +166,66 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       return;
     }
 
-    // If anivexa failed, try GogoAnime as fallback
-    if (player.sourceRef.current === "anivexa" || player.sourceRef.current === null) {
-      if (selectedSlug) {
-        player.sourceRef.current = null;
-        player.destroyHls();
-        player.setStreamData(null);
-        player.setMasterUrl(null);
-        player.setError(null);
-        player.setPlayerStatus("idle");
-        player.setLoadingStream(true);
+    // If GogoAnime failed, try Anivexa as fallback
+    if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === null) {
+      player.sourceRef.current = null;
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      player.setLoadingStream(true);
+      setStatusText("");
+      const ok = await tryAnivexaFallback(currentEpRef.current);
+      if (!ok) {
+        player.setError(friendlyError("Playback error: " + errorType));
+        player.setLoadingStream(false);
+      }
+      return;
+    }
+
+    // If Anivexa failed, try GogoAnime as fallback
+    if (player.sourceRef.current === "anivexa" && selectedSlug) {
+      player.sourceRef.current = null;
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      player.setLoadingStream(true);
+      setStatusText("");
+      const streamRes = await api.gogoanimeStream(selectedSlug, currentEpRef.current, audio).catch(() => null);
+      const data = streamRes?.data;
+      if (data?.direct_stream?.stream_url) {
+        player.sourceRef.current = "gogoanime";
+        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
+        player.setMasterUrl(proxiedUrl);
+        player.setLoadingStream(false);
         setStatusText("");
-        const streamRes = await api.gogoanimeStream(selectedSlug, currentEpRef.current, audio).catch(() => null);
-        const data = streamRes?.data;
-        if (data?.direct_stream?.stream_url) {
-          player.sourceRef.current = "gogoanime";
-          const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
-          player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
-          player.setMasterUrl(proxiedUrl);
-          player.setLoadingStream(false);
-          setStatusText("");
-          return;
-        }
-        if (data?.embed_url) {
-          player.sourceRef.current = "gogoanime";
-          player.setLoadingStream(false);
-          setEmbedUrl(data.embed_url);
-          embedUrlRef.current = data.embed_url;
-          setStatusText("");
-          return;
-        }
-        if (data?.qualities) {
-          player.sourceRef.current = "gogoanime";
-          player.setStreamData({ qualities: data.qualities });
-          player.setMasterUrl(api.gogoanimeMaster(selectedSlug, currentEpRef.current, audio));
-          player.setLoadingStream(false);
-          setStatusText("");
-          return;
-        }
+        return;
+      }
+      if (data?.embed_url) {
+        player.sourceRef.current = "gogoanime";
+        player.setLoadingStream(false);
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
+        setStatusText("");
+        return;
+      }
+      if (data?.qualities) {
+        player.sourceRef.current = "gogoanime";
+        player.setStreamData({ qualities: data.qualities });
+        player.setMasterUrl(api.gogoanimeMaster(selectedSlug, currentEpRef.current, audio));
+        player.setLoadingStream(false);
+        setStatusText("");
+        return;
       }
     }
 
     player.setError(friendlyError("Playback error: " + errorType));
     player.setLoadingStream(false);
-  }, [selectedSlug, audio]);
+  }, [selectedSlug, audio, tryAnivexaFallback]);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
@@ -267,18 +281,21 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    // 1. Try Anivexa first (ad-free, native playback)
-    setStatusText("");
-    const anivexaOk = await tryAnivexaOnly(ep);
-    if (anivexaOk) return;
-
-    // 2. If Anivexa failed, try GogoAnime (has ads in iframe)
+    // 1. Try GogoAnime first (iframe/embed as primary)
     if (slug) {
       setStatusText("");
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
 
-      // Direct stream extracted from embed page — play natively, no ads
+      if (data?.embed_url) {
+        player.sourceRef.current = "gogoanime";
+        player.setLoadingStream(false);
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
+        setStatusText("");
+        return;
+      }
+
       if (data?.direct_stream?.stream_url) {
         player.sourceRef.current = "gogoanime";
         const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
@@ -311,14 +328,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         return;
       }
 
-      if (data?.embed_url) {
-        player.sourceRef.current = "gogoanime";
-        player.setLoadingStream(false);
-        setEmbedUrl(data.embed_url);
-        embedUrlRef.current = data.embed_url;
-        setStatusText("");
-        return;
-      }
       if (data?.qualities) {
         player.sourceRef.current = "gogoanime";
         player.setStreamData({ qualities: data.qualities });
@@ -329,12 +338,17 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       }
     }
 
+    // 2. If GogoAnime failed, try Anivexa as fallback
+    setStatusText("");
+    const anivexaOk = await tryAnivexaFallback(ep);
+    if (anivexaOk) return;
+
     player.setLoadingStream(false);
     setStatusText("");
     if (!embedUrlRef.current) {
       player.setError("Streaming is temporarily unavailable. Try again later.");
     }
-  }, [tryAnivexaOnly, animeTitle, audio]);
+  }, [tryAnivexaFallback, animeTitle, audio]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {

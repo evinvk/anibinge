@@ -308,8 +308,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     if (gogoOk) return;
 
     setStatusText("");
-    const ok = await tryAnivexa(ep);
-    if (!gogoOk) {
+    const anivexaOk = await tryAnivexa(ep);
+    if (!anivexaOk) {
       player.setLoadingStream(false);
       setStatusText("");
       player.setError("Streaming is temporarily unavailable. Try again later.");
