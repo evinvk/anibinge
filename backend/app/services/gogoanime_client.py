@@ -358,18 +358,24 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
         else:
             ordered_groups.append(qg)
 
+    # Collect all non-anivexa server IDs from ordered groups
+    server_candidates = []
     for quality_group in ordered_groups:
-        if embed_url:
-            break
         for server in quality_group.get("serverList", []):
             sid = server.get("serverId", "")
             if sid.startswith("anivexa:"):
                 continue
-            resolved = await resolve_server_url(sid)
-            if resolved:
-                embed_url = resolved
+            server_candidates.append((quality_group.get("title"), server.get("title"), sid))
+
+    # Resolve all embed servers in parallel — take first successful
+    if server_candidates:
+        tasks = [resolve_server_url(sid) for _, _, sid in server_candidates]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for (group_name, server_name, sid), result in zip(server_candidates, results):
+            if isinstance(result, str) and result:
+                embed_url = result
                 embed_server_id = sid
-                logger.info("GogoAnime resolved %s embed: %s → %s", quality_group.get("title"), server.get("title"), resolved)
+                logger.info("GogoAnime resolved %s embed: %s → %s", group_name, server_name, result)
                 break
 
     proxy_url = episode.get("defaultStreamingUrl", "")
@@ -379,11 +385,13 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
             return None
         return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
 
+    # Skip broken M3U8 resolution if we already have an embed URL
+    if embed_url:
+        return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
+
     result = await resolve_m3u8(proxy_url)
     if not result:
-        if not embed_url:
-            return None
-        return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
+        return None
 
     m3u8_content, resolved_url = result
 
