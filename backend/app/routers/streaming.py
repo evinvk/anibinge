@@ -178,7 +178,7 @@ async def get_recent_episodes(
         except Exception:
             pass
 
-        per_ep: dict[tuple[int, int], int] = {}
+        per_ep: dict[int, tuple[int, int]] = {}
         if anilist_ids:
             try:
                 items = await anilist_client.get_airing_schedule(anilist_ids, per_page=200)
@@ -187,12 +187,14 @@ async def get_recent_episodes(
                     ep = item.get("episode")
                     at = item.get("airingAt")
                     if mid and ep and at and at <= now:
-                        per_ep[(mid, ep)] = at
+                        prev = per_ep.get(mid)
+                        if prev is None or at > prev[1]:
+                            per_ep[mid] = (ep, at)
             except Exception:
                 pass
 
         candidates: list[dict] = []
-        for (media_id, ep_num), at in sorted(per_ep.items(), key=lambda x: -x[1]):
+        for media_id, (ep_num, at) in sorted(per_ep.items(), key=lambda x: -x[1][1]):
             m = None
             for norm, media in anilist_map.items():
                 if media.get("id") == media_id:
