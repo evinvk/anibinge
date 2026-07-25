@@ -1207,13 +1207,13 @@ async def download_episode(
 ):
     """
     Resolve a stream internally and force browser download via Content-Disposition.
-    Uses the same fallback chain as the watch player: GogoAnime -> Anivexa.
-    For m3u8, downloads all .ts segments and concatenates them.
+    Uses the same resolution chain as the watch player.
     """
+    from urllib.parse import urlparse, urljoin
     from app.services import gogoanime_client, anivexa_client
 
     dl_client = _httpx.AsyncClient(
-        timeout=_httpx.Timeout(120.0, connect=15.0),
+        timeout=_httpx.Timeout(180.0, connect=15.0),
         headers={**_PROXY_HEADERS, "Referer": "https://gogoanimehd.to/"},
         follow_redirects=True,
     )
@@ -1221,61 +1221,32 @@ async def download_episode(
     try:
         stream_url = None
         referer = ""
+        stream_type = None
 
+        # Path 1: GogoAnime — reuse the proven get_stream_sources()
         if slug:
             effective = _dub_slug(slug, audio)
             try:
-                episode_data = await gogoanime_client.get_episode(effective, ep)
-                if episode_data:
-                    server_info = episode_data.get("serverInfo") or {}
-                    embed_url = None
-
-                    qualities_list = server_info.get("qualities", [])
-                    preferred = audio.upper()
-                    ordered_groups = []
-                    for qg in qualities_list:
-                        if qg.get("title", "").upper() == preferred:
-                            ordered_groups.insert(0, qg)
-                        else:
-                            ordered_groups.append(qg)
-
-                    for quality_group in ordered_groups:
-                        if embed_url:
-                            break
-                        for server in quality_group.get("serverList", []):
-                            sid = server.get("serverId", "")
-                            if sid.startswith("anivexa:"):
-                                continue
-                            resolved = await gogoanime_client.resolve_server_url(sid)
-                            if resolved:
-                                embed_url = resolved
-                                break
-
-                    proxy_url = episode_data.get("defaultStreamingUrl", "")
-                    if proxy_url:
-                        full = proxy_url if proxy_url.startswith("http") else f"{gogoanime_client._BASE_URL}{proxy_url}"
-                        resp = await dl_client.get(full)
-                        resp.raise_for_status()
-                        text = resp.text
-                        m3u8_match = _re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', text)
-                        if m3u8_match:
-                            stream_url = m3u8_match.group(0)
-                            referer = gogoanime_client._BASE_URL + "/"
-
-                    if not stream_url and embed_url:
-                        try:
-                            resp2 = await dl_client.get(embed_url)
-                            resp2.raise_for_status()
-                            text2 = resp2.text
-                            m3u8_match2 = _re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', text2)
-                            if m3u8_match2:
-                                stream_url = m3u8_match2.group(0)
-                                referer = embed_url
-                        except Exception:
-                            pass
+                sources = await gogoanime_client.get_stream_sources(effective, ep, audio)
+                if sources:
+                    direct = sources.get("direct_stream")
+                    if direct:
+                        stream_url = direct.get("stream_url")
+                        referer = direct.get("referer", "")
+                        stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
+                    elif sources.get("embed_url"):
+                        extracted = await gogoanime_client.extract_embed_stream(sources["embed_url"])
+                        if extracted:
+                            stream_url = extracted.get("stream_url")
+                            referer = extracted.get("referer", "")
+                            stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
+                    elif sources.get("master_m3u8"):
+                        stream_url = sources["master_m3u8"]
+                        stream_type = "hls"
             except Exception as e:
-                logger.warning("GogoAnime download resolve failed for %s: %s", slug, e)
+                logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
+        # Path 2: Try Anivexa — resolve anilist_id from title if needed
         if not stream_url and not anilist_id:
             try:
                 from app.services import anilist_client as _al_client
@@ -1291,28 +1262,31 @@ async def download_episode(
             try:
                 result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
                 if result:
-                    if result.get("stream_type") == "mp4" and result.get("stream_url"):
-                        headers = {"Referer": result.get("referer", "")} if result.get("referer") else {}
-                        resp = await dl_client.get(result["stream_url"], headers=headers)
-                        resp.raise_for_status()
-                        safe_name = _re.sub(r'[^\w\-]', '_', filename)
-                        return Response(
-                            content=resp.content,
-                            media_type=resp.headers.get("content-type", "video/mp4"),
-                            headers={
-                                "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                                "Content-Length": str(len(resp.content)),
-                            },
-                        )
-                    elif result.get("stream_url"):
-                        stream_url = result["stream_url"]
-                        referer = result.get("referer", "")
+                    stream_url = result.get("stream_url")
+                    referer = result.get("referer", "")
+                    stream_type = result.get("stream_type", "mp4")
             except Exception as e:
                 logger.warning("Anivexa download resolve failed: %s", e)
 
         if not stream_url:
             raise HTTPException(status_code=404, detail="No streaming source available")
 
+        # --- MP4 path: download directly and serve ---
+        if stream_type == "mp4":
+            dl_headers = {"Referer": referer} if referer else {}
+            resp = await dl_client.get(stream_url, headers=dl_headers)
+            resp.raise_for_status()
+            safe_name = _re.sub(r'[^\w\-]', '_', filename)
+            return Response(
+                content=resp.content,
+                media_type=resp.headers.get("content-type", "video/mp4"),
+                headers={
+                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
+                    "Content-Length": str(len(resp.content)),
+                },
+            )
+
+        # --- HLS path: fetch playlist, download segments, concatenate ---
         resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
         resp.raise_for_status()
         content_type = resp.headers.get("content-type", "")
@@ -1384,8 +1358,8 @@ async def download_episode(
         raise
     except Exception as e:
         await dl_client.aclose()
-        logger.warning("Download failed: %s", e)
-        raise HTTPException(status_code=502, detail="Download failed")
+        logger.error("Download failed (slug=%s, ep=%s, audio=%s): %s", slug, ep, audio, e, exc_info=True)
+        raise HTTPException(status_code=502, detail=f"Download failed: {type(e).__name__}: {e}")
 
 
 # ── Diagnostic endpoint ──────────────────────────────────────────────
