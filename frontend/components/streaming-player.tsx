@@ -466,7 +466,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
             referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-presentation allow-autoplay"
           />
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
