@@ -88,20 +88,44 @@ async def cache_headers(request: Request, call_next):
 async def unhandled_exception_handler(request: Request, exc: Exception):
     """Handle unhandled exceptions gracefully."""
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(
+    from fastapi.responses import JSONResponse as JR
+    response = JR(
         status_code=500,
         content={"detail": "Internal server error"}
     )
+    origin = request.headers.get("origin", "")
+    allowed = origin in settings.CORS_ORIGINS or bool(
+        __import__("re").match(
+            r"https://(.*\.)?(anibinge-nine\.vercel\.app|anibinge\.app|anibinge\.fun|localhost(:\d+)?)",
+            origin,
+        )
+    )
+    if allowed and origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
     """Handle validation errors."""
     logger.warning("Validation error on %s: %s", request.url.path, str(exc))
-    return JSONResponse(
+    from fastapi.responses import JSONResponse as JR
+    response = JR(
         status_code=400,
         content={"detail": str(exc)}
     )
+    origin = request.headers.get("origin", "")
+    allowed = origin in settings.CORS_ORIGINS or bool(
+        __import__("re").match(
+            r"https://(.*\.)?(anibinge-nine\.vercel\.app|anibinge\.app|anibinge\.fun|localhost(:\d+)?)",
+            origin,
+        )
+    )
+    if allowed and origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
 
 
 # Include all routers
@@ -218,6 +242,8 @@ async def startup_event():
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS likes INTEGER DEFAULT 0",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS replies_count INTEGER DEFAULT 0",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN DEFAULT FALSE",
+        # Ensure comment_likes table exists
+        "CREATE TABLE IF NOT EXISTS comment_likes (id SERIAL PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id), comment_id INTEGER NOT NULL REFERENCES episode_comments(id), created_at TIMESTAMPTZ DEFAULT NOW())",
     ]
     async with AsyncSessionLocal() as session:
         for stmt in _migrations:
