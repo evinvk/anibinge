@@ -25,7 +25,7 @@ export function useHlsPlayer(
   const [error, setError] = useState<string | null>(null);
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
   const hlsRef = useRef<any>(null);
-  const sourceRef = useRef<"gogoanime" | "anivexa" | null>(null);
+  const sourceRef = useRef<"gogoanime" | "anitsu" | "anivexa" | "wibu" | null>(null);
   const fallbackAttemptedRef = useRef(false);
   const onFatalErrorRef = useRef(onFatalError);
   const onLoadSubtitlesRef = useRef(onLoadSubtitles);

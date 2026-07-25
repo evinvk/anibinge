@@ -220,5 +220,5 @@ async def health_check() -> bool:
 
 
 async def close():
-    """Close the HTTP client."""
-    await _client.aclose()
+    """Detach from the shared HTTP client (actual close handled by core/http.py)."""
+    pass

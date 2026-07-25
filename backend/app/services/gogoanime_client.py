@@ -8,8 +8,11 @@ the full catalog and doing local fuzzy title matching.
 """
 import asyncio
 import base64
+import json
 import logging
+import os
 import re
+import tempfile
 import time
 from typing import Any
 
@@ -28,12 +31,43 @@ _HEADERS = {
 }
 _CATALOG_TTL = 60 * 60 * 24  # 24 hours
 _MAX_CATALOG_PAGES = 300
+_CACHE_FILE = os.path.join(tempfile.gettempdir(), "gogoanime_catalog.json")
 
 _client: httpx.AsyncClient | None = None
 _catalog: dict[str, dict] = {}  # normalized_title -> item
 _catalog_loaded = False
 _catalog_lock = asyncio.Lock()
 _catalog_loaded_at: float = 0
+
+
+async def _load_catalog_from_disk() -> dict[str, dict] | None:
+    """Load the catalog from the disk cache file. Returns None if cache is missing or stale."""
+    try:
+        if not os.path.exists(_CACHE_FILE):
+            return None
+        mtime = os.path.getmtime(_CACHE_FILE)
+        if time.time() - mtime > _CATALOG_TTL:
+            logger.info("GogoAnime: disk cache expired (%ds old)", int(time.time() - mtime))
+            return None
+        with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+            cache = json.load(f)
+        cache_catalog = cache.get("catalog", {})
+        cache_time = cache.get("time", 0)
+        logger.info("GogoAnime: loaded %d items from disk cache (age: %ds)", len(cache_catalog), int(time.time() - cache_time))
+        return cache_catalog
+    except Exception as e:
+        logger.warning("GogoAnime: disk cache load failed: %s", e)
+        return None
+
+
+async def _save_catalog_to_disk(catalog: dict[str, dict]):
+    """Save the catalog to the disk cache file."""
+    try:
+        with open(_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"catalog": catalog, "time": time.time()}, f, ensure_ascii=False)
+        logger.info("GogoAnime: catalog saved to disk cache (%d items)", len(catalog))
+    except Exception as e:
+        logger.warning("GogoAnime: disk cache save failed: %s", e)
 
 
 async def _get_client() -> httpx.AsyncClient:
@@ -71,8 +105,16 @@ async def _fetch_catalog_page(page: int) -> list[dict]:
 
 
 async def _load_catalog():
-    """Load the full GogoAnime catalog into memory. Runs in background."""
+    """Load the full GogoAnime catalog into memory. Tries disk cache first, then fetches from API."""
     global _catalog, _catalog_loaded, _catalog_loaded_at
+
+    # Try disk cache first
+    cached = await _load_catalog_from_disk()
+    if cached is not None:
+        _catalog = cached
+        _catalog_loaded = True
+        _catalog_loaded_at = time.monotonic()
+        return
 
     logger.info("GogoAnime: starting catalog load (fetching %d pages)...", _MAX_CATALOG_PAGES)
     start = time.monotonic()
@@ -107,6 +149,9 @@ async def _load_catalog():
     _catalog = new_catalog
     _catalog_loaded = True
     _catalog_loaded_at = time.monotonic()
+
+    # Save to disk cache
+    await _save_catalog_to_disk(new_catalog)
 
     elapsed = time.monotonic() - start
     logger.info(
@@ -158,21 +203,15 @@ async def search_anime(query: str) -> list[dict]:
     """Search for anime by title using local fuzzy matching against the catalog."""
     global _catalog, _catalog_loaded, _catalog_lock
 
-    # Ensure catalog is loaded
-    if not _catalog_loaded:
-        async with _catalog_lock:
-            if not _catalog_loaded:
-                # Start loading in background, but also try to get immediate results
-                load_task = asyncio.create_task(_load_catalog())
-
-                # Wait a bit for partial results, or wait for full load
-                try:
-                    await asyncio.wait_for(asyncio.shield(load_task), timeout=10.0)
-                except asyncio.TimeoutError:
-                    logger.info("GogoAnime: catalog still loading, using partial results")
+    # Ensure catalog is loaded (kick off in background if not, return immediately)
+    async with _catalog_lock:
+        if not _catalog_loaded:
+            _catalog_loaded = "loading"  # sentinel: prevents duplicate loads
+            asyncio.create_task(_load_catalog())
+            logger.info("GogoAnime: catalog not loaded yet, kicking off background load")
 
     if not _catalog:
-        logger.warning("GogoAnime: catalog empty, cannot search")
+        logger.info("GogoAnime: catalog empty, returning empty results (background load in progress)")
         return []
 
     results = _fuzzy_search(query)
@@ -385,8 +424,6 @@ def get_catalog() -> list[dict]:
 
 
 async def close():
-    """Close the httpx client."""
+    """Detach from the shared httpx client (actual close handled by core/http.py)."""
     global _client
-    if _client and not _client.is_closed:
-        await _client.aclose()
     _client = None

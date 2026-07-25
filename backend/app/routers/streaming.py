@@ -519,6 +519,9 @@ _PROXY_ALLOWED_HOSTS = {
     "megaplay.buzz",
     "vidtube.site",
     "vidwish.live",
+    # Additional provider CDN hosts
+    "animeyubi.com", "cdn.animeyubi.com", "anigamers.app", "hls.anigamers.app",
+    "omegatroupe.com", "cdn.omegatroupe.com",
     # Wibu/streaming CDN hosts
     "vidcache.net", "sbplay.com", "sbplay2.com", "sbvideo.net",
     "streamtape.com", "doodstream.com", "mp4upload.com", "streamsb.com",
@@ -554,6 +557,9 @@ async def gogoanime_proxy(
         raise HTTPException(status_code=400, detail="Invalid proxy URL encoding")
 
     if not _is_proxy_url_allowed(decoded_url):
+        from urllib.parse import urlparse
+        blocked_host = urlparse(decoded_url).hostname
+        logger.warning("GogoAnime proxy blocked host: %s (URL: %.200s)", blocked_host, decoded_url)
         raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
 
     try:
@@ -852,6 +858,9 @@ async def anivexa_proxy(
         raise HTTPException(status_code=400, detail="Invalid proxy URL encoding")
 
     if not _is_proxy_url_allowed(decoded_url):
+        from urllib.parse import urlparse
+        blocked_host = urlparse(decoded_url).hostname
+        logger.warning("Anivexa proxy blocked host: %s (URL: %.200s)", blocked_host, decoded_url)
         raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
 
     upstream_referer = referer or _get_upstream_referer(decoded_url)
@@ -1171,3 +1180,102 @@ async def download_episode(
         await dl_client.aclose()
         logger.warning("Download failed: %s", e)
         raise HTTPException(status_code=502, detail="Download failed")
+
+
+# ── Diagnostic endpoint ──────────────────────────────────────────────
+
+
+@router.get("/diagnose")
+@limiter.limit("10/minute")
+async def diagnose_streaming(
+    request: Request,
+    q: str = Query(..., min_length=2, description="Anime title to diagnose"),
+    ep: int = Query(1, ge=1, description="Episode number"),
+    anilist_id: int | None = Query(None, description="Optional AniList ID"),
+):
+    """Diagnose which streaming sources are available for a given anime.
+    Tests each scraper in order and reports which ones work/fail."""
+    from app.services import anilist_client
+    import time
+
+    report = {"title": q, "episode": ep, "sources": {}}
+
+    # 1. Resolve AniList ID
+    aid = anilist_id
+    if not aid:
+        try:
+            result = await anilist_client.search_anime(q, per_page=5)
+            media = result.get("Page", {}).get("media", [])
+            if media:
+                aid = media[0]["id"]
+                report["anilist_id"] = aid
+        except Exception as e:
+            report["anilist_id_error"] = str(e)[:200]
+    else:
+        report["anilist_id"] = aid
+
+    # 2. Test GogoAnime catalog search
+    try:
+        t0 = time.monotonic()
+        gogo_results = await gogoanime_client.search_anime(q)
+        elapsed = time.monotonic() - t0
+        report["sources"]["gogoanime"] = {
+            "available": len(gogo_results) > 0,
+            "results_count": len(gogo_results),
+            "elapsed_ms": round(elapsed * 1000),
+            "slug": gogo_results[0].get("slug") if gogo_results else None,
+        }
+    except Exception as e:
+        report["sources"]["gogoanime"] = {"available": False, "error": str(e)[:200]}
+
+    # 3. Test Animetsu (if AniList ID available)
+    if aid:
+        try:
+            t0 = time.monotonic()
+            anitsu_result = await anitsu_client.get_stream(aid, ep)
+            elapsed = time.monotonic() - t0
+            report["sources"]["animetsu"] = {
+                "available": bool(anitsu_result.get("stream_url")),
+                "has_embed": bool(anitsu_result.get("embed_url")),
+                "provider": anitsu_result.get("provider"),
+                "stream_type": anitsu_result.get("stream_type"),
+                "elapsed_ms": round(elapsed * 1000),
+            }
+        except Exception as e:
+            report["sources"]["animetsu"] = {"available": False, "error": str(e)[:200]}
+
+    # 4. Test Anivexa providers (if AniList ID available)
+    if aid:
+        try:
+            t0 = time.monotonic()
+            anivexa_result = await anivexa_client.get_stream_with_fallback(aid, ep, skip_anitsu=True)
+            elapsed = time.monotonic() - t0
+            report["sources"]["anivexa"] = {
+                "available": bool(anivexa_result.get("stream_url")),
+                "has_embed": bool(anivexa_result.get("embed_url")),
+                "provider": anivexa_result.get("provider"),
+                "stream_type": anivexa_result.get("stream_type"),
+                "elapsed_ms": round(elapsed * 1000),
+            }
+        except Exception as e:
+            report["sources"]["anivexa"] = {"available": False, "error": str(e)[:200]}
+
+    # 5. Test Wibu
+    try:
+        t0 = time.monotonic()
+        wibu_result = await wibu_client.search_and_get_stream(q, ep)
+        elapsed = time.monotonic() - t0
+        report["sources"]["wibu"] = {
+            "available": bool(wibu_result.get("stream_url")),
+            "has_embed": bool(wibu_result.get("embed_url")),
+            "elapsed_ms": round(elapsed * 1000),
+        }
+    except Exception as e:
+        report["sources"]["wibu"] = {"available": False, "error": str(e)[:200]}
+
+    # Summary
+    working = [k for k, v in report["sources"].items() if v.get("available")]
+    report["working_sources"] = working
+    report["has_any_source"] = len(working) > 0
+
+    return report

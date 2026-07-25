@@ -67,13 +67,14 @@ export async function GET(req: NextRequest) {
     }
 
     const contentType = resp.headers.get("Content-Type") || "";
+    const text = await resp.text();
     const isM3U8 =
       contentType.includes("mpegurl") ||
       contentType.includes("x-mpegurl") ||
-      url.endsWith(".m3u8");
+      url.endsWith(".m3u8") ||
+      text.trim().startsWith("#EXTM3U");
 
-    if (isM3U8 && resp.body) {
-      const text = await resp.text();
+    if (isM3U8) {
       const baseUrl = url.substring(0, url.lastIndexOf("/") + 1);
 
       const lines = text.split("\n");
