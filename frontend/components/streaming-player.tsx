@@ -61,7 +61,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const tryAnitsuOnly = useCallback(async (ep: number): Promise<boolean> => {
     let aid = resolvedAnilistRef.current;
     if (!aid) {
-      setStatusText("Resolving anime...");
+      setStatusText("");
       try {
         const res = await fetch(
           `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`
@@ -73,7 +73,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       } catch { /* not critical */ }
     }
     if (!aid) return false;
-    setStatusText("Trying Animetsu...");
+    setStatusText("");
     try {
       const res = await fetch(
         `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&source=anitsu`
@@ -91,7 +91,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
           return { ...s, file: proxySubUrl };
         }));
-        player.sourceRef.current = "anivexa";
+        player.sourceRef.current = "anitsu";
 
         if (res.stream_type === "mp4") {
           const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
@@ -160,7 +160,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       } catch { /* not critical */ }
     }
     if (!aid) return false;
-    setStatusText("Trying Anivexa providers...");
+    setStatusText("");
     try {
       const res = await fetch(
         `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&source=anivexa`
@@ -234,7 +234,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle]);
 
   const tryWibuOnly = useCallback(async (ep: number): Promise<boolean> => {
-    setStatusText("Trying Wibu...");
+    setStatusText("");
     try {
       const res = await api.wibuStream(animeTitle, ep).catch(() => null);
       if (res && (res.stream_url || res.embed_url)) {
@@ -247,7 +247,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
           return { ...s, file: proxySubUrl };
         }));
-        player.sourceRef.current = "anivexa";
+        player.sourceRef.current = "wibu";
 
         if (res.stream_type === "mp4") {
           const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
@@ -313,14 +313,14 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setError(null);
       player.setPlayerStatus("idle");
       player.setLoadingStream(true);
-      setStatusText("Trying Animetsu...");
-      const anitsuOk = await tryAnitsuOnly(currentEpRef.current);
+    setStatusText("");
+    const anitsuOk = await tryAnitsuOnly(currentEpRef.current);
       if (anitsuOk) return;
-      setStatusText("Trying Anivexa...");
+      setStatusText("");
       const ok = await tryAnivexaOnly(currentEpRef.current);
       if (!ok) {
-        setStatusText("Trying Wibu...");
-        const wibuOk = await tryWibuOnly(currentEpRef.current);
+    setStatusText("");
+    const wibuOk = await tryWibuOnly(currentEpRef.current);
         if (!wibuOk) {
           if (embedUrlRef.current) {
             player.setError(null);
@@ -333,6 +333,30 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           setStatusText("");
         }
       }
+    } else if (player.sourceRef.current === "anitsu") {
+      player.sourceRef.current = null;
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      player.setLoadingStream(true);
+    setStatusText("");
+    const anivexaOk = await tryAnivexaOnly(currentEpRef.current);
+      if (anivexaOk) return;
+      setStatusText("");
+      const wibuOk = await tryWibuOnly(currentEpRef.current);
+      if (!wibuOk) {
+        if (embedUrlRef.current) {
+          player.setError(null);
+          player.setLoadingStream(false);
+          setStatusText("");
+          return;
+        }
+        player.setError(friendlyError("Playback error: " + errorType));
+        player.setLoadingStream(false);
+        setStatusText("");
+      }
     } else if (player.sourceRef.current === "anivexa") {
       player.sourceRef.current = null;
       player.destroyHls();
@@ -341,7 +365,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setError(null);
       player.setPlayerStatus("idle");
       player.setLoadingStream(true);
-      setStatusText("Trying Wibu...");
+      setStatusText("");
       const wibuOk = await tryWibuOnly(currentEpRef.current);
       if (!wibuOk) {
         if (embedUrlRef.current) {
@@ -441,7 +465,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
     // 1. Try GogoAnime first (most reliable)
     if (slug) {
-      setStatusText("Trying GogoAnime...");
+      setStatusText("");
       const streamRes = await api.gogoanimeStream(slug, ep).catch(() => null);
       const data = streamRes?.data;
       if (data?.embed_url) {
@@ -463,18 +487,18 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     }
 
     // 2. Try Animetsu
-    setStatusText("Trying Animetsu...");
-    const anitsuOk = await tryAnitsuOnly(ep);
+      setStatusText("");
+      const anitsuOk = await tryAnitsuOnly(ep);
     if (anitsuOk) return;
 
     // 3. Try Anivexa providers
-    setStatusText("Trying Anivexa...");
-    const anivexaOk = await tryAnivexaOnly(ep);
+      setStatusText("");
+      const anivexaOk = await tryAnivexaOnly(ep);
     if (anivexaOk) return;
 
     // 4. Try Wibu
-    setStatusText("Trying Wibu...");
-    const wibuOk = await tryWibuOnly(ep);
+      setStatusText("");
+      const wibuOk = await tryWibuOnly(ep);
     if (wibuOk) return;
 
     player.setLoadingStream(false);
@@ -497,7 +521,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   async function searchAnime() {
     player.setLoadingStream(true);
     player.setError(null);
-    setStatusText("Searching for streaming sources...");
+    setStatusText("");
 
     // Resolve AniList ID first (needed for anitsu/anivexa even if GogoAnime fails)
     if (!resolvedAnilistRef.current) {

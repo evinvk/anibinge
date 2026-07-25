@@ -66,7 +66,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const tryAnivexa = useCallback(async (ep: number): Promise<boolean> => {
     let aid = resolvedAnilistRef.current;
     if (!aid) {
-      setStatusText("Resolving anime...");
+      setStatusText("");
       try {
         const res = await fetch(
           `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
@@ -78,7 +78,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       } catch { /* not critical */ }
     }
     if (!aid) return false;
-    setStatusText("Loading stream...");
+    setStatusText("");
     try {
       const res = await fetch(
         `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`
@@ -159,7 +159,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   }, [title, audio]);
 
   const tryGogoanime = useCallback(async (ep: number): Promise<boolean> => {
-    setStatusText("Trying alternate source...");
+    setStatusText("");
     try {
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
@@ -310,11 +310,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    setStatusText("Searching for stream...");
+    setStatusText("");
     const ok = await tryAnivexa(ep);
     if (ok) return;
 
-    setStatusText("Trying alternate source...");
+    setStatusText("");
     const gogoOk = await tryGogoanime(ep);
     if (!gogoOk) {
       player.setLoadingStream(false);
