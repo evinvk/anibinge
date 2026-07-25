@@ -530,7 +530,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </button>
         ))}
         <button
-          onClick={async () => {
+          onClick={() => {
             const fname = `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`;
             const dlUrl = api.downloadUrl({
               slug,
@@ -539,33 +539,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
               audio,
               filename: fname,
             });
-            setDownloading(true);
-            try {
-              const resp = await fetch(dlUrl);
-              if (!resp.ok) {
-                const err = await resp.json().catch(() => ({ detail: "Download failed" }));
-                alert(err.detail || "Download failed");
-                return;
-              }
-              const blob = await resp.blob();
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = `${fname}.mp4`;
-              document.body.appendChild(a);
-              a.click();
-              a.remove();
-              URL.revokeObjectURL(a.href);
-            } catch (e: any) {
-              alert("Download failed: " + (e.message || "Network error"));
-            } finally {
-              setDownloading(false);
-            }
+            window.open(dlUrl, "_blank");
           }}
           disabled={downloading}
           className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition disabled:opacity-50"
         >
           <Download className="h-3 w-3" />
-          {downloading ? "Downloading..." : "Download"}
+          Download
         </button>
       </div>
 

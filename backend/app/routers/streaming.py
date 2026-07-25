@@ -1304,82 +1304,36 @@ async def download_episode(
                 },
             )
 
-        parsed = urlparse(stream_url)
-        base = f"{parsed.scheme}://{parsed.netloc}"
-
-        variant_url = None
-        for line in body.splitlines():
-            line = line.strip()
-            if line and not line.startswith("#"):
-                variant_url = urljoin(stream_url, line)
-                break
-
-        if variant_url:
-            try:
-                var_resp = await dl_client.get(variant_url, headers={"Referer": referer} if referer else {})
-                var_resp.raise_for_status()
-                body = var_resp.text
-                parsed = urlparse(variant_url)
-                base = f"{parsed.scheme}://{parsed.netloc}"
-            except Exception:
-                pass
-
-        segment_urls = []
-        for line in body.splitlines():
-            line = line.strip()
-            if line and not line.startswith("#"):
-                segment_urls.append(urljoin(base + "/", line))
-
-        if not segment_urls:
-            raise HTTPException(status_code=404, detail="No segments found in playlist")
-
         import asyncio as _aio
         import tempfile as _tmpfile
         import os as _os
+        import shutil as _shutil
 
-        concat_file = None
+        safe_name = _re.sub(r'[^\w\-]', '_', filename)
         tmp_dir = _tmpfile.mkdtemp()
+        mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
         try:
-            # Download segments to temp files
-            seg_paths = []
-            for i, seg_url in enumerate(segment_urls):
-                try:
-                    seg_resp = await dl_client.get(seg_url, headers={"Referer": referer or base})
-                    seg_resp.raise_for_status()
-                    path = _os.path.join(tmp_dir, f"seg_{i:06d}.ts")
-                    with open(path, "wb") as f:
-                        f.write(seg_resp.content)
-                    seg_paths.append(path)
-                except Exception:
-                    continue
-
-            if not seg_paths:
-                raise HTTPException(status_code=404, detail="Failed to download video segments")
-
-            # Write concat list
-            concat_path = _os.path.join(tmp_dir, "concat.txt")
-            with open(concat_path, "w") as f:
-                for p in seg_paths:
-                    f.write(f"file '{p}'\n")
-            concat_file = concat_path
-
-            safe_name = _re.sub(r'[^\w\-]', '_', filename)
-            mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
-
-            proc = await _aio.create_subprocess_exec(
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", concat_path,
-                "-c", "copy", "-movflags", "+faststart",
+            cmd = [
+                "ffmpeg", "-y",
+                "-referer", referer or "",
+                "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
+                "-headers", f"Referer: {referer or ''}\r\n",
+                "-i", stream_url,
+                "-c", "copy",
+                "-movflags", "+faststart",
                 mp4_path,
+            ]
+            proc = await _aio.create_subprocess_exec(
+                *cmd,
                 stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.PIPE,
             )
-            stdout, stderr = await proc.communicate()
+            stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=300)
 
             if proc.returncode != 0:
                 err_msg = stderr.decode(errors="replace")[-500:]
-                logger.error("ffmpeg concat failed (code %d): %s", proc.returncode, err_msg)
-                raise RuntimeError(f"ffmpeg concat failed: {err_msg}")
+                logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
+                raise RuntimeError(f"ffmpeg failed: {err_msg}")
 
             with open(mp4_path, "rb") as f:
                 mp4_content = f.read()
@@ -1394,10 +1348,8 @@ async def download_episode(
                 },
             )
         finally:
-            # Cleanup temp files
             try:
-                import shutil
-                shutil.rmtree(tmp_dir, ignore_errors=True)
+                _shutil.rmtree(tmp_dir, ignore_errors=True)
             except Exception:
                 pass
     except HTTPException:
