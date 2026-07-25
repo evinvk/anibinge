@@ -48,28 +48,29 @@ export function Navbar() {
           <NotificationBell />
           <Link
             href="/watchlist"
-            className="hidden rounded-full bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:block"
+            className="rounded-full bg-primary-600 px-3 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:px-4"
           >
-            My Watchlist
+            <span className="hidden sm:inline">My Watchlist</span>
+            <span className="sm:hidden">Watchlist</span>
           </Link>
           {!loading && (
             <>
               {user ? (
                 <Link
                   href="/profile"
-                  className="hidden items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-sm text-mist transition-colors hover:text-paper sm:flex"
+                  className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-sm text-mist transition-colors hover:text-paper"
                 >
                   {user.avatar_url ? (
                     <img src={user.avatar_url} alt="" className="h-5 w-5 rounded-full object-cover" />
                   ) : (
                     <User className="h-4 w-4" />
                   )}
-                  {user.username}
+                  <span className="hidden sm:inline">{user.username}</span>
                 </Link>
               ) : (
                 <Link
                   href="/login"
-                  className="hidden rounded-full border border-white/10 px-4 py-2 text-sm text-mist transition-colors hover:text-paper sm:block"
+                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-mist transition-colors hover:text-paper"
                 >
                   Sign in
                 </Link>
@@ -93,6 +94,9 @@ export function Navbar() {
               {l.label}
             </Link>
           ))}
+          <Link href="/watchlist" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-primary-400 hover:bg-white/5">
+            My Watchlist
+          </Link>
           <div className="flex items-center gap-2 px-3 py-2">
             <span className="text-sm text-mist">Notifications</span>
             <NotificationBell />
