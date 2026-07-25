@@ -168,9 +168,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       if (data?.embed_url) {
         subs.setSubs([]);
         player.sourceRef.current = "gogoanime";
-        const cleanUrl = api.gogoanimeCleanEmbed(data.embed_url);
-        setEmbedUrl(cleanUrl);
-        embedUrlRef.current = cleanUrl;
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
         player.setLoadingStream(false);
         setStatusText("");
         return true;
