@@ -414,11 +414,12 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </>
         ) : embedUrl ? (
           <iframe
-            src={api.gogoanimeCleanEmbed(embedUrl)}
+            src={embedUrl}
             className="h-full w-full border-0"
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
             referrerPolicy="no-referrer"
+            sandbox="allow-scripts allow-same-origin allow-presentation allow-autoplay"
           />
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
