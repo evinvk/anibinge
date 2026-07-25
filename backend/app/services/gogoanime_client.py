@@ -343,56 +343,6 @@ def _get_embed_domain(embed_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}/"
 
 
-_ADS_SCRIPT_PATTERNS = [
-    "nekostream.site",
-    "statlytic.net",
-    "app.main.js",
-    "volume-booster.js",
-]
-
-
-def _strip_ads_from_html(html: str, embed_domain: str) -> str:
-    """Remove ad-related script tags and noscript tags from embed page HTML."""
-    for pattern in _ADS_SCRIPT_PATTERNS:
-        html = re.sub(
-            rf'<script[^>]*src="[^"]*{re.escape(pattern)}[^"]*"[^>]*>.*?</script>',
-            '', html, flags=re.IGNORECASE | re.DOTALL,
-        )
-        html = re.sub(
-            rf'<script[^>]*src="[^"]*{re.escape(pattern)}[^"]*"[^>]*/?>',
-            '', html, flags=re.IGNORECASE,
-        )
-    # Remove inline ad-loading functions
-    html = re.sub(r'function\s+loadAd\s*\([^)]*\)\s*\{[^}]*\}', '', html)
-    html = re.sub(r'function\s+addScriptDynamically\s*\([^)]*\)\s*\{[^}]*\}', '', html)
-    html = re.sub(r'function\s+checkConditionsAndAddScript\s*\([^)]*\)\s*\{[^}]*\}', '', html)
-    # Remove the nekostream/3p script loader block
-    html = re.sub(r'var\s+cachebuster.*?\.catch\(\(\)\s*=>\s*\{[^}]*\}\);', '', html, flags=re.DOTALL)
-    html = re.sub(r'const\s+cachebuster.*?\.catch\(\(\)\s*=>\s*\{[^}]*\}\);', '', html, flags=re.DOTALL)
-    return html
-
-
-async def serve_clean_embed(embed_url: str) -> dict | None:
-    """Fetch an embed page, strip ads, and return the cleaned HTML.
-    Returns {html: str, referer: str, domain: str} or None."""
-    client = await _get_client()
-    referer = _get_embed_domain(embed_url)
-    try:
-        resp = await client.get(
-            embed_url,
-            headers={
-                "Referer": _BASE_URL + "/",
-                "Origin": _BASE_URL,
-            },
-            timeout=_TIMEOUT,
-        )
-        html = resp.text
-        cleaned = _strip_ads_from_html(html, referer)
-        return {"html": cleaned, "referer": referer, "domain": referer}
-    except Exception as e:
-        logger.warning("GogoAnime clean embed failed for %s: %s", embed_url, e)
-        return None
-
 
 def _extract_m3u8_from_html(html: str, embed_url: str) -> str | None:
     """Extract M3U8 URL from embed page HTML/JS source.
