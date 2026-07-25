@@ -10,3 +10,5 @@ __pycache__/
 # Build output
 .next/
 .vercel
+
+tsconfig.tsbuildinfo

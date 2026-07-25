@@ -744,6 +744,11 @@ async def gogoanime_embed_proxy(
 # ── Anivexa fallback endpoints ──────────────────────────────────────
 
 
+# In-memory cache for AniList ID resolution (avoids repeated AniList calls)
+_resolve_cache: dict[str, tuple[float, dict]] = {}
+_RESOLVE_CACHE_TTL = 60 * 60 * 24  # 24 hours
+
+
 @router.get("/anivexa/resolve")
 @limiter.limit("30/minute")
 async def resolve_anilist_id(
@@ -751,13 +756,21 @@ async def resolve_anilist_id(
     q: str = Query(..., min_length=2, description="Anime title to search"),
 ):
     """Search AniList by title and return the AniList ID for Anivexa streaming."""
+    import time
+    cache_key = q.lower().strip()
+    cached = _resolve_cache.get(cache_key)
+    if cached and (time.monotonic() - cached[0]) < _RESOLVE_CACHE_TTL:
+        return cached[1]
     try:
         from app.services import anilist_client
         result = await anilist_client.search_anime(q, per_page=5)
         media = result.get("Page", {}).get("media", [])
         if media:
-            return {"anilist_id": media[0]["id"], "title": media[0].get("title", {})}
-        return {"anilist_id": None, "title": None}
+            response = {"anilist_id": media[0]["id"], "title": media[0].get("title", {})}
+        else:
+            response = {"anilist_id": None, "title": None}
+        _resolve_cache[cache_key] = (time.monotonic(), response)
+        return response
     except Exception as e:
         logger.warning("AniList resolve failed for '%s': %s", q, e)
         return {"anilist_id": None, "title": None}

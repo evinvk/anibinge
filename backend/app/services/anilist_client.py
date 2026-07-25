@@ -1,13 +1,15 @@
-"""
+""""
 Comprehensive AniList GraphQL client for anime metadata.
 Provides full coverage of anime data sources including search, trending, seasonal, schedule, etc.
 Uses httpx with retry logic and proper error handling.
 """
+import asyncio
 import logging
+import time
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from app.core.circuit_breaker import CircuitBreaker, get_breaker
 from app.core.http import get_shared_client
@@ -15,6 +17,45 @@ from app.core.http import get_shared_client
 logger = logging.getLogger("anibinge.anilist_client")
 
 ANILIST_URL = "https://graphql.anilist.co"
+
+# Rate limiter: AniList allows ~90 req/min; we stay safe at 75/min
+_anilist_rate_limit = asyncio.Lock()
+_anilist_request_times: list[float] = []
+_ANILIST_RATE_MAX = 75  # requests per window
+_ANILIST_RATE_WINDOW = 60  # seconds
+
+
+async def _throttle_if_needed():
+    """Wait if we're approaching the rate limit. Ensures we stay under 75 req/min."""
+    global _anilist_request_times
+    async with _anilist_rate_limit:
+        now = time.monotonic()
+        cutoff = now - _ANILIST_RATE_WINDOW
+        # Purge old entries
+        _anilist_request_times = [t for t in _anilist_request_times if t > cutoff]
+        if len(_anilist_request_times) >= _ANILIST_RATE_MAX:
+            # Wait until the oldest request falls out of the window
+            wait = _anilist_request_times[0] + _ANILIST_RATE_WINDOW - now + 0.5
+            if wait > 0:
+                logger.warning("AniList rate limit approaching, throttling %.1fs", wait)
+                await asyncio.sleep(wait)
+        _anilist_request_times.append(time.monotonic())
+
+
+def _is_429(exception: BaseException) -> bool:
+    """Retry only on 429 rate limits."""
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code == 429
+    return False
+
+
+def _is_retryable(exception: BaseException) -> bool:
+    """Retry on 429s and network errors."""
+    if isinstance(exception, httpx.HTTPStatusError):
+        return exception.response.status_code in (429, 500, 502, 503)
+    if isinstance(exception, (httpx.TimeoutException, httpx.ConnectError)):
+        return True
+    return False
 
 
 class AniListClient:
@@ -29,11 +70,13 @@ class AniListClient:
         self._breaker = CircuitBreaker("anilist", failure_threshold=5, recovery_timeout=30)
 
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        retry=retry_if_exception(_is_retryable),
     )
     async def _query(self, query: str, variables: dict) -> dict[str, Any]:
-        """Execute GraphQL query with retry logic."""
+        """Execute GraphQL query with retry and rate-limit awareness."""
+        await _throttle_if_needed()
         try:
             async with self._breaker():
                 response = await self.client.post(
@@ -51,6 +94,13 @@ class AniListClient:
                 raise Exception(f"AniList error: {data['errors']}")
 
             return data.get("data", {})
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                retry_after = e.response.headers.get("Retry-After", "5")
+                logger.warning("AniList 429 rate limited; retry after %ss", retry_after)
+            else:
+                logger.error("AniList HTTP error %s: %s", e.response.status_code, e)
+            raise
         except httpx.HTTPError as e:
             logger.error("AniList HTTP error: %s", e)
             raise
