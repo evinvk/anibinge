@@ -82,16 +82,21 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         return r.json();
       });
       if (res && (res.stream_url || res.embed_url)) {
+        player.sourceRef.current = "anivexa";
+
+        // Prefer embed URL — reliable, no proxy issues
         if (res.embed_url) {
           setEmbedUrl(res.embed_url);
           embedUrlRef.current = res.embed_url;
+          player.setLoadingStream(false);
+          setStatusText("");
+          return true;
         }
-        if (!res.stream_url) return false;
+
         subs.setSubs((res.subtitles || []).map((s: any) => {
           const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
           return { ...s, file: proxySubUrl };
         }));
-        player.sourceRef.current = "anivexa";
 
         if (res.stream_type === "mp4") {
           const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
@@ -343,41 +348,20 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.setError(null);
     setStatusText("");
 
-    // Run AniList resolve + GogoAnime search in parallel
-    const [anilistResult, gogoResult] = await Promise.allSettled([
-      resolvedAnilistRef.current
-        ? Promise.resolve(resolvedAnilistRef.current)
-        : fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`)
-            .then(r => r.json())
-            .then(res => {
-              if (res.anilist_id) resolvedAnilistRef.current = res.anilist_id;
-              return res.anilist_id;
-            }),
-      api.gogoanimeSearch(animeTitle),
-    ]);
+    // GogoAnime search only — AniList resolve happens in tryAnivexaOnly when needed
+    const gogoResult = await api.gogoanimeSearch(animeTitle).catch(() => null);
+    const gogoData = gogoResult?.data;
 
-    const gogoSlug = gogoResult.status === "fulfilled" && gogoResult.value?.data?.length > 0
-      ? gogoResult.value.data[0].slug
-      : null;
+    let gogoSlug: string | null = null;
+    if (gogoData && gogoData.length > 0) gogoSlug = gogoData[0].slug;
 
-    if (gogoResult.status === "fulfilled" && gogoResult.value?.data) {
-      setResults(gogoResult.value.data);
-      if (gogoResult.value.data[0]) {
-        const ep = gogoResult.value.data[0].episodes_count || gogoResult.value.data[0].actual_episodes_count || gogoResult.value.data[0].latest_episode || null;
+    if (gogoData) {
+      setResults(gogoData);
+      if (gogoData[0]) {
+        const ep = gogoData[0].episodes_count || gogoData[0].actual_episodes_count || gogoData[0].latest_episode || null;
         if (ep) setTotalEps(ep);
-        setSelectedSlug(gogoResult.value.data[0].slug);
+        setSelectedSlug(gogoData[0].slug);
       }
-    }
-
-    // Get episode count from Anivexa if GogoAnime didn't have it
-    if (!totalEps && resolvedAnilistRef.current) {
-      fetch(`${API_BASE}/api/v1/streaming/anivexa/${resolvedAnilistRef.current}/episodes`)
-        .then(r => r.json())
-        .then(res => {
-          const count = res?.mappings?.episodes;
-          if (count && count > 0) setTotalEps(count);
-        })
-        .catch(() => {});
     }
 
     setStatusText("");
@@ -387,6 +371,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       return;
     }
 
+    // No GogoAnime match — try Anivexa-only (will resolve AniList ID if needed)
     if (resolvedAnilistRef.current) {
       loadStream(null, 1);
     } else {
