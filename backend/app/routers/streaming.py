@@ -142,9 +142,9 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    GogoAnime-catalog-first: uses the catalog's latest_episode field and
-    AniList AiringSchedule for real airingAt timestamps. Computes aired_ago
-    as seconds since the episode aired.
+    Preserves the GogoAnime catalog order (already sorted by last update /
+    upload time — most recently uploaded first). AniList AiringSchedule is
+    used only for computing the display timestamp (aired_ago in seconds).
     """
     try:
         from app.services import gogoanime_client, anilist_client
@@ -154,7 +154,7 @@ async def get_recent_episodes(
         gogo_catalog = gogoanime_client.get_catalog()
 
         ongoing = [
-            (idx, item) for idx, item in enumerate(gogo_catalog)
+            item for item in gogo_catalog
             if (item.get("latest_episode") or 0) > 0
         ]
 
@@ -193,7 +193,7 @@ async def get_recent_episodes(
             pass
 
         episodes = []
-        for catalog_idx, item in page_items:
+        for item in page_items:
             latest = item.get("latest_episode") or 0
             if latest < 1:
                 continue
@@ -221,7 +221,7 @@ async def get_recent_episodes(
                 genres = item.get("genres", []) if isinstance(item.get("genres"), list) else []
 
             if aired_ago <= 0:
-                aired_ago = (len(ongoing) - catalog_idx) * 3600
+                aired_ago = 3600
 
             episodes.append({
                 "title": title,
@@ -232,8 +232,6 @@ async def get_recent_episodes(
                 "genres": genres,
                 "anilist_id": anilist_id,
             })
-
-        episodes.sort(key=lambda e: e["aired_ago"])
 
         has_next = len(page_items) > limit
         return {
