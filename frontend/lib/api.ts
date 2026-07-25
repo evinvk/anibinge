@@ -222,7 +222,7 @@ export const api = {
   gogoanimeSearch: (q: string) =>
     request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
   gogoanimeStream: (slug: string, ep: number, audio: string = "sub") =>
-    request<{ data: { master_m3u8: string; qualities: { quality: string; url: string }[] } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}&audio=${audio}`, 60),
+    request<{ data: { master_m3u8: string | null; qualities: { quality: string; url: string }[]; embed_url?: string | null } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}&audio=${audio}`, 60),
   gogoanimeMaster: (slug: string, ep: number, audio: string = "sub") =>
     `${API_BASE}/api/v1/streaming/gogoanime/${slug}/master?ep=${ep}&audio=${audio}`,
   gogoanimeLatest: (day?: string) =>
