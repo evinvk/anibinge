@@ -84,7 +84,63 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       if (res && (res.stream_url || res.embed_url)) {
         player.sourceRef.current = "anivexa";
 
-        // Prefer embed URL — reliable, no proxy issues
+        // Prefer native HLS playback — embed iframes often block cross-origin
+        if (res.stream_url) {
+          subs.setSubs((res.subtitles || []).map((s: any) => {
+            const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+            return { ...s, file: proxySubUrl };
+          }));
+
+          if (res.stream_type === "mp4") {
+            const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+            player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+            player.setLoadingStream(false);
+            setStatusText("");
+            await new Promise(r => setTimeout(r, 100));
+            if (videoRef.current) {
+              videoRef.current.src = mp4Url;
+              videoRef.current.play().catch(() => {});
+            }
+            return true;
+          }
+
+          const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+          let qualities = [{ quality: "Auto", url: hlsUrl }];
+          try {
+            const m3u8Resp = await fetch(hlsUrl);
+            if (m3u8Resp.ok) {
+              const m3u8Text = await m3u8Resp.text();
+              const parsed: { quality: string; url: string }[] = [];
+              const lines = m3u8Text.split("\n");
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                  const bwMatch = line.match(/BANDWIDTH=(\d+)/);
+                  const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
+                  const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
+                  if (bwMatch && nextLine && !nextLine.startsWith("#")) {
+                    const bw = parseInt(bwMatch[1]);
+                    let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
+                    if (resMatch) label += ` (${resMatch[1]})`;
+                    const variantUrl = nextLine.startsWith("http")
+                      ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
+                      : nextLine.startsWith("/") ? nextLine : hlsUrl;
+                    parsed.push({ quality: label, url: variantUrl });
+                  }
+                }
+              }
+              if (parsed.length > 1) qualities = parsed;
+            }
+          } catch { /* keep auto */ }
+
+          player.setMasterUrl(hlsUrl);
+          player.setStreamData({ qualities });
+          player.setLoadingStream(false);
+          setStatusText("");
+          return true;
+        }
+
+        // Fallback: embed iframe if no stream_url
         if (res.embed_url) {
           setEmbedUrl(res.embed_url);
           embedUrlRef.current = res.embed_url;
@@ -92,59 +148,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           setStatusText("");
           return true;
         }
-
-        subs.setSubs((res.subtitles || []).map((s: any) => {
-          const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
-          return { ...s, file: proxySubUrl };
-        }));
-
-        if (res.stream_type === "mp4") {
-          const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
-          player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
-          player.setLoadingStream(false);
-          setStatusText("");
-          await new Promise(r => setTimeout(r, 100));
-          if (videoRef.current) {
-            videoRef.current.src = mp4Url;
-            videoRef.current.play().catch(() => {});
-          }
-          return true;
-        }
-
-        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
-        let qualities = [{ quality: "Auto", url: hlsUrl }];
-        try {
-          const m3u8Resp = await fetch(hlsUrl);
-          if (m3u8Resp.ok) {
-            const m3u8Text = await m3u8Resp.text();
-            const parsed: { quality: string; url: string }[] = [];
-            const lines = m3u8Text.split("\n");
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
-              if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                const bwMatch = line.match(/BANDWIDTH=(\d+)/);
-                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
-                const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
-                if (bwMatch && nextLine && !nextLine.startsWith("#")) {
-                  const bw = parseInt(bwMatch[1]);
-                  let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
-                  if (resMatch) label += ` (${resMatch[1]})`;
-                  const variantUrl = nextLine.startsWith("http")
-                    ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
-                    : nextLine.startsWith("/") ? nextLine : hlsUrl;
-                  parsed.push({ quality: label, url: variantUrl });
-                }
-              }
-            }
-            if (parsed.length > 1) qualities = parsed;
-          }
-        } catch { /* keep auto */ }
-
-        player.setMasterUrl(hlsUrl);
-        player.setStreamData({ qualities });
-        player.setLoadingStream(false);
-        setStatusText("");
-        return true;
       }
     } catch { /* fallback failed */ }
     setStatusText("");
