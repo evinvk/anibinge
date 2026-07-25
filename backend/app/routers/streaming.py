@@ -450,6 +450,25 @@ async def search_gogoanime(
         raise HTTPException(status_code=503, detail="GogoAnime search unavailable")
 
 
+@router.get("/gogoanime/{slug}/info")
+@limiter.limit("30/minute")
+async def gogoanime_info(
+    request: Request,
+    slug: str,
+):
+    """Get anime info (title, episode count) by GogoAnime slug."""
+    info = gogoanime_client.get_info_by_slug(slug)
+    if info:
+        return {
+            "data": {
+                "slug": slug,
+                "title": info.get("title"),
+                "episodes_count": info.get("episodes_count"),
+            }
+        }
+    return {"data": None}
+
+
 @router.get("/gogoanime/{slug}/episodes")
 @limiter.limit("30/minute")
 async def get_gogoanime_episode(

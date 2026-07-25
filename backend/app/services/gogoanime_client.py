@@ -35,6 +35,7 @@ _CACHE_FILE = os.path.join(tempfile.gettempdir(), "gogoanime_catalog.json")
 
 _client: httpx.AsyncClient | None = None
 _catalog: dict[str, dict] = {}  # normalized_title -> item
+_catalog_by_slug: dict[str, dict] = {}  # slug -> item
 _catalog_loaded = False
 _catalog_lock = asyncio.Lock()
 _catalog_loaded_at: float = 0
@@ -106,12 +107,13 @@ async def _fetch_catalog_page(page: int) -> list[dict]:
 
 async def _load_catalog():
     """Load the full GogoAnime catalog into memory. Tries disk cache first, then fetches from API."""
-    global _catalog, _catalog_loaded, _catalog_loaded_at
+    global _catalog, _catalog_by_slug, _catalog_loaded, _catalog_loaded_at
 
     # Try disk cache first
     cached = await _load_catalog_from_disk()
     if cached is not None:
         _catalog = cached
+        _catalog_by_slug = {item.get("slug", ""): item for item in cached.values() if item.get("slug")}
         _catalog_loaded = True
         _catalog_loaded_at = time.monotonic()
         return
@@ -133,11 +135,15 @@ async def _load_catalog():
 
     # Build the search index
     new_catalog = {}
+    new_catalog_by_slug = {}
     for item in all_items:
         slug = item.get("slug", "")
         title = item.get("title", "")
         title_en = item.get("title_english", "") or ""
         title_jp = item.get("title_japanese", "") or ""
+
+        if slug:
+            new_catalog_by_slug[slug] = item
 
         # Index by all title variants
         for t in [title, title_en, title_jp]:
@@ -147,6 +153,7 @@ async def _load_catalog():
                     new_catalog[norm] = item
 
     _catalog = new_catalog
+    _catalog_by_slug = new_catalog_by_slug
     _catalog_loaded = True
     _catalog_loaded_at = time.monotonic()
 
@@ -217,6 +224,11 @@ async def search_anime(query: str) -> list[dict]:
     results = _fuzzy_search(query)
     logger.info("GogoAnime search '%s': %d results from catalog", query, len(results))
     return results
+
+
+def get_info_by_slug(slug: str) -> dict | None:
+    """Look up an anime by its GogoAnime slug from the catalog."""
+    return _catalog_by_slug.get(slug)
 
 
 async def get_episode(slug: str, episode_number: int) -> dict | None:

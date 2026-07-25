@@ -30,31 +30,48 @@ function WatchPageInner({ slug }: { slug: string }) {
     async function fetchInfo() {
       const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
       let resolvedTitle: string | null = null;
+
+      // 1. Get episode count directly from catalog by slug
       try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 12000);
         const res = await fetch(
-          `${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`,
-          { signal: controller.signal }
+          `${apiBase}/api/v1/streaming/gogoanime/${slug}/info`,
+          { signal: AbortSignal.timeout(8000) }
         );
-        clearTimeout(timeout);
         const data = await res.json();
-        const match = data.data?.find((a: any) => a.slug === slug);
-        if (match) {
-          resolvedTitle = match.title;
-          setTotalEps(match.episodes_count || match.actual_episodes_count || match.latest_episode || null);
-        } else if (data.data?.length > 0) {
-          resolvedTitle = data.data[0].title;
-          setTotalEps(data.data[0].episodes_count || data.data[0].actual_episodes_count || data.data[0].latest_episode || null);
-        } else {
-          setError("Anime not found");
+        if (data.data) {
+          resolvedTitle = data.data.title;
+          setTotalEps(data.data.episodes_count || null);
+          if (resolvedTitle) setTitle(resolvedTitle);
         }
-        if (resolvedTitle) setTitle(resolvedTitle);
       } catch {
-        setError("Failed to load anime info");
+        // Not critical — fall through to search
       }
 
-      // Try to resolve AniList ID for Anivexa fallback
+      // 2. Fallback: search by slug if info didn't work
+      if (!resolvedTitle) {
+        try {
+          const res = await fetch(
+            `${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`,
+            { signal: AbortSignal.timeout(12000) }
+          );
+          const data = await res.json();
+          const match = data.data?.find((a: any) => a.slug === slug);
+          if (match) {
+            resolvedTitle = match.title;
+            setTotalEps((prev) => prev ?? match.episodes_count || match.actual_episodes_count || match.latest_episode || null);
+          } else if (data.data?.length > 0) {
+            resolvedTitle = data.data[0].title;
+            setTotalEps((prev) => prev ?? data.data[0].episodes_count || data.data[0].actual_episodes_count || data.data[0].latest_episode || null);
+          } else {
+            setError("Anime not found");
+          }
+          if (resolvedTitle) setTitle(resolvedTitle);
+        } catch {
+          setError("Failed to load anime info");
+        }
+      }
+
+      // 3. Resolve AniList ID for Anivexa fallback
       try {
         const searchQ = resolvedTitle || slug.replace(/-/g, " ");
         const res = await fetch(
