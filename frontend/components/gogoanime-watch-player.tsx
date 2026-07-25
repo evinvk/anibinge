@@ -88,9 +88,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       });
       if (res && (res.stream_url || res.embed_url)) {
         if (res.embed_url) {
-          const cleanUrl = api.gogoanimeCleanEmbed(res.embed_url);
-          setEmbedUrl(cleanUrl);
-          embedUrlRef.current = cleanUrl;
+          setEmbedUrl(res.embed_url);
+          embedUrlRef.current = res.embed_url;
           setEmbedReferer(res.referer || "");
         }
         if (!res.stream_url) {
@@ -204,9 +203,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         subs.setSubs([]);
         player.sourceRef.current = "gogoanime";
         player.setLoadingStream(false);
-        const cleanUrl = api.gogoanimeCleanEmbed(data.embed_url);
-        setEmbedUrl(cleanUrl);
-        embedUrlRef.current = cleanUrl;
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
         setStatusText("");
         return true;
       }

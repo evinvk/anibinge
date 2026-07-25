@@ -343,49 +343,6 @@ def _get_embed_domain(embed_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}/"
 
 
-_AD_SCRIPT_SRCS = [
-    "nekostream.site",
-    "statlytic.net",
-    "app.main.js",
-    "volume-booster.js",
-]
-
-
-def _strip_ads_from_html(html: str) -> str:
-    """Remove ad-related <script src=...> tags. Nothing else touched."""
-    for src_pattern in _AD_SCRIPT_SRCS:
-        html = re.sub(
-            r'<script[^>]*src="[^"]*' + re.escape(src_pattern) + r'[^"]*"[^>]*>\s*</script>',
-            '', html, flags=re.IGNORECASE,
-        )
-        html = re.sub(
-            r'<script[^>]*src="[^"]*' + re.escape(src_pattern) + r'[^"]*"[^>]*/?>',
-            '', html, flags=re.IGNORECASE,
-        )
-    return html
-
-
-async def serve_clean_embed(embed_url: str) -> dict | None:
-    """Fetch an embed page, strip ad scripts, return cleaned HTML."""
-    client = await _get_client()
-    referer = _get_embed_domain(embed_url)
-    try:
-        resp = await client.get(
-            embed_url,
-            headers={
-                "Referer": _BASE_URL + "/",
-                "Origin": _BASE_URL,
-            },
-            timeout=_TIMEOUT,
-        )
-        html = resp.text
-        cleaned = _strip_ads_from_html(html)
-        return {"html": cleaned, "referer": referer, "domain": referer}
-    except Exception as e:
-        logger.warning("GogoAnime clean embed failed for %s: %s", embed_url, e)
-        return None
-
-
 
 def _extract_m3u8_from_html(html: str, embed_url: str) -> str | None:
     """Extract M3U8 URL from embed page HTML/JS source.

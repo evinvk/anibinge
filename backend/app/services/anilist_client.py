@@ -571,7 +571,7 @@ anilist_client = AniListClient()
 
 # Module-level convenience functions (matches mal_client/jikan_client pattern)
 async def search_anime(query: str, page: int = 1, **kwargs) -> dict:
-    return await anilist_client.search_anime(search=query, page=page)
+    return await anilist_client.search_anime(search=query, page=page, **kwargs)
 
 async def get_trending(page: int = 1, **kwargs) -> dict:
     return await anilist_client.get_trending(page=page)
