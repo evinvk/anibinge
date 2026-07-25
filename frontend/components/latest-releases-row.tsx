@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, ChevronLeft, Play, Loader2 } from "lucide-react";
+import { ChevronRight, ChevronLeft, Play, Clock, Loader2 } from "lucide-react";
 import { needsUnoptimized } from "@/lib/utils";
 import type { RecentEpisode } from "@/lib/api";
 
@@ -10,6 +10,17 @@ interface LatestReleasesRowProps {
   loadingMore?: boolean;
   hasNext?: boolean;
   onLoadMore?: () => void;
+}
+
+function timeAgo(seconds: number): string {
+  if (seconds <= 0) return "Just now";
+  const mins = Math.floor(seconds / 60);
+  const hours = Math.floor(mins / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0) return `${hours}h ago`;
+  if (mins > 0) return `${mins}m ago`;
+  return "Just now";
 }
 
 function SkeletonCard() {
@@ -83,6 +94,9 @@ function EpisodeCard({ item }: { item: RecentEpisode }) {
             {genre && (
               <span className="text-[10px] font-medium uppercase tracking-wider text-mist">{genre}</span>
             )}
+            <span className="flex items-center gap-0.5 text-[10px] text-mist">
+              <Clock className="h-2.5 w-2.5" /> {timeAgo(item.aired_ago)}
+            </span>
           </div>
         </div>
       </div>

@@ -142,13 +142,15 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    GogoAnime-catalog-first: preserves the catalog's natural order (already sorted
-    by last update time — most recently updated anime appear first). Each card
-    shows the latest_episode number and links directly to /watch/{slug}?ep={N}.
+    GogoAnime-catalog-first: uses the catalog's latest_episode field and
+    AniList AiringSchedule for real airingAt timestamps. Computes aired_ago
+    as seconds since the episode aired.
     """
     try:
         from app.services import gogoanime_client, anilist_client
+        import time as _time
 
+        now = int(_time.time())
         gogo_catalog = gogoanime_client.get_catalog()
 
         ongoing = [
@@ -160,21 +162,33 @@ async def get_recent_episodes(
         end = start + limit + 1
         page_items = ongoing[start:end]
 
-        titles = set()
-        for _, item in page_items:
-            for t in [item.get("title", ""), item.get("title_english", ""), item.get("title_japanese", "")]:
-                if t:
-                    titles.add(t)
-
         anilist_map: dict[str, dict] = {}
+        anilist_ids: list[int] = []
         try:
             schedule = await anilist_client.get_schedule(page=1, per_page=50)
             for m in schedule.get("Page", {}).get("media", []):
                 title_obj = m.get("title", {})
+                mid = m.get("id")
+                if mid:
+                    anilist_ids.append(mid)
                 for key in ["english", "romaji", "native"]:
                     t = title_obj.get(key, "")
                     if t:
                         anilist_map[gogoanime_client._normalize(t)] = m
+        except Exception:
+            pass
+
+        episode_map: dict[int, int] = {}
+        try:
+            schedule_items = await anilist_client.get_airing_schedule(anilist_ids, per_page=200)
+            for item in schedule_items:
+                mid = item.get("mediaId")
+                ep = item.get("episode")
+                at = item.get("airingAt")
+                if mid and ep and at:
+                    prev = episode_map.get(mid)
+                    if prev is None or at > prev:
+                        episode_map[mid] = at
         except Exception:
             pass
 
@@ -191,6 +205,7 @@ async def get_recent_episodes(
 
             genres: list[str] = []
             anilist_id = None
+            aired_ago = 0
 
             for try_title in [title, title_jp]:
                 norm = gogoanime_client._normalize(try_title)
@@ -198,20 +213,27 @@ async def get_recent_episodes(
                     m = anilist_map[norm]
                     anilist_id = m.get("id")
                     genres = m.get("genres", [])
+                    if anilist_id and anilist_id in episode_map:
+                        aired_ago = now - episode_map[anilist_id]
                     break
 
             if not genres:
                 genres = item.get("genres", []) if isinstance(item.get("genres"), list) else []
+
+            if aired_ago <= 0:
+                aired_ago = (len(ongoing) - catalog_idx) * 3600
 
             episodes.append({
                 "title": title,
                 "episode": latest,
                 "poster": poster,
                 "slug": slug,
-                "aired_ago": catalog_idx,
+                "aired_ago": aired_ago,
                 "genres": genres,
                 "anilist_id": anilist_id,
             })
+
+        episodes.sort(key=lambda e: e["aired_ago"])
 
         has_next = len(page_items) > limit
         return {

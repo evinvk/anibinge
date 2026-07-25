@@ -343,6 +343,32 @@ class AniListClient:
             },
         )
 
+    async def get_airing_schedule(self, media_ids: list[int], per_page: int = 50) -> list[dict]:
+        """Get past airing times for given AniList media IDs.
+
+        Returns a list of {mediaId, episode, airingAt} dicts sorted by most recent first.
+        Only returns episodes that have already aired.
+        """
+        if not media_ids:
+            return []
+        query = """
+        query($mediaIds:[Int],$perPage:Int){
+          Page(page:1,perPage:$perPage){
+            airingSchedule(
+              mediaId_in:$mediaIds,
+              sort:TIME_DESC,
+              notYetAired:false
+            ){
+              airingAt
+              episode
+              mediaId
+            }
+          }
+        }
+        """
+        result = await self._query(query, {"mediaIds": media_ids, "perPage": per_page})
+        return result.get("Page", {}).get("airingSchedule", [])
+
     async def get_anime_detail(self, anime_id: int) -> dict:
         """Get detailed information about a specific anime."""
         query = """
@@ -562,3 +588,6 @@ async def get_recommendations(anime_id: int, page: int = 1) -> dict:
 
 async def get_anime_characters(anime_id: int) -> dict:
     return await anilist_client.get_anime_characters(anime_id)
+
+async def get_airing_schedule(media_ids: list[int], per_page: int = 50) -> list[dict]:
+    return await anilist_client.get_airing_schedule(media_ids, per_page=per_page)
