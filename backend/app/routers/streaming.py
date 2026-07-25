@@ -163,7 +163,8 @@ async def get_recent_episodes(
                 if norm and norm not in gogo_by_title:
                     gogo_by_title[norm] = item
 
-        schedule_map: dict[str, dict] = {}
+        schedule_map: dict[int, dict] = {}
+        title_to_id: dict[str, int] = {}
         for pg in range(1, 4):
             try:
                 schedule = await anilist_client.get_schedule(page=pg, per_page=50)
@@ -171,16 +172,20 @@ async def get_recent_episodes(
                 if not media_list:
                     break
                 for m in media_list:
+                    mid = m.get("id")
+                    if not mid or mid in schedule_map:
+                        continue
+                    schedule_map[mid] = m
                     title_obj = m.get("title", {})
                     for key in ["english", "romaji", "native"]:
                         t = title_obj.get(key, "")
                         if t:
-                            schedule_map[gogoanime_client._normalize(t)] = m
+                            title_to_id[gogoanime_client._normalize(t)] = mid
             except Exception:
                 break
 
         candidates: list[dict] = []
-        for norm, m in schedule_map.items():
+        for media_id, m in schedule_map.items():
             next_ep = m.get("nextAiringEpisode")
             if not next_ep or not next_ep.get("episode"):
                 continue
