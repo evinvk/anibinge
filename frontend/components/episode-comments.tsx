@@ -140,15 +140,18 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [sort, setSort] = useState("newest");
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchComments = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await api.getComments(slug, episodeNumber, sort);
       setComments(data.comments);
       setTotal(data.total);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to load comments:", err);
+      setLoadError(err?.message || "Failed to load comments");
     }
     setLoading(false);
   }, [slug, episodeNumber, sort]);
@@ -227,6 +230,17 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
         </div>
       </div>
 
+      {/* Load error */}
+      {loadError && (
+        <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm text-red-400 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <div>
+            <span className="font-medium">Could not connect to server.</span> {loadError}
+            <span className="block text-[11px] text-red-400/60 mt-0.5">Open browser console (F12) for details.</span>
+          </div>
+        </div>
+      )}
+
       {/* Compose */}
       {token ? (
         <div className="mt-4 rounded-xl bg-white/[0.03] p-4 border border-white/5">
@@ -303,8 +317,11 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
       {error && (
         <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm text-red-400 flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 shrink-0" />
-          {error}
-          <button onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400 text-xs">Dismiss</button>
+          <div>
+            <span className="font-medium">Failed to post.</span> {error}
+            <span className="block text-[11px] text-red-400/60 mt-0.5">Open browser console (F12) for details.</span>
+          </div>
+          <button onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400 text-xs shrink-0">Dismiss</button>
         </div>
       )}
 

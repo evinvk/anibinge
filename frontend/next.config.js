@@ -24,7 +24,7 @@ const nextConfig = {
     optimizePackageImports: ["lucide-react"],
   },
   compiler: {
-    removeConsole: process.env.NODE_ENV === "production",
+    removeConsole: false,
   },
   async headers() {
     return [
