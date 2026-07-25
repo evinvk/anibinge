@@ -6,6 +6,7 @@ import { Play, ChevronDown, Loader2, AlertTriangle, Monitor, RotateCcw, Download
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
+import { EpisodeComments } from "@/components/episode-comments";
 import clsx from "clsx";
 
 interface SearchResult {
@@ -666,6 +667,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
             Retry
           </button>
         </div>
+      )}
+
+      {selectedSlug && (
+        <EpisodeComments slug={selectedSlug} episodeNumber={currentEp} />
       )}
     </section>
   );

@@ -11,7 +11,7 @@ from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
 from app.core.circuit_breaker import all_breakers
-from app.routers import admin, anime, auth, news, notifications, schedule, search, seasonal, streaming, watchlist
+from app.routers import admin, anime, auth, comments, news, notifications, schedule, search, seasonal, streaming, watchlist
 
 logging.basicConfig(
     level=logging.INFO,
@@ -113,6 +113,7 @@ app.include_router(auth.router)
 app.include_router(watchlist.router)
 app.include_router(news.router)
 app.include_router(streaming.router)
+app.include_router(comments.router)
 app.include_router(admin.router)
 app.include_router(notifications.router)
 
@@ -207,6 +208,13 @@ async def startup_event():
         "ALTER TABLE watchlist_entries ALTER COLUMN updated_at TYPE TIMESTAMPTZ USING updated_at AT TIME ZONE 'UTC'",
         "ALTER TABLE reviews ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
         "ALTER TABLE push_subscriptions ALTER COLUMN created_at TYPE TIMESTAMPTZ USING created_at AT TIME ZONE 'UTC'",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL REFERENCES users(id)",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS slug VARCHAR NOT NULL",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS episode_number INTEGER NOT NULL",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS body VARCHAR(2000) NOT NULL",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS tag VARCHAR DEFAULT 'comment'",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+        "ALTER TABLE episode_comments ADD CONSTRAINT uq_user_episode_comment UNIQUE (user_id, slug, episode_number)",
     ]
     async with AsyncSessionLocal() as session:
         for stmt in _migrations:

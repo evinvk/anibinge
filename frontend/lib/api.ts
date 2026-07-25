@@ -137,6 +137,18 @@ export interface UserProfile {
   created_at: string | null;
 }
 
+export interface EpisodeCommentData {
+  id: number;
+  user_id: string;
+  username: string;
+  avatar_url: string | null;
+  slug: string;
+  episode_number: number;
+  body: string;
+  tag: string;
+  created_at: string;
+}
+
 export const api = {
   // Anime browsing (now uses MyAnimeList as primary)
   trending: (page = 1) => request<{ data: AnimeSummary[] }>(`/api/v1/anime/trending?page=${page}`, 300),
@@ -302,4 +314,20 @@ export const api = {
     q.set("filename", params.filename);
     return `${API_BASE}/api/v1/streaming/download?${q.toString()}`;
   },
+
+  // Episode comments
+  getComments: (slug: string, episodeNumber: number) =>
+    request<{ comments: EpisodeCommentData[]; total: number }>(
+      `/api/v1/comments?slug=${encodeURIComponent(slug)}&episode_number=${episodeNumber}`,
+      30
+    ),
+  postComment: (token: string, slug: string, episodeNumber: number, body: string, tag: string = "comment") =>
+    authedRequest<EpisodeCommentData>("/api/v1/comments", token, {
+      method: "POST",
+      body: JSON.stringify({ slug, episode_number: episodeNumber, body, tag }),
+    }),
+  deleteComment: (token: string, commentId: number) =>
+    authedRequest<{ deleted: boolean }>(`/api/v1/comments/${commentId}`, token, {
+      method: "DELETE",
+    }),
 };

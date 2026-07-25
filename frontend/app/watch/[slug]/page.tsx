@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
+import { EpisodeComments } from "@/components/episode-comments";
 import { AdsterraAd } from "@/components/adsterra-ad";
 
 interface PageProps {
@@ -17,6 +18,7 @@ function WatchPageInner({ slug }: { slug: string }) {
   const [title, setTitle] = useState<string | null>(null);
   const [totalEps, setTotalEps] = useState<number | null>(null);
   const [anilistId, setAnilistId] = useState<number | null>(null);
+  const [currentEp, setCurrentEp] = useState(initialEp);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
@@ -102,7 +104,11 @@ function WatchPageInner({ slug }: { slug: string }) {
           Back
         </Link>
         <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
-        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} />
+        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} />
+
+        {title && (
+          <EpisodeComments slug={slug} episodeNumber={currentEp} />
+        )}
 
         <div className="mt-8 flex justify-center">
           <AdsterraAd />

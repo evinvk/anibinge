@@ -23,6 +23,7 @@ interface Props {
   totalEps: number | null;
   anilistId?: number | null;
   initialEp?: number;
+  onEpisodeChange?: (ep: number) => void;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -46,7 +47,7 @@ function friendlyError(raw: string): string {
   return raw;
 }
 
-export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initialEp = 1 }: Props) {
+export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initialEp = 1, onEpisodeChange }: Props) {
   const [currentEp, setCurrentEp] = useState(initialEp);
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
@@ -523,6 +524,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                   key={ep}
                   onClick={() => {
                     setCurrentEp(ep);
+                    onEpisodeChange?.(ep);
                     setShowEpisodes(false);
                   }}
                   className={clsx(

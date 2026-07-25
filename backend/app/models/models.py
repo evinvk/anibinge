@@ -64,3 +64,18 @@ class PushSubscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship(back_populates="push_subscriptions")
+
+
+class EpisodeComment(Base):
+    __tablename__ = "episode_comments"
+    __table_args__ = (UniqueConstraint("user_id", "slug", "episode_number", name="uq_user_episode_comment"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"))
+    slug: Mapped[str] = mapped_column(String, index=True)
+    episode_number: Mapped[int] = mapped_column(Integer, index=True)
+    body: Mapped[str] = mapped_column(String(2000))
+    tag: Mapped[str] = mapped_column(String, default="comment")  # comment | report | issue
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped["User"] = relationship()
