@@ -139,6 +139,7 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
   const [replyTo, setReplyTo] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [sort, setSort] = useState("newest");
+  const [error, setError] = useState<string | null>(null);
 
   const fetchComments = useCallback(async () => {
     setLoading(true);
@@ -146,7 +147,9 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
       const data = await api.getComments(slug, episodeNumber, sort);
       setComments(data.comments);
       setTotal(data.total);
-    } catch { /* silent */ }
+    } catch (err) {
+      console.error("Failed to load comments:", err);
+    }
     setLoading(false);
   }, [slug, episodeNumber, sort]);
 
@@ -155,11 +158,15 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
   const handleSubmit = async () => {
     if (!token || !body.trim()) return;
     setSubmitting(true);
+    setError(null);
     try {
-      const newComment = await api.postComment(token, slug, episodeNumber, body.trim(), tag, replyTo ?? undefined);
+      await api.postComment(token, slug, episodeNumber, body.trim(), tag, replyTo ?? undefined);
       setBody(""); setTag("comment"); setReplyTo(null);
       await fetchComments();
-    } catch { /* silent */ }
+    } catch (err: any) {
+      console.error("Comment post failed:", err);
+      setError(err?.message || "Failed to post comment. Please try again.");
+    }
     setSubmitting(false);
   };
 
@@ -170,7 +177,7 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
       const update = (list: EpisodeCommentData[]): EpisodeCommentData[] =>
         list.map((c) => c.id === commentId ? { ...c, likes: res.likes, liked_by_me: res.liked } : { ...c, replies: c.replies ? update(c.replies) : [] });
       setComments(update(comments));
-    } catch { /* silent */ }
+    } catch (err) { console.error("Like failed:", err); }
   };
 
   const handleDelete = async (commentId: number) => {
@@ -178,7 +185,7 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
     try {
       await api.deleteComment(token, commentId);
       await fetchComments();
-    } catch { /* silent */ }
+    } catch (err) { console.error("Delete failed:", err); }
   };
 
   const handleResolve = async (commentId: number) => {
@@ -188,7 +195,7 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
       const update = (list: EpisodeCommentData[]): EpisodeCommentData[] =>
         list.map((c) => c.id === commentId ? { ...c, is_resolved: res.is_resolved } : { ...c, replies: c.replies ? update(c.replies) : [] });
       setComments(update(comments));
-    } catch { /* silent */ }
+    } catch (err) { console.error("Resolve failed:", err); }
   };
 
   const replyTarget = replyTo ? findComment(comments, replyTo) : null;
@@ -289,6 +296,15 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
             <a href="/signup" className="text-primary-400 hover:text-primary-300 font-semibold underline underline-offset-2">Sign up</a>
             {" "}to join the discussion, report issues, or leave feedback.
           </p>
+        </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div className="mt-3 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-2.5 text-sm text-red-400 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {error}
+          <button onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400 text-xs">Dismiss</button>
         </div>
       )}
 

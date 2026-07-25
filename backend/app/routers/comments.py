@@ -151,45 +151,6 @@ async def get_comments(
     return {"comments": comments, "total": total}
 
 
-@router.get("/issues")
-async def get_issues(
-    slug: str | None = Query(None),
-    resolved: bool | None = Query(None),
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    _admin: str = Depends(lambda credentials=None: None),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get all reported issues (admin endpoint)."""
-    from app.core.security import get_current_admin_user
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-    stmt = (
-        select(EpisodeComment, User.username, User.avatar_url)
-        .join(User, EpisodeComment.user_id == User.id)
-        .where(EpisodeComment.tag.in_(["report", "issue"]))
-    )
-    if slug:
-        stmt = stmt.where(EpisodeComment.slug == slug)
-    if resolved is not None:
-        stmt = stmt.where(EpisodeComment.is_resolved == resolved)
-    stmt = stmt.order_by(EpisodeComment.created_at.desc()).offset(offset).limit(limit)
-
-    rows = (await db.execute(stmt)).all()
-    comments = await _enrich_comments(rows, db)
-
-    total_stmt = select(func.count()).select_from(EpisodeComment).where(
-        EpisodeComment.tag.in_(["report", "issue"])
-    )
-    if slug:
-        total_stmt = total_stmt.where(EpisodeComment.slug == slug)
-    if resolved is not None:
-        total_stmt = total_stmt.where(EpisodeComment.is_resolved == resolved)
-    total = (await db.execute(total_stmt)).scalar() or 0
-
-    return {"issues": comments, "total": total}
-
-
 @router.post("", status_code=201)
 async def create_comment(
     payload: CommentCreate,
