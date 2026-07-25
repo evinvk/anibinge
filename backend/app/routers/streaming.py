@@ -1309,6 +1309,29 @@ async def download_episode(
         import os as _os
         import shutil as _shutil
 
+        # Parse master m3u8 to pick best variant — ffmpeg can't auto-select from multi-program masters
+        if "EXT-X-STREAM-INF" in body:
+            best_url = None
+            best_bw = -1
+            for line in body.splitlines():
+                line = line.strip()
+                if line.startswith("#EXT-X-STREAM-INF"):
+                    bw = 0
+                    for part in line.split(","):
+                        if "BANDWIDTH=" in part:
+                            try:
+                                bw = int(part.split("=")[1].strip())
+                            except ValueError:
+                                pass
+                elif line and not line.startswith("#") and best_bw is not None:
+                    if bw > best_bw:
+                        best_bw = bw
+                        from urllib.parse import urljoin as _urljoin
+                        best_url = _urljoin(stream_url, line)
+                    bw = 0
+            if best_url:
+                stream_url = best_url
+
         safe_name = _re.sub(r'[^\w\-]', '_', filename)
         tmp_dir = _tmpfile.mkdtemp()
         mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
@@ -1319,6 +1342,7 @@ async def download_episode(
                 "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
                 "-headers", f"Referer: {referer or ''}\r\n",
                 "-i", stream_url,
+                "-map", "0",
                 "-c", "copy",
                 "-movflags", "+faststart",
                 mp4_path,
