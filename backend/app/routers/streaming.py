@@ -142,68 +142,84 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    Uses AniList GraphQL (RELEASING + POPULARITY_DESC) with nextAiringEpisode
-    data to estimate episode numbers and air times. Cross-references with
-    GogoAnime catalog for poster/slug matching.
+    GogoAnime-catalog-first approach: uses the catalog's latest_episode field
+    (actual uploaded episodes on GogoAnime) and cross-references with AniList
+    for metadata (genres, airing schedule for aired_ago estimates).
     """
     try:
         from app.services import anilist_client, gogoanime_client
 
         WEEK_SECONDS = 604800
 
-        fetch_limit = min(limit + 1, 50)
-        result = await anilist_client.get_schedule(page=page, per_page=fetch_limit)
-        media_list = result.get("Page", {}).get("media", [])
-
         gogo_catalog = gogoanime_client.get_catalog()
-        gogo_index: dict[str, dict] = {}
-        for item in gogo_catalog:
-            title_key = gogoanime_client._normalize(item.get("title", ""))
-            if title_key:
-                gogo_index[title_key] = item
+        ongoing = [
+            item for item in gogo_catalog
+            if (item.get("status", "").lower() in ("ongoing", "airing", ""))
+            and (item.get("latest_episode") or 0) > 0
+        ]
+
+        ongoing.sort(key=lambda x: x.get("latest_episode") or 0, reverse=True)
+        ongoing = ongoing[(page - 1) * limit: page * limit + 1]
+
+        titles_to_resolve = set()
+        for item in ongoing:
+            for t in [item.get("title", ""), item.get("title_english", ""), item.get("title_japanese", "")]:
+                if t:
+                    titles_to_resolve.add(t)
+
+        anilist_map: dict[str, dict] = {}
+        try:
+            schedule = await anilist_client.get_schedule(page=1, per_page=50)
+            for m in schedule.get("Page", {}).get("media", []):
+                title_obj = m.get("title", {})
+                for key in ["english", "romaji", "native"]:
+                    t = title_obj.get(key, "")
+                    if t:
+                        anilist_map[gogoanime_client._normalize(t)] = m
+        except Exception:
+            pass
 
         episodes = []
-        for m in media_list:
-            next_ep = m.get("nextAiringEpisode")
-            if not next_ep or not next_ep.get("episode"):
+        for item in ongoing:
+            latest = item.get("latest_episode") or 0
+            if latest < 1:
                 continue
 
-            ep_num = next_ep["episode"] - 1
-            if ep_num < 1:
-                continue
+            title = item.get("title_english") or item.get("title") or ""
+            title_jp = item.get("title_japanese") or item.get("title") or ""
+            slug = item.get("slug")
+            poster = item.get("poster") or item.get("image")
 
-            time_until = next_ep.get("timeUntilAiring", 0) or 0
-            aired_ago = WEEK_SECONDS - time_until if time_until > 0 else 0
+            genres: list[str] = []
+            aired_ago = 0
+            anilist_id = None
 
-            title_obj = m.get("title", {})
-            title = title_obj.get("english") or title_obj.get("romaji") or ""
-            title_jp = title_obj.get("romaji", "")
-
-            poster = None
-            slug = None
             for try_title in [title, title_jp]:
                 norm = gogoanime_client._normalize(try_title)
-                if norm and norm in gogo_index:
-                    item = gogo_index[norm]
-                    poster = item.get("poster") or item.get("image")
-                    slug = item.get("slug")
+                if norm and norm in anilist_map:
+                    m = anilist_map[norm]
+                    anilist_id = m.get("id")
+                    genres = m.get("genres", [])
+                    next_ep = m.get("nextAiringEpisode")
+                    if next_ep and next_ep.get("episode"):
+                        time_until = next_ep.get("timeUntilAiring", 0) or 0
+                        aired_ago = WEEK_SECONDS - time_until if time_until > 0 else 0
                     break
 
-            if not poster:
-                cover = m.get("coverImage", {})
-                poster = cover.get("large") or cover.get("extraLarge")
+            if not genres:
+                genres = item.get("genres", []) if isinstance(item.get("genres"), list) else []
 
             episodes.append({
                 "title": title,
-                "episode": ep_num,
+                "episode": latest,
                 "poster": poster,
                 "slug": slug,
                 "aired_ago": aired_ago,
-                "genres": m.get("genres", []),
-                "anilist_id": m.get("id"),
+                "genres": genres,
+                "anilist_id": anilist_id,
             })
 
-        episodes.sort(key=lambda e: e["aired_ago"])
+        episodes.sort(key=lambda e: e["aired_ago"] if e["aired_ago"] > 0 else WEEK_SECONDS)
 
         has_next = len(episodes) > limit
         return {
