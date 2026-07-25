@@ -341,30 +341,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     loadStream(selectedSlug, currentEp);
   }, [selectedSlug, currentEp, loadStream]);
 
-  if (player.loadingStream && !player.streamData) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-2 py-8 text-mist">
-        <Loader2 className="h-5 w-5 animate-spin" />
-        <span className="text-sm">{statusText || "Searching for streaming sources..."}</span>
-      </div>
-    );
-  }
+  const showResults = results.length > 0 || player.loadingStream || player.streamData || embedUrl || player.masterUrl;
 
-  if (player.error && !player.streamData && !embedUrl) {
-    return (
-      <div className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
-        <AlertTriangle className="h-4 w-4 shrink-0" />
-        <span className="text-xs flex-1">{player.error}</span>
-        <button onClick={handleRetry} className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium hover:bg-amber-500/30 transition">
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (results.length === 0 && !player.loadingStream && !player.streamData && !embedUrl && !player.masterUrl) {
-    return null;
-  }
+  if (!showResults) return null;
 
   return (
     <section className="mt-12">
@@ -392,12 +371,22 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
+      {player.error && !player.streamData && !embedUrl && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span className="text-xs flex-1">{player.error}</span>
+          <button onClick={handleRetry} className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium hover:bg-amber-500/30 transition">
+            Retry
+          </button>
+        </div>
+      )}
+
       <div className="relative mt-4 aspect-video w-full overflow-hidden rounded-xl bg-black">
         {player.loadingStream ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-primary-400 animate-pulse" />
             {statusText && (
-              <span className="text-xs text-mist">{statusText}</span>
+              <span className="text-[10px] text-mist">{statusText}</span>
             )}
           </div>
         ) : player.streamData ? (

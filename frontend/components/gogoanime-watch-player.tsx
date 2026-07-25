@@ -334,10 +334,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     <div>
       <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
         {player.loadingStream ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-primary-400 animate-pulse" />
             {statusText && (
-              <span className="text-xs text-mist">{statusText}</span>
+              <span className="text-[10px] text-mist">{statusText}</span>
             )}
           </div>
         ) : player.streamData ? (
