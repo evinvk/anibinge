@@ -1385,6 +1385,7 @@ async def download_episode(
                 "-referer", referer or "",
                 "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
                 "-headers", f"Referer: {referer or ''}\r\n",
+                "-allowed_extensions", "ALL",
                 "-i", stream_url,
                 "-map", "0",
                 "-c", "copy",
