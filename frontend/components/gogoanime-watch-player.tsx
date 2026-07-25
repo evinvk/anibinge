@@ -311,11 +311,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.setPlayerStatus("idle");
 
     setStatusText("");
-    const ok = await tryAnivexa(ep);
-    if (ok) return;
+    const gogoOk = await tryGogoanime(ep);
+    if (gogoOk) return;
 
     setStatusText("");
-    const gogoOk = await tryGogoanime(ep);
+    const ok = await tryAnivexa(ep);
     if (!gogoOk) {
       player.setLoadingStream(false);
       setStatusText("");
