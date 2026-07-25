@@ -517,6 +517,8 @@ _PROXY_ALLOWED_HOSTS = {
     "ani.pm", "cdn.ani.pm", "kwik.cx", "animepahe.ru",
     "animetsu-scraper-nine.vercel.app",
     "megaplay.buzz",
+    "vidtube.site",
+    "vidwish.live",
     # Wibu/streaming CDN hosts
     "vidcache.net", "sbplay.com", "sbplay2.com", "sbvideo.net",
     "streamtape.com", "doodstream.com", "mp4upload.com", "streamsb.com",

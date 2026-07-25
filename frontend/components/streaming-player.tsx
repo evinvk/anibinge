@@ -444,6 +444,14 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       setStatusText("Trying GogoAnime...");
       const streamRes = await api.gogoanimeStream(slug, ep).catch(() => null);
       const data = streamRes?.data;
+      if (data?.embed_url) {
+        player.sourceRef.current = "gogoanime";
+        player.setLoadingStream(false);
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
+        setStatusText("");
+        return;
+      }
       if (data?.qualities) {
         player.sourceRef.current = "gogoanime";
         player.setStreamData({ qualities: data.qualities });

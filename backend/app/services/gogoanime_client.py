@@ -284,21 +284,57 @@ def _rewrite_m3u8_urls(content: str, base_url: str) -> str:
     return "\n".join(result)
 
 
+async def resolve_server_url(server_id: str) -> str | None:
+    """Resolve a GogoAnime server ID to its actual embed/stream URL."""
+    client = await _get_client()
+    try:
+        resp = await client.get(f"{_BASE_URL}/api/server", params={"id": server_id})
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("url")
+    except Exception as e:
+        logger.warning("GogoAnime server resolve failed for %s: %s", server_id, e)
+        return None
+
+
 async def get_stream_sources(slug: str, episode_number: int) -> dict | None:
     """Get quality-tagged streaming sources for an episode.
-    Returns {master_m3u8: str, qualities: [{quality, url}]} or None."""
+    Returns {master_m3u8: str, qualities: [{quality, url}], embed_url: str|None, server_id: str|None} or None."""
     episode = await get_episode(slug, episode_number)
     if not episode:
         return None
 
+    # Try to resolve embed server URL (the working playback path)
+    embed_url = None
+    embed_server_id = None
+    server_info = episode.get("server", {})
+    for quality_group in server_info.get("qualities", []):
+        if embed_url:
+            break
+        for server in quality_group.get("serverList", []):
+            sid = server.get("serverId", "")
+            # Skip anivexa: prefixed IDs — those resolve to broken M3U8
+            if sid.startswith("anivexa:"):
+                continue
+            resolved = await resolve_server_url(sid)
+            if resolved:
+                embed_url = resolved
+                embed_server_id = sid
+                logger.info("GogoAnime resolved embed server %s → %s", server.get("title"), resolved)
+                break
+
     proxy_url = episode.get("defaultStreamingUrl", "")
     if not proxy_url:
-        logger.warning("GogoAnime: no defaultStreamingUrl for %s ep-%d", slug, episode_number)
-        return None
+        if not embed_url:
+            logger.warning("GogoAnime: no streaming sources for %s ep-%d", slug, episode_number)
+            return None
+        return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
 
     result = await resolve_m3u8(proxy_url)
     if not result:
-        return None
+        if not embed_url:
+            return None
+        return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
 
     m3u8_content, resolved_url = result
 
@@ -332,8 +368,8 @@ async def get_stream_sources(slug: str, episode_number: int) -> dict | None:
     if not qualities:
         qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
 
-    logger.info("GogoAnime stream %s ep-%d: %d quality options", slug, episode_number, len(qualities))
-    return {"master_m3u8": rewritten_master, "qualities": qualities}
+    logger.info("GogoAnime stream %s ep-%d: %d quality options, embed=%s", slug, episode_number, len(qualities), bool(embed_url))
+    return {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
 
 
 def get_catalog() -> list[dict]:
