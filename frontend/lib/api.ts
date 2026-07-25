@@ -230,6 +230,9 @@ export const api = {
     const refParam = referer ? `&referer=${encodeURIComponent(referer)}` : "";
     return `${API_BASE}/api/v1/streaming/gogoanime/embed-proxy?url=${encoded}${refParam}`;
   },
+  gogoanimeCleanEmbed: (url: string) => {
+    return `${API_BASE}/api/v1/streaming/gogoanime/embed-page?url=${encodeURIComponent(url)}`;
+  },
   gogoanimeLatest: (day?: string) =>
     request<{ data: GogoAnimeItem[]; day?: string }>(
       `/api/v1/streaming/gogoanime/latest${day ? `?day=${day}` : ""}`,

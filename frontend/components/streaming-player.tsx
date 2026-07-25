@@ -83,8 +83,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       });
       if (res && (res.stream_url || res.embed_url)) {
         if (res.embed_url) {
-          setEmbedUrl(res.embed_url);
-          embedUrlRef.current = res.embed_url;
+          const cleanUrl = api.gogoanimeCleanEmbed(res.embed_url);
+          setEmbedUrl(cleanUrl);
+          embedUrlRef.current = cleanUrl;
         }
         if (!res.stream_url) return false;
         subs.setSubs((res.subtitles || []).map((s: any) => {
@@ -273,8 +274,9 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       if (data?.embed_url) {
         player.sourceRef.current = "gogoanime";
         player.setLoadingStream(false);
-        setEmbedUrl(data.embed_url);
-        embedUrlRef.current = data.embed_url;
+        const cleanUrl = api.gogoanimeCleanEmbed(data.embed_url);
+        setEmbedUrl(cleanUrl);
+        embedUrlRef.current = cleanUrl;
         setStatusText("");
         return;
       }
