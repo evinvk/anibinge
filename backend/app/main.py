@@ -91,7 +91,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     from fastapi.responses import JSONResponse as JR
     response = JR(
         status_code=500,
-        content={"detail": str(exc)[:500], "type": type(exc).__name__}
+        content={"detail": "Internal server error"}
     )
     origin = request.headers.get("origin", "")
     allowed = origin in settings.CORS_ORIGINS or bool(
@@ -240,6 +240,8 @@ async def startup_event():
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN DEFAULT FALSE",
         # Ensure comment_likes table exists
         "CREATE TABLE IF NOT EXISTS comment_likes (id SERIAL PRIMARY KEY, user_id UUID NOT NULL REFERENCES users(id), comment_id INTEGER NOT NULL REFERENCES episode_comments(id), created_at TIMESTAMPTZ DEFAULT NOW())",
+        # Drop overly-restrictive unique constraint (one user should be able to post multiple comments/replies per episode)
+        "ALTER TABLE episode_comments DROP CONSTRAINT IF EXISTS uq_user_episode_comment",
     ]
     async with AsyncSessionLocal() as session:
         for stmt in _migrations:
