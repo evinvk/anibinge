@@ -68,7 +68,6 @@ class PushSubscription(Base):
 
 class EpisodeComment(Base):
     __tablename__ = "episode_comments"
-    __table_args__ = (UniqueConstraint("user_id", "slug", "episode_number", name="uq_user_episode_comment"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"))
@@ -76,6 +75,21 @@ class EpisodeComment(Base):
     episode_number: Mapped[int] = mapped_column(Integer, index=True)
     body: Mapped[str] = mapped_column(String(2000))
     tag: Mapped[str] = mapped_column(String, default="comment")  # comment | report | issue
+    parent_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("episode_comments.id"), nullable=True, index=True)
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    replies_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_resolved: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship()
+    replies: Mapped[list["EpisodeComment"]] = relationship()
+
+
+class CommentLike(Base):
+    __tablename__ = "comment_likes"
+    __table_args__ = (UniqueConstraint("user_id", "comment_id", name="uq_user_comment_like"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"))
+    comment_id: Mapped[int] = mapped_column(Integer, ForeignKey("episode_comments.id"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

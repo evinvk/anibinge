@@ -146,7 +146,13 @@ export interface EpisodeCommentData {
   episode_number: number;
   body: string;
   tag: string;
+  parent_id: number | null;
+  likes: number;
+  replies_count: number;
+  is_resolved: boolean;
+  liked_by_me: boolean;
   created_at: string;
+  replies?: EpisodeCommentData[];
 }
 
 export const api = {
@@ -316,18 +322,32 @@ export const api = {
   },
 
   // Episode comments
-  getComments: (slug: string, episodeNumber: number) =>
+  getComments: (slug: string, episodeNumber: number, sort: string = "newest") =>
     request<{ comments: EpisodeCommentData[]; total: number }>(
-      `/api/v1/comments?slug=${encodeURIComponent(slug)}&episode_number=${episodeNumber}`,
-      30
+      `/api/v1/comments?slug=${encodeURIComponent(slug)}&episode_number=${episodeNumber}&sort=${sort}`,
+      0
     ),
-  postComment: (token: string, slug: string, episodeNumber: number, body: string, tag: string = "comment") =>
+  postComment: (token: string, slug: string, episodeNumber: number, body: string, tag: string = "comment", parentId?: number) =>
     authedRequest<EpisodeCommentData>("/api/v1/comments", token, {
       method: "POST",
-      body: JSON.stringify({ slug, episode_number: episodeNumber, body, tag }),
+      body: JSON.stringify({ slug, episode_number: episodeNumber, body, tag, parent_id: parentId ?? null }),
+    }),
+  likeComment: (token: string, commentId: number) =>
+    authedRequest<{ liked: boolean; likes: number }>(`/api/v1/comments/${commentId}/like`, token, {
+      method: "POST",
+    }),
+  resolveComment: (token: string, commentId: number) =>
+    authedRequest<{ is_resolved: boolean }>(`/api/v1/comments/${commentId}/resolve`, token, {
+      method: "PATCH",
     }),
   deleteComment: (token: string, commentId: number) =>
     authedRequest<{ deleted: boolean }>(`/api/v1/comments/${commentId}`, token, {
       method: "DELETE",
     }),
+  getAdminIssues: (token: string, slug?: string, resolved?: boolean) => {
+    let path = `/api/v1/admin/issues?`;
+    if (slug) path += `slug=${encodeURIComponent(slug)}&`;
+    if (resolved !== undefined) path += `resolved=${resolved}&`;
+    return authedRequest<{ issues: any[]; total: number }>(path, token);
+  },
 };

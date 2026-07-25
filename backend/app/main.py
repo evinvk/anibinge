@@ -214,7 +214,10 @@ async def startup_event():
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS body VARCHAR(2000) NOT NULL",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS tag VARCHAR DEFAULT 'comment'",
         "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
-        "ALTER TABLE episode_comments ADD CONSTRAINT uq_user_episode_comment UNIQUE (user_id, slug, episode_number)",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS parent_id INTEGER REFERENCES episode_comments(id)",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS likes INTEGER DEFAULT 0",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS replies_count INTEGER DEFAULT 0",
+        "ALTER TABLE episode_comments ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN DEFAULT FALSE",
     ]
     async with AsyncSessionLocal() as session:
         for stmt in _migrations:
