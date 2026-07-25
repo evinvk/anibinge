@@ -164,28 +164,24 @@ async def get_recent_episodes(
 
         anilist_map: dict[str, dict] = {}
         anilist_ids: list[int] = []
-        for pg in range(1, 4):
-            try:
-                schedule = await anilist_client.get_schedule(page=pg, per_page=50)
-                media_list = schedule.get("Page", {}).get("media", [])
-                if not media_list:
-                    break
-                for m in media_list:
-                    title_obj = m.get("title", {})
-                    mid = m.get("id")
-                    if mid:
-                        anilist_ids.append(mid)
-                    for key in ["english", "romaji", "native"]:
-                        t = title_obj.get(key, "")
-                        if t:
-                            anilist_map[gogoanime_client._normalize(t)] = m
-            except Exception:
-                break
+        try:
+            schedule = await anilist_client.get_schedule(page=1, per_page=50)
+            for m in schedule.get("Page", {}).get("media", []):
+                title_obj = m.get("title", {})
+                mid = m.get("id")
+                if mid:
+                    anilist_ids.append(mid)
+                for key in ["english", "romaji", "native"]:
+                    t = title_obj.get(key, "")
+                    if t:
+                        anilist_map[gogoanime_client._normalize(t)] = m
+        except Exception:
+            pass
 
         per_ep: dict[tuple[int, int], int] = {}
         if anilist_ids:
             try:
-                items = await anilist_client.get_airing_schedule(anilist_ids, per_page=500)
+                items = await anilist_client.get_airing_schedule(anilist_ids, per_page=200)
                 for item in items:
                     mid = item.get("mediaId")
                     ep = item.get("episode")
@@ -236,8 +232,6 @@ async def get_recent_episodes(
                 "genres": genres,
                 "anilist_id": media_id,
             })
-
-        candidates.sort(key=lambda e: e["aired_ago"])
 
         start = (page - 1) * limit
         end = start + limit + 1

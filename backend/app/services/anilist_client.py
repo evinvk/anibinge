@@ -347,7 +347,7 @@ class AniListClient:
         """Get past airing times for given AniList media IDs.
 
         Returns a list of {mediaId, episode, airingAt} dicts sorted by most recent first.
-        Only returns episodes that have already aired. Paginates internally (AniList max 50/page).
+        Only returns episodes that have already aired.
         """
         if not media_ids:
             return []
@@ -355,33 +355,23 @@ class AniListClient:
         chunk_size = 50
         for i in range(0, len(media_ids), chunk_size):
             chunk = media_ids[i:i + chunk_size]
-            page = 1
-            while True:
-                query = """
-                query($mediaIds:[Int],$perPage:Int,$page:Int){
-                  Page(page:$page,perPage:$perPage){
-                    airingSchedule(
-                      mediaId_in:$mediaIds,
-                      sort:TIME_DESC,
-                      notYetAired:false
-                    ){
-                      airingAt
-                      episode
-                      mediaId
-                    }
-                    pageInfo{hasNextPage}
-                  }
+            query = """
+            query($mediaIds:[Int],$perPage:Int){
+              Page(page:1,perPage:$perPage){
+                airingSchedule(
+                  mediaId_in:$mediaIds,
+                  sort:TIME_DESC,
+                  notYetAired:false
+                ){
+                  airingAt
+                  episode
+                  mediaId
                 }
-                """
-                result = await self._query(query, {"mediaIds": chunk, "perPage": min(per_page, 50), "page": page})
-                page_data = result.get("Page", {})
-                items = page_data.get("airingSchedule", [])
-                all_items.extend(items)
-                if not page_data.get("pageInfo", {}).get("hasNextPage") or len(items) < 50:
-                    break
-                page += 1
-                if len(all_items) >= per_page * 5:
-                    break
+              }
+            }
+            """
+            result = await self._query(query, {"mediaIds": chunk, "perPage": min(per_page, 50)})
+            all_items.extend(result.get("Page", {}).get("airingSchedule", []))
         return all_items
 
     async def get_anime_detail(self, anime_id: int) -> dict:
