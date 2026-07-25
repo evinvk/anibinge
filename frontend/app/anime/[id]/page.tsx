@@ -4,6 +4,7 @@ import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
+import { DownloadButton } from "@/components/download-button";
 import { LazyStreamingPlayer } from "@/components/lazy-streaming-player";
 
 export const revalidate = 0;
@@ -124,8 +125,13 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
               ))}
             </div>
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-wrap gap-2">
               <AddToWatchlistButton animeId={malId} source={resolvedSource} />
+              <DownloadButton
+                title={detail.title_english || detail.title}
+                anilistId={detail.mal_id}
+                totalEpisodes={detail.episodes}
+              />
             </div>
 
             <p className="mt-4 max-w-3xl text-sm leading-relaxed text-mist">{detail.synopsis}</p>
