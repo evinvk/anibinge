@@ -336,7 +336,7 @@ async def resolve_server_url(server_id: str) -> str | None:
         return None
 
 
-async def get_stream_sources(slug: str, episode_number: int) -> dict | None:
+async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub") -> dict | None:
     """Get quality-tagged streaming sources for an episode.
     Returns {master_m3u8: str, qualities: [{quality, url}], embed_url: str|None, server_id: str|None} or None."""
     episode = await get_episode(slug, episode_number)
@@ -347,19 +347,29 @@ async def get_stream_sources(slug: str, episode_number: int) -> dict | None:
     embed_url = None
     embed_server_id = None
     server_info = episode.get("server", {})
-    for quality_group in server_info.get("qualities", []):
+    qualities_list = server_info.get("qualities", [])
+
+    # Pick the matching audio group first, then fall back to any other group
+    preferred = audio.upper()  # "sub" -> "SUB", "dub" -> "DUB"
+    ordered_groups = []
+    for qg in qualities_list:
+        if qg.get("title", "").upper() == preferred:
+            ordered_groups.insert(0, qg)
+        else:
+            ordered_groups.append(qg)
+
+    for quality_group in ordered_groups:
         if embed_url:
             break
         for server in quality_group.get("serverList", []):
             sid = server.get("serverId", "")
-            # Skip anivexa: prefixed IDs — those resolve to broken M3U8
             if sid.startswith("anivexa:"):
                 continue
             resolved = await resolve_server_url(sid)
             if resolved:
                 embed_url = resolved
                 embed_server_id = sid
-                logger.info("GogoAnime resolved embed server %s → %s", server.get("title"), resolved)
+                logger.info("GogoAnime resolved %s embed: %s → %s", quality_group.get("title"), server.get("title"), resolved)
                 break
 
     proxy_url = episode.get("defaultStreamingUrl", "")

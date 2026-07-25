@@ -425,12 +425,11 @@ async def get_gogoanime_episode(
     audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Get episode streaming data for a specific episode on GogoAnime."""
-    effective_slug = _dub_slug(slug, audio)
     try:
-        data = await gogoanime_client.get_episode(effective_slug, ep)
+        data = await gogoanime_client.get_episode(slug, ep)
         if not data:
             raise HTTPException(status_code=404, detail="Episode not found on GogoAnime")
-        return {"data": data, "slug": effective_slug, "audio": audio}
+        return {"data": data, "slug": slug, "audio": audio}
     except HTTPException:
         raise
     except Exception as e:
@@ -448,9 +447,8 @@ async def gogoanime_master_m3u8(
     """Serve the rewritten master M3U8 directly so hls.js can resolve variant URLs correctly.
     Blob URLs break relative URL resolution; serving from our domain fixes this."""
     from urllib.parse import urlparse
-    effective_slug = _dub_slug(slug, audio)
     try:
-        episode = await gogoanime_client.get_episode(effective_slug, ep)
+        episode = await gogoanime_client.get_episode(slug, ep)
         if not episode:
             raise HTTPException(status_code=404, detail="Episode not found on GogoAnime")
 
@@ -486,9 +484,8 @@ async def get_gogoanime_stream(
     audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Get M3U8 streaming URLs for an episode on GogoAnime."""
-    effective_slug = _dub_slug(slug, audio)
     try:
-        sources = await gogoanime_client.get_stream_sources(effective_slug, ep)
+        sources = await gogoanime_client.get_stream_sources(slug, ep, audio)
         if not sources:
             raise HTTPException(status_code=404, detail="No streaming sources found")
         return {"data": sources}
