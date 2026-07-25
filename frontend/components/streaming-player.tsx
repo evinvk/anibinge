@@ -44,6 +44,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
   const [totalEps, setTotalEps] = useState<number | null>(null);
+  const [audio, setAudio] = useState<"sub" | "dub">("sub");
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);
@@ -466,7 +467,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     // 1. Try GogoAnime first (most reliable)
     if (slug) {
       setStatusText("");
-      const streamRes = await api.gogoanimeStream(slug, ep).catch(() => null);
+      const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
       if (data?.embed_url) {
         player.sourceRef.current = "gogoanime";
@@ -479,34 +480,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       if (data?.qualities) {
         player.sourceRef.current = "gogoanime";
         player.setStreamData({ qualities: data.qualities });
-        player.setMasterUrl(api.gogoanimeMaster(slug, ep));
+        player.setMasterUrl(api.gogoanimeMaster(slug, ep, audio));
         player.setLoadingStream(false);
         setStatusText("");
         return;
       }
     }
 
-    // 2. Try Animetsu
-      setStatusText("");
-      const anitsuOk = await tryAnitsuOnly(ep);
-    if (anitsuOk) return;
-
-    // 3. Try Anivexa providers
-      setStatusText("");
-      const anivexaOk = await tryAnivexaOnly(ep);
-    if (anivexaOk) return;
-
-    // 4. Try Wibu
-      setStatusText("");
-      const wibuOk = await tryWibuOnly(ep);
-    if (wibuOk) return;
+    // 2-4. Try Animetsu, Anivexa, Wibu in parallel — use fastest result
+    setStatusText("Finding stream...");
+    const [anitsuOk, anivexaOk, wibuOk] = await Promise.all([
+      tryAnitsuOnly(ep),
+      tryAnivexaOnly(ep),
+      tryWibuOnly(ep),
+    ]);
+    if (anitsuOk || anivexaOk || wibuOk) return;
 
     player.setLoadingStream(false);
     setStatusText("");
     if (!embedUrlRef.current) {
       player.setError("Streaming is temporarily unavailable. Try again later.");
     }
-  }, [tryAnitsuOnly, tryAnivexaOnly, tryWibuOnly, animeTitle]);
+  }, [tryAnitsuOnly, tryAnivexaOnly, tryWibuOnly, animeTitle, audio]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {
@@ -516,7 +511,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         initialLoadDoneRef.current = true;
       }
     }
-  }, [selectedSlug, currentEp]);
+  }, [selectedSlug, currentEp, audio]);
 
   async function searchAnime() {
     player.setLoadingStream(true);
@@ -707,6 +702,30 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           </div>
         )}
       </div>
+
+      {selectedSlug && (
+        <div className="mt-3 flex gap-2">
+          {(["sub", "dub"] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => {
+                if (opt !== audio) {
+                  setAudio(opt);
+                  player.setError(null);
+                }
+              }}
+              className={clsx(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition",
+                audio === opt
+                  ? "bg-primary-600 text-white"
+                  : "bg-white/5 text-mist hover:bg-white/10"
+              )}
+            >
+              {opt === "sub" ? "Sub" : "Dub"}
+            </button>
+          ))}
+        </div>
+      )}
 
       {subs.subtitles.length > 1 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
