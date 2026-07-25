@@ -493,25 +493,23 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             {opt === "sub" ? "Sub" : "Dub"}
           </button>
         ))}
-        {player.streamData && (
-          <button
-            onClick={() => {
-              const dlUrl = api.downloadUrl({
-                slug,
-                anilist_id: resolvedAnilistRef.current || undefined,
-                ep: currentEp,
-                audio,
-                filename: `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
-              });
-              window.open(dlUrl, "_blank");
-            }}
-            disabled={downloading}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition disabled:opacity-50"
-          >
-            <Download className="h-3 w-3" />
-            Download
-          </button>
-        )}
+        <button
+          onClick={() => {
+            const dlUrl = api.downloadUrl({
+              slug,
+              anilist_id: resolvedAnilistRef.current || undefined,
+              ep: currentEp,
+              audio,
+              filename: `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
+            });
+            window.open(dlUrl, "_blank");
+          }}
+          disabled={downloading}
+          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition disabled:opacity-50"
+        >
+          <Download className="h-3 w-3" />
+          Download
+        </button>
       </div>
 
       {totalEps && totalEps > 1 && (

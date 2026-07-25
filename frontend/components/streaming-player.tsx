@@ -724,6 +724,22 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               {opt === "sub" ? "Sub" : "Dub"}
             </button>
           ))}
+          <button
+            onClick={() => {
+              const dlUrl = api.downloadUrl({
+                slug: selectedSlug || undefined,
+                anilist_id: resolvedAnilistRef.current || undefined,
+                ep: currentEp,
+                audio,
+                filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
+              });
+              window.open(dlUrl, "_blank");
+            }}
+            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+          >
+            <Download className="h-3 w-3" />
+            Download
+          </button>
         </div>
       )}
 
@@ -796,27 +812,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           </div>
         );
       })()}
-
-      {player.streamData && (
-        <div className="mt-3 flex gap-2">
-          <button
-            onClick={() => {
-              const dlUrl = api.downloadUrl({
-                slug: selectedSlug || undefined,
-                anilist_id: resolvedAnilistRef.current || undefined,
-                ep: currentEp,
-                audio: "sub",
-                filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
-              });
-              window.open(dlUrl, "_blank");
-            }}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
-          >
-            <Download className="h-3 w-3" />
-            Download
-          </button>
-        </div>
-      )}
 
       {totalEps && totalEps > 1 && (
         <div className="mt-3">

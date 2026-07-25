@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
-import { DownloadButton } from "@/components/download-button";
 import { AdsterraAd } from "@/components/adsterra-ad";
 
 interface PageProps {
@@ -104,10 +103,6 @@ function WatchPageInner({ slug }: { slug: string }) {
         </Link>
         <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
         <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} />
-
-        <div className="mt-4">
-          <DownloadButton title={title} anilistId={anilistId || undefined} totalEpisodes={totalEps} />
-        </div>
 
         <div className="mt-8 flex justify-center">
           <AdsterraAd />
