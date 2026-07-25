@@ -123,7 +123,11 @@ function WatchPageInner({ slug }: { slug: string }) {
           <ArrowLeft className="h-4 w-4" />
           Back
         </Link>
-        <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
+        {anilistId ? (
+          <Link href={`/anime/${anilistId}`} className="mb-4 block font-display text-2xl font-bold text-paper hover:text-primary-400 transition-colors">{title}</Link>
+        ) : (
+          <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
+        )}
         <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} />
 
         {title && (
