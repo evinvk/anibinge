@@ -112,6 +112,16 @@ export async function GET(req: NextRequest) {
         }
       }
 
+      const hasRealSegments = filtered.some(
+        (l) => l.startsWith("#EXTINF")
+      );
+      if (!hasRealSegments) {
+        return NextResponse.json(
+          { error: "M3U8 has no real video segments after ad filtering" },
+          { status: 404 }
+        );
+      }
+
       let rewritten = filtered.join("\n");
 
       rewritten = rewritten.replace(/URI="([^"]+)"/g, (_match, uri: string) => {

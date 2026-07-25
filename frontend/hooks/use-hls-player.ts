@@ -262,7 +262,7 @@ export function useHlsPlayer(
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              if (data.response?.code === 410) {
+              if (data.response?.code === 410 || data.response?.code === 404) {
                 setPlayerStatus("error");
                 if (onFatalErrorRef.current) {
                   onFatalErrorRef.current(data.type);
