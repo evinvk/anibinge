@@ -461,7 +461,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           </>
         ) : embedUrl ? (
           <iframe
-            src={embedUrl}
+            src={api.gogoanimeCleanEmbed(embedUrl)}
             className="h-full w-full border-0"
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen

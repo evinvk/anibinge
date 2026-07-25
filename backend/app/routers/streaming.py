@@ -611,6 +611,28 @@ async def gogoanime_proxy(
         raise HTTPException(status_code=502, detail="Proxy request failed")
 
 
+@router.get("/gogoanime/embed-page")
+@limiter.limit("60/minute")
+async def gogoanime_embed_page(
+    request: Request,
+    url: str = Query(..., description="Embed URL to fetch and clean"),
+):
+    """Fetch a GogoAnime embed page, strip ad scripts, and return cleaned HTML.
+    The iframe loads this instead of the raw embed page to block ads."""
+    result = await gogoanime_client.serve_clean_embed(url)
+    if not result:
+        raise HTTPException(status_code=502, detail="Failed to fetch embed page")
+    return Response(
+        content=result["html"],
+        media_type="text/html; charset=utf-8",
+        headers={
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=30",
+            "Content-Security-Policy": "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; style-src 'self' 'unsafe-inline' https:; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https:; frame-src 'self' https:; font-src 'self' https:;",
+        },
+    )
+
+
 @router.get("/gogoanime/embed-proxy")
 @limiter.limit("120/minute")
 async def gogoanime_embed_proxy(

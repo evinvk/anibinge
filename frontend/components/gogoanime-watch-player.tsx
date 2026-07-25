@@ -414,7 +414,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </>
         ) : embedUrl ? (
           <iframe
-            src={embedUrl}
+            src={api.gogoanimeCleanEmbed(embedUrl)}
             className="h-full w-full border-0"
             allow="autoplay; fullscreen; picture-in-picture"
             allowFullScreen
