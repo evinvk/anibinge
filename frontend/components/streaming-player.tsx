@@ -50,6 +50,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [embedUrl, setEmbedUrl] = useState<string | null>(null);
   const embedUrlRef = useRef<string | null>(null);
   const [statusText, setStatusText] = useState<string>("");
+  const initialLoadDoneRef = useRef(false);
 
   const subs = useSubtitles(videoRef);
   const currentEpRef = useRef(1);
@@ -384,6 +385,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
   useEffect(() => {
+    initialLoadDoneRef.current = false;
     searchAnime();
     return () => player.destroyHls();
   }, [animeTitle]);
@@ -473,7 +475,11 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   useEffect(() => {
     if (selectedSlug && currentEp) {
-      loadStream(selectedSlug, currentEp);
+      if (initialLoadDoneRef.current) {
+        loadStream(selectedSlug, currentEp);
+      } else {
+        initialLoadDoneRef.current = true;
+      }
     }
   }, [selectedSlug, currentEp]);
 
@@ -523,9 +529,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
     setStatusText("");
 
-    // If GogoAnime found a slug, the useEffect on selectedSlug will trigger loadStream.
-    // Don't set loadingStream=false here — loadStream needs it true for the loading UI.
+    // If GogoAnime found a slug, start loading immediately — don't rely on useEffect
+    // which may use a stale loadStream closure.
     if (gogoSlug) {
+      loadStream(gogoSlug, 1);
       return;
     }
 
