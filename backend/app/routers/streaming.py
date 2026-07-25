@@ -610,7 +610,7 @@ async def gogoanime_proxy(
             base_url = f"{parsed.scheme}://{parsed.netloc}"
             body = gogoanime_client._rewrite_m3u8_urls(body, base_url)
 
-            if "#EXTINF" not in body:
+            if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
                 raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
 
             return Response(
@@ -714,7 +714,7 @@ async def gogoanime_embed_proxy(
 
             body = "\n".join(rewritten)
 
-            if "#EXTINF" not in body:
+            if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
                 raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
 
             return Response(
@@ -1031,7 +1031,7 @@ async def anivexa_proxy(
             base_url = f"{parsed.scheme}://{parsed.netloc}"
             body = _rewrite_anivexa_m3u8(body, decoded_url, base_url)
 
-            if "#EXTINF" not in body:
+            if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
                 raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
 
             return Response(

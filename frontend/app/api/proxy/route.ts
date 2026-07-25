@@ -114,7 +114,7 @@ export async function GET(req: NextRequest) {
       }
 
       const hasRealSegments = filtered.some(
-        (l) => l.startsWith("#EXTINF")
+        (l) => l.startsWith("#EXTINF") || l.startsWith("#EXT-X-STREAM-INF")
       );
       if (!hasRealSegments) {
         return NextResponse.json(
