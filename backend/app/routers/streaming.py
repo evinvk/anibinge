@@ -799,9 +799,10 @@ async def resolve_anilist_id(
         result = await anilist_client.search_anime(q, per_page=5)
         media = result.get("Page", {}).get("media", [])
         if media:
-            response = {"anilist_id": media[0]["id"], "title": media[0].get("title", {})}
+            m = media[0]
+            response = {"anilist_id": m["id"], "title": m.get("title", {}), "episodes": m.get("episodes")}
         else:
-            response = {"anilist_id": None, "title": None}
+            response = {"anilist_id": None, "title": None, "episodes": None}
         _resolve_cache[cache_key] = (time.monotonic(), response)
         return response
     except Exception as e:

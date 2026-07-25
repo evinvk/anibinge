@@ -64,6 +64,9 @@ function WatchPageInner({ slug }: { slug: string }) {
         if (data.anilist_id) {
           setAnilistId(data.anilist_id);
         }
+        if (data.episodes) {
+          setTotalEps((prev) => prev ?? data.episodes);
+        }
       } catch {
         // Not critical
       }
