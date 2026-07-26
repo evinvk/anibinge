@@ -53,6 +53,28 @@ export function useHlsPlayer(
     let lastTime = video.currentTime;
     let lastTimeStamp = Date.now();
     let stallCheckId: ReturnType<typeof setInterval> | null = null;
+    let frameCallbackId: number | null = null;
+    let lastVideoFrameStamp = Date.now();
+    let videoFreezeRecoveries = 0;
+
+    // currentTime can keep advancing with audio even when the video decoder is
+    // stuck. requestVideoFrameCallback detects that without repeated seeking.
+    const watchVideoFrames = () => {
+      if (typeof video.requestVideoFrameCallback !== "function" || frameCallbackId !== null) return;
+      const onFrame = () => {
+        lastVideoFrameStamp = Date.now();
+        videoFreezeRecoveries = 0;
+        frameCallbackId = video.requestVideoFrameCallback(onFrame);
+      };
+      frameCallbackId = video.requestVideoFrameCallback(onFrame);
+    };
+
+    const stopWatchingVideoFrames = () => {
+      if (frameCallbackId !== null && typeof video.cancelVideoFrameCallback === "function") {
+        video.cancelVideoFrameCallback(frameCallbackId);
+      }
+      frameCallbackId = null;
+    };
 
     const startStallCheck = () => {
       if (stallCheckId) return;
@@ -65,6 +87,25 @@ export function useHlsPlayer(
         if (video.currentTime !== lastTime) {
           lastTime = video.currentTime;
           lastTimeStamp = Date.now();
+
+          // Audio-only progress while no frame renders is a decoder freeze.
+          // Recover once in place, then switch provider if it remains stuck.
+          if (
+            typeof video.requestVideoFrameCallback === "function" &&
+            video.videoWidth > 0 &&
+            document.visibilityState === "visible" &&
+            Date.now() - lastVideoFrameStamp > 6000
+          ) {
+            lastVideoFrameStamp = Date.now();
+            videoFreezeRecoveries++;
+            const hls = hlsRef.current;
+            if (videoFreezeRecoveries === 1 && hls) {
+              try { hls.recoverMediaError(); } catch {}
+            } else if (videoFreezeRecoveries >= 2) {
+              videoFreezeRecoveries = 0;
+              onFatalErrorRef.current?.("videoFreeze");
+            }
+          }
           return;
         }
         // currentTime frozen for >4s while playing
@@ -105,6 +146,7 @@ export function useHlsPlayer(
       setPlayerStatus("playing");
       lastTime = video.currentTime;
       lastTimeStamp = Date.now();
+      watchVideoFrames();
       startStallCheck();
     };
     const onPause = () => {
@@ -130,6 +172,7 @@ export function useHlsPlayer(
       mediaErrorRetryRef.current = 0;
       networkErrorRetryRef.current = 0;
       consecutive410Ref.current = 0;
+      watchVideoFrames();
       startStallCheck();
     };
     const onCanPlay = () => {
@@ -170,6 +213,7 @@ export function useHlsPlayer(
 
     return () => {
       stopStallCheck();
+      stopWatchingVideoFrames();
       if (stallTimerRef.current) {
         clearTimeout(stallTimerRef.current);
         stallTimerRef.current = null;
@@ -273,8 +317,19 @@ export function useHlsPlayer(
                   }
                 }
               } else {
-                console.warn("[HLS] Network error, retrying:", data.details);
-                setTimeout(() => { try { hls.startLoad(); } catch {} }, 500);
+                networkErrorRetryRef.current++;
+                if (networkErrorRetryRef.current < 4) {
+                  console.warn("[HLS] Network error (%d/4), retrying:", networkErrorRetryRef.current, data.details);
+                  setTimeout(() => { try { hls.startLoad(); } catch {} }, 750);
+                } else {
+                  networkErrorRetryRef.current = 0;
+                  setPlayerStatus("error");
+                  if (onFatalErrorRef.current) {
+                    onFatalErrorRef.current("networkError");
+                  } else {
+                    setError("Playback error: networkError");
+                  }
+                }
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
