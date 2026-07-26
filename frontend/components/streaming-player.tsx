@@ -26,7 +26,7 @@ interface StreamingPlayerProps {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 function makeProxyUrl(file: string, referer: string) {
-  return `${API_BASE}/api/v1/streaming/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
+  return `/api/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
 }
 
 const FRIENDLY_ERRORS: Record<string, string> = {
