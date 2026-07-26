@@ -576,21 +576,7 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
         qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
 
     logger.info("GogoAnime stream %s ep-%d: %d quality options, embed=%s", slug, episode_number, len(qualities), bool(embed_url))
-
-    # Return direct_stream too so the frontend goes through the embed-proxy pipeline
-    # (which handles referer/CORS properly) instead of the /master endpoint.
-    # The referer for the proxy URL will be determined automatically by the embed-proxy
-    # endpoint based on the upstream domain.
-    direct_stream_url = resolved_url if resolved_url.startswith("http") else f"{_BASE_URL}{resolved_url}"
-    direct_stream = {"stream_url": direct_stream_url, "referer": _get_embed_domain(direct_stream_url)}
-
-    return {
-        "master_m3u8": rewritten_master,
-        "qualities": qualities,
-        "embed_url": embed_url,
-        "server_id": embed_server_id,
-        "direct_stream": direct_stream,
-    }
+    return {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
 
 
 def get_catalog() -> list[dict]:
