@@ -897,6 +897,50 @@ async def anivexa_stream(
         raise HTTPException(status_code=503, detail="Anivexa stream unavailable")
 
 
+@router.get("/subtitles")
+@limiter.limit("30/minute")
+async def fetch_subtitles(
+    request: Request,
+    q: str = Query(..., min_length=2, description="Anime title"),
+    ep: int = Query(..., ge=1, description="Episode number"),
+    anilist_id: int | None = Query(None, description="Optional AniList ID"),
+):
+    """Fetch subtitles for an episode from fallback providers (Anitsu → Wibu).
+    Returns only subtitle data, no stream URL. Used by the frontend to get
+    subtitles even when the primary stream comes from GogoAnime."""
+    # Try Anitsu first
+    if anilist_id:
+        try:
+            from app.services import anitsu_client
+            result = await anitsu_client.get_stream(anilist_id, ep)
+            if result and result.get("subtitles"):
+                return {"subtitles": result["subtitles"], "provider": "anitsu"}
+        except Exception:
+            pass
+    else:
+        try:
+            from app.services import anilist_client, anitsu_client
+            result = await anilist_client.search_anime(q, per_page=5)
+            media = result.get("Page", {}).get("media", [])
+            if media:
+                anilist_id = media[0]["id"]
+                stream_data = await anitsu_client.get_stream(anilist_id, ep)
+                if stream_data and stream_data.get("subtitles"):
+                    return {"subtitles": stream_data["subtitles"], "provider": "anitsu"}
+        except Exception:
+            pass
+
+    # Fallback to Wibu
+    try:
+        result = await wibu_client.search_and_get_stream(q, ep)
+        if result and result.get("subtitles"):
+            return {"subtitles": result["subtitles"], "provider": "wibu"}
+    except Exception:
+        pass
+
+    return {"subtitles": [], "provider": None}
+
+
 @router.get("/anitsu/stream")
 @limiter.limit("30/minute")
 async def anitsu_stream(

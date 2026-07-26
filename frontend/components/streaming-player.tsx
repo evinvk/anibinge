@@ -408,6 +408,17 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setMasterUrl(api.gogoanimeMaster(slug, ep, audio));
         player.setLoadingStream(false);
         setStatusText("");
+        // Background fetch subtitles from fallback providers
+        api.fetchSubtitles(animeTitle, ep, resolvedAnilistRef.current || undefined)
+          .then((subRes) => {
+            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && videoRef.current) {
+              subs.setSubs(subRes.subtitles.map((s: any) => ({
+                ...s,
+                file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
+              })));
+            }
+          })
+          .catch(() => {});
         return;
       }
     }

@@ -282,6 +282,13 @@ export const api = {
   anivexaResolve: (q: string) =>
     request<{ anilist_id: number | null; title: any }>(`/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(q)}`, 30),
 
+  // Fetch subtitles only (background — used alongside GogoAnime primary stream)
+  fetchSubtitles: (q: string, ep: number, anilistId?: number) =>
+    request<{ subtitles: any[]; provider: string | null }>(
+      `/api/v1/streaming/subtitles?q=${encodeURIComponent(q)}&ep=${ep}${anilistId ? `&anilist_id=${anilistId}` : ""}`,
+      60
+    ),
+
   // Anitsu streaming (AnimeXin — 2nd fallback for donghua)
   anitsuStream: (q: string, ep: number) =>
     request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
