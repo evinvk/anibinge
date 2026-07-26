@@ -50,8 +50,16 @@ export function useSubtitles(videoRef: React.RefObject<HTMLVideoElement | null>)
   const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
   const genRef = useRef(0);
 
+  // Track video element via callback ref so we can attach timeupdate when it exists
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+
+  // Keep videoEl synced with the ref (use the state as the effect dep)
   useEffect(() => {
-    const video = videoRef.current;
+    setVideoEl(videoRef.current);
+  });
+
+  useEffect(() => {
+    const video = videoEl;
     if (!video) return;
     let prev = "";
     const onTime = () => {
@@ -67,7 +75,7 @@ export function useSubtitles(videoRef: React.RefObject<HTMLVideoElement | null>)
     };
     video.addEventListener("timeupdate", onTime);
     return () => video.removeEventListener("timeupdate", onTime);
-  }, []);
+  }, [videoEl]);
 
   async function loadSubtitles() {
     const gen = ++genRef.current;
