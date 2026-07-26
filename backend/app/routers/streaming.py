@@ -1414,7 +1414,7 @@ async def download_episode(
                         return idx, r.content
                     raise RuntimeError(f"Segment {idx} failed after 5 retries")
 
-            # Download in batches of 30 to manage memory
+            # Download in batches and write directly to disk
             batch_size = 30
             for batch_start in range(0, len(seg_urls), batch_size):
                 batch_end = min(batch_start + batch_size, len(seg_urls))
@@ -1426,19 +1426,39 @@ async def download_episode(
                         sf.write(data)
                 del results
                 if batch_end < len(seg_urls):
-                    await _aio.sleep(0.2)
+                    await _aio.sleep(0.1)
 
-            with open(concat_path, "w", encoding="utf-8") as cf:
+            # Concatenate TS segments directly (TS format is designed for binary concat)
+            for i in range(len(seg_urls)):
+                seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
+                with open(seg_file, "rb") as sf:
+                    while True:
+                        chunk = sf.read(65536)
+                        if not chunk:
+                            break
+
+            concat_file = _os.path.join(tmp_dir, "concat.ts")
+            with open(concat_file, "wb") as out_f:
                 for i in range(len(seg_urls)):
-                    cf.write(f"file '{_os.path.join(tmp_dir, f'seg_{i:05d}.ts')}'\n")
+                    seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
+                    with open(seg_file, "rb") as sf:
+                        while True:
+                            chunk = sf.read(65536)
+                            if not chunk:
+                                break
+                            out_f.write(chunk)
 
-            await dl_client.aclose()
+            # Clean up individual segment files to free disk
+            for i in range(len(seg_urls)):
+                try:
+                    _os.remove(_os.path.join(tmp_dir, f"seg_{i:05d}.ts"))
+                except Exception:
+                    pass
 
-            # Stream ffmpeg output directly to avoid loading MP4 into memory
+            # Remux TS → MP4 via pipe (much faster since TS segments are already contiguous)
             cmd = [
                 "ffmpeg", "-y",
-                "-f", "concat", "-safe", "0",
-                "-i", concat_path,
+                "-i", concat_file,
                 "-c", "copy",
                 "-movflags", "+faststart",
                 "pipe:1",
