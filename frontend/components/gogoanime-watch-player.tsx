@@ -89,9 +89,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       });
       if (res && (res.stream_url || res.embed_url)) {
         if (res.embed_url) {
+          subs.setSubs([]);
+          player.sourceRef.current = "anivexa";
           setEmbedUrl(res.embed_url);
           embedUrlRef.current = res.embed_url;
-          setEmbedReferer(res.referer || "");
+          player.setLoadingStream(false);
+          setStatusText("");
+          return true;
         }
         if (!res.stream_url) {
           player.setLoadingStream(false);
