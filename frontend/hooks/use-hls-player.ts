@@ -17,6 +17,7 @@ export function useHlsPlayer(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   onLoadSubtitles: () => void,
   onFatalError?: (errorType: string) => void,
+  onMediaEnded?: () => void,
 ) {
   const [streamData, setStreamData] = useState<StreamData | null>(null);
   const [masterUrl, setMasterUrl] = useState<string | null>(null);
@@ -30,6 +31,7 @@ export function useHlsPlayer(
   const fallbackAttemptedRef = useRef(false);
   const onFatalErrorRef = useRef(onFatalError);
   const onLoadSubtitlesRef = useRef(onLoadSubtitles);
+  const onMediaEndedRef = useRef(onMediaEnded);
   const loadGenRef = useRef(0);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaErrorRetryRef = useRef(0);
@@ -38,6 +40,7 @@ export function useHlsPlayer(
   const consecutive410Ref = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
+  onMediaEndedRef.current = onMediaEnded;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -258,6 +261,12 @@ export function useHlsPlayer(
 
       hls.on(Hls.Events.BUFFER_APPENDED, () => {
         setPlayerStatus("playing");
+      });
+
+      hls.on(Hls.Events.MEDIA_ENDED, () => {
+        if (onMediaEndedRef.current) {
+          onMediaEndedRef.current();
+        }
       });
 
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {

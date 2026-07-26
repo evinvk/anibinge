@@ -59,6 +59,9 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   const [statusText, setStatusText] = useState<string>("");
   const [downloading, setDownloading] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [nextEpCountdown, setNextEpCountdown] = useState(0);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const subs = useSubtitles(videoRef);
 
@@ -283,7 +286,29 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     }
   }, [tryWibu, tryAnitsu, tryGogoanime]);
 
-  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
+  // Handle auto-play when media ends
+  const onMediaEnded = useCallback(() => {
+    if (!autoPlay) return;
+    const next = currentEpRef.current + 1;
+    if (totalEps && next > totalEps) return;
+    setNextEpCountdown(5);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = setInterval(() => {
+      setNextEpCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+          const newEp = currentEpRef.current + 1;
+          setCurrentEp(newEp);
+          onEpisodeChangeRef.current?.(newEp);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [autoPlay, totalEps]);
+
+  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError, onMediaEnded);
 
   useEffect(() => {
     currentEpRef.current = currentEp;
@@ -332,6 +357,16 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       subs.loadSubtitles();
     }
   }, [subs.subtitles]);
+
+  const onEpisodeChangeRef = useRef(onEpisodeChange);
+  onEpisodeChangeRef.current = onEpisodeChange;
+
+  // Clean up countdown timer on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, []);
 
   const loadStream = useCallback(async (s: string, ep: number) => {
     player.setLoadingStream(true);
@@ -412,6 +447,40 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
               fsTargetRef.current
             )}
           </>
+        ) : nextEpCountdown > 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+            <div className="flex items-center gap-2 text-white">
+              <Play className="h-5 w-5 text-primary-400" />
+              <span className="text-lg font-semibold">Next episode in {nextEpCountdown}</span>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                  countdownTimerRef.current = null;
+                  setNextEpCountdown(0);
+                  const next = currentEpRef.current + 1;
+                  setCurrentEp(next);
+                  onEpisodeChangeRef.current?.(next);
+                }}
+                className="flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-500"
+              >
+                <Play className="h-3 w-3" />
+                Play now
+              </button>
+              <button
+                onClick={() => {
+                  if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                  countdownTimerRef.current = null;
+                  setNextEpCountdown(0);
+                  setAutoPlay(false);
+                }}
+                className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
@@ -457,6 +526,23 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             )}
           >
             Off
+          </button>
+        </div>
+      )}
+
+      {totalEps && totalEps > 1 && (
+        <div className="mt-2">
+          <button
+            onClick={() => { setAutoPlay((p) => !p); setNextEpCountdown(0); if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; } }}
+            className={clsx(
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition",
+              autoPlay
+                ? "bg-primary-600/20 text-primary-300"
+                : "bg-white/5 text-mist hover:bg-white/10"
+            )}
+          >
+            <Play className={clsx("h-3 w-3", !autoPlay && "opacity-50")} />
+            {autoPlay ? "Auto-play on" : "Auto-play off"}
           </button>
         </div>
       )}

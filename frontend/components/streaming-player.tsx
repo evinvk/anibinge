@@ -49,12 +49,17 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(true);
+  const [nextEpCountdown, setNextEpCountdown] = useState(0);
   const [statusText, setStatusText] = useState<string>("");
   const initialLoadDoneRef = useRef(false);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const subs = useSubtitles(videoRef);
   const currentEpRef = useRef(1);
   currentEpRef.current = currentEp;
+  const totalEpsRef = useRef(totalEps);
+  totalEpsRef.current = totalEps;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
 
@@ -279,7 +284,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.setLoadingStream(false);
   }, [selectedSlug, audio, tryAnitsuFallback, tryWibuFallback]);
 
-  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
+  // Handle auto-play when media ends
+  const onMediaEnded = useCallback(() => {
+    if (!autoPlay) return;
+    const next = currentEpRef.current + 1;
+    if (totalEpsRef.current && next > totalEpsRef.current) return;
+    // Start countdown
+    setNextEpCountdown(5);
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    countdownTimerRef.current = setInterval(() => {
+      setNextEpCountdown((prev) => {
+        if (prev <= 1) {
+          if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+          countdownTimerRef.current = null;
+          setCurrentEp(currentEpRef.current + 1);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [autoPlay]);
+
+  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError, onMediaEnded);
 
   useEffect(() => {
     initialLoadDoneRef.current = false;
@@ -319,6 +345,13 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       subs.loadSubtitles();
     }
   }, [subs.subtitles]);
+
+  // Clean up countdown timer on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+    };
+  }, []);
 
   const loadStream = useCallback(async (slug: string | null, ep: number) => {
     player.setLoadingStream(true);
@@ -519,6 +552,39 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               fsTargetRef.current
             )}
           </>
+        ) : nextEpCountdown > 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">
+            <div className="flex items-center gap-2 text-white">
+              <Play className="h-5 w-5 text-primary-400" />
+              <span className="text-lg font-semibold">Next episode in {nextEpCountdown}</span>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                  countdownTimerRef.current = null;
+                  setNextEpCountdown(0);
+                  const next = currentEpRef.current + 1;
+                  setCurrentEp(next);
+                }}
+                className="flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-500"
+              >
+                <Play className="h-3 w-3" />
+                Play now
+              </button>
+              <button
+                onClick={() => {
+                  if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                  countdownTimerRef.current = null;
+                  setNextEpCountdown(0);
+                  setAutoPlay(false);
+                }}
+                className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
@@ -604,6 +670,23 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
             )}
           >
             Off
+          </button>
+        </div>
+      )}
+
+      {selectedSlug && totalEps && totalEps > 1 && (
+        <div className="mt-2">
+          <button
+            onClick={() => { setAutoPlay((p) => !p); setNextEpCountdown(0); if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; } }}
+            className={clsx(
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition",
+              autoPlay
+                ? "bg-primary-600/20 text-primary-300"
+                : "bg-white/5 text-mist hover:bg-white/10"
+            )}
+          >
+            <Play className={clsx("h-3 w-3", !autoPlay && "opacity-50")} />
+            {autoPlay ? "Auto-play on" : "Auto-play off"}
           </button>
         </div>
       )}
