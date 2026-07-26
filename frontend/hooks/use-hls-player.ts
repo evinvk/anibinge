@@ -36,175 +36,127 @@ export function useHlsPlayer(
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaErrorRetryRef = useRef(0);
   const networkErrorRetryRef = useRef(0);
-  const freezeRecoveryRef = useRef(0);
-  const freezeCountRef = useRef(0);
-  const bufferingStartRef = useRef(0);
   const consecutive410Ref = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
   onMediaEndedRef.current = onMediaEnded;
 
+  // Attach video element event listeners — run only when videoRef.current changes
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    let lastTime = video.currentTime;
-    let lastTimeChange = Date.now();
-    let lastVideoFrameTime = Date.now();
-    let rafId: number;
-    const onVFrame = () => {
-      lastVideoFrameTime = Date.now();
-      try { video.requestVideoFrameCallback(onVFrame); } catch {}
-    };
-    if (typeof video.requestVideoFrameCallback === "function") {
-      video.requestVideoFrameCallback(onVFrame);
-    }
 
-    const checkFreeze = () => {
-      if (!video || video.paused || video.ended || video.readyState < 2 || isSeekingRef.current) {
-        lastTime = video.currentTime;
-        lastTimeChange = Date.now();
-        bufferingStartRef.current = 0;
-        // Safety: if seeking stuck for >15s, unfreeze so detection can run
-        if (isSeekingRef.current && seekingStartedRef.current && Date.now() - seekingStartedRef.current > 15000) {
-          isSeekingRef.current = false;
-        } else {
-          rafId = requestAnimationFrame(checkFreeze);
+    // Simple stall recovery: if video is playing but currentTime hasn't moved
+    // for >4s and there IS buffered data ahead, nudge the playhead forward.
+    // This replaces the heavy rAF loop that caused audio/video desync by
+    // seeking too aggressively.
+    let lastTime = video.currentTime;
+    let lastTimeStamp = Date.now();
+    let stallCheckId: ReturnType<typeof setInterval> | null = null;
+
+    const startStallCheck = () => {
+      if (stallCheckId) return;
+      stallCheckId = setInterval(() => {
+        if (!video || video.paused || video.ended || video.readyState < 2) {
+          lastTime = video?.currentTime ?? lastTime;
+          lastTimeStamp = Date.now();
           return;
         }
-      }
-      if (video.currentTime !== lastTime) {
-        lastTime = video.currentTime;
-        lastTimeChange = Date.now();
-        freezeRecoveryRef.current = 0;
-        // Video frame not rendering while time advances → audio-only playback
-        if (Date.now() - lastVideoFrameTime > 2000) {
-          lastVideoFrameTime = Date.now();
-          freezeCountRef.current++;
-          if (freezeCountRef.current >= 3) {
-            freezeCountRef.current = 0;
-            if (onFatalErrorRef.current) {
-              onFatalErrorRef.current("videoFreeze");
+        if (video.currentTime !== lastTime) {
+          lastTime = video.currentTime;
+          lastTimeStamp = Date.now();
+          return;
+        }
+        // currentTime frozen for >4s while playing
+        if (Date.now() - lastTimeStamp > 4000) {
+          lastTimeStamp = Date.now();
+          const buffered = video.buffered;
+          // Look for buffered range ahead of current position
+          for (let i = 0; i < buffered.length; i++) {
+            const start = buffered.start(i);
+            const end = buffered.end(i);
+            if (video.currentTime >= start && video.currentTime < end) {
+              const ahead = end - video.currentTime;
+              if (ahead > 0.5) {
+                // Tiny nudge to un-stick the decoder
+                video.currentTime = video.currentTime + 0.1;
+              }
+              return;
+            }
+            // Gap between ranges — jump to start of next buffered block
+            if (start > video.currentTime + 0.5) {
+              video.currentTime = start;
+              return;
             }
           }
+          // No buffered data at all — HLS.js should be fetching; let it work
         }
-      } else if (Date.now() - lastTimeChange > 2000) {
-        const buffered = video.buffered;
-        let seeked = false;
-        for (let i = 0; i < buffered.length; i++) {
-          if (video.currentTime >= buffered.start(i) && video.currentTime < buffered.end(i)) {
-            const ahead = buffered.end(i) - video.currentTime;
-            if (ahead > 1) {
-              video.currentTime = buffered.end(i) - 0.5;
-              seeked = true;
-              freezeRecoveryRef.current++;
-            }
-            break;
-          }
-        }
-        if (!seeked && buffered.length > 0) {
-          const lastEnd = buffered.end(buffered.length - 1);
-          if (lastEnd > video.currentTime) {
-            video.currentTime = lastEnd - 0.5;
-            seeked = true;
-            freezeRecoveryRef.current++;
-          }
-        }
-        lastTimeChange = Date.now();
-        if (freezeRecoveryRef.current >= 3) {
-          freezeRecoveryRef.current = 0;
-          freezeCountRef.current++;
-          if (freezeCountRef.current >= 3) {
-            freezeCountRef.current = 0;
-            if (onFatalErrorRef.current) {
-              onFatalErrorRef.current("videoFreeze");
-            }
-          }
-        }
-      }
-      if (bufferingStartRef.current > 0 && Date.now() - bufferingStartRef.current > 8000) {
-        bufferingStartRef.current = 0;
-        freezeCountRef.current++;
-        if (freezeCountRef.current >= 3) {
-          freezeCountRef.current = 0;
-          if (onFatalErrorRef.current) {
-            onFatalErrorRef.current("videoFreeze");
-          }
-        }
-      }
-      rafId = requestAnimationFrame(checkFreeze);
+      }, 1000);
     };
-    rafId = requestAnimationFrame(checkFreeze);
+
+    const stopStallCheck = () => {
+      if (stallCheckId) {
+        clearInterval(stallCheckId);
+        stallCheckId = null;
+      }
+    };
 
     const onPlay = () => {
       setPlayerStatus("playing");
       lastTime = video.currentTime;
-      lastTimeChange = Date.now();
+      lastTimeStamp = Date.now();
+      startStallCheck();
     };
-    const onPause = () => {};
-    const isSeekingRef = { current: false };
-    const seekingStartedRef = { current: 0 };
+    const onPause = () => {
+      stopStallCheck();
+    };
     const onSeeking = () => {
-      isSeekingRef.current = true;
-      seekingStartedRef.current = Date.now();
-      bufferingStartRef.current = 0;
-      freezeRecoveryRef.current = 0;
-      freezeCountRef.current = 0;
+      lastTime = video.currentTime;
+      lastTimeStamp = Date.now();
     };
     const onSeeked = () => {
       lastTime = video.currentTime;
-      lastTimeChange = Date.now();
+      lastTimeStamp = Date.now();
     };
     const onWaiting = () => {
       setPlayerStatus("buffering");
-      if (!isSeekingRef.current && !bufferingStartRef.current) {
-        bufferingStartRef.current = Date.now();
-      }
+      lastTime = video.currentTime;
+      lastTimeStamp = Date.now();
     };
     const onPlaying = () => {
       setPlayerStatus("playing");
-      isSeekingRef.current = false;
-      bufferingStartRef.current = 0;
+      lastTime = video.currentTime;
+      lastTimeStamp = Date.now();
       mediaErrorRetryRef.current = 0;
       networkErrorRetryRef.current = 0;
-      freezeCountRef.current = 0;
       consecutive410Ref.current = 0;
-      lastTime = video.currentTime;
-      lastTimeChange = Date.now();
-      lastVideoFrameTime = Date.now();
-      if (typeof video.requestVideoFrameCallback === "function") {
-        try { video.requestVideoFrameCallback(onVFrame); } catch {}
-      }
+      startStallCheck();
     };
     const onCanPlay = () => {
       setPlayerStatus("playing");
-      bufferingStartRef.current = 0;
     };
     const onStalled = () => {
       setPlayerStatus("buffering");
+      // After 3s of stall, try to resume load in HLS.js
       if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
       stallTimerRef.current = setTimeout(() => {
-        if (!video || video.paused || video.ended || isSeekingRef.current) return;
-        const currentTime = video.currentTime;
-        const buffered = video.buffered;
-        if (buffered.length > 0) {
-          for (let i = 0; i < buffered.length; i++) {
-            if (currentTime >= buffered.start(i) && currentTime < buffered.end(i)) {
-              const ahead = buffered.end(i) - currentTime;
-              if (ahead < 1) {
-                video.currentTime = buffered.end(i) - 0.1;
-              }
-              return;
-            }
-          }
-          for (let i = 0; i < buffered.length; i++) {
-            if (buffered.start(i) > currentTime) {
-              video.currentTime = buffered.start(i) - 0.1;
-              return;
-            }
-          }
+        if (!video || video.paused || video.ended) return;
+        const hls = hlsRef.current;
+        if (hls) {
+          try { hls.startLoad(); } catch {}
         }
       }, 3000);
     };
+    const onEnded = () => {
+      stopStallCheck();
+      if (onMediaEndedRef.current) onMediaEndedRef.current();
+    };
+    const onError = () => {
+      // Native video element error (non-HLS path)
+      setPlayerStatus("error");
+      setError("Playback error: mediaError");
+    };
+
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
     video.addEventListener("seeking", onSeeking);
@@ -213,9 +165,15 @@ export function useHlsPlayer(
     video.addEventListener("playing", onPlaying);
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("stalled", onStalled);
+    video.addEventListener("ended", onEnded);
+    video.addEventListener("error", onError);
+
     return () => {
-      cancelAnimationFrame(rafId);
-      bufferingStartRef.current = 0;
+      stopStallCheck();
+      if (stallTimerRef.current) {
+        clearTimeout(stallTimerRef.current);
+        stallTimerRef.current = null;
+      }
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("seeking", onSeeking);
@@ -224,8 +182,11 @@ export function useHlsPlayer(
       video.removeEventListener("playing", onPlaying);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("stalled", onStalled);
+      video.removeEventListener("ended", onEnded);
+      video.removeEventListener("error", onError);
     };
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoRef.current]);
 
   const loadPlayer = useCallback(async (url: string) => {
     if (hlsRef.current) {
@@ -239,7 +200,6 @@ export function useHlsPlayer(
     setPlayerStatus("buffering");
     mediaErrorRetryRef.current = 0;
     networkErrorRetryRef.current = 0;
-    freezeCountRef.current = 0;
 
     const gen = ++loadGenRef.current;
     const Hls = (await import("hls.js")).default;
@@ -249,13 +209,28 @@ export function useHlsPlayer(
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
+        // Larger buffer = fewer stalls and less chance of audio running ahead
+        maxBufferLength: 60,
+        maxMaxBufferLength: 120,
+        // Keep 10s back-buffer so backward seeks don't re-fetch
+        backBufferLength: 10,
+        // Start at highest reasonable level (ABR will drop down if needed)
         startLevel: -1,
-        capLevelToPlayerSize: true,
-        maxBufferHole: 1.0,
-        stretchShortVideoTrack: true,
-        backBufferLength: 0,
+        capLevelToPlayerSize: false,
+        // Small hole: only auto-skip tiny gaps, not 1-second chunks
+        maxBufferHole: 0.3,
+        // Keep audio/video in sync; don't stretch short tracks
+        stretchShortVideoTrack: false,
+        // Nudge factor for A/V sync correction
+        nudgeMaxRetry: 5,
+        nudgeOffset: 0.1,
+        // Retry network errors aggressively before giving up
+        fragLoadingMaxRetry: 6,
+        manifestLoadingMaxRetry: 3,
+        levelLoadingMaxRetry: 4,
+        // Slightly longer timeout to avoid false 404s on slow proxy
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 15000,
       });
       hlsRef.current = hls;
 
@@ -266,7 +241,6 @@ export function useHlsPlayer(
         setSelectedQuality(-1);
         setLevels(hls.levels ? [...hls.levels] : []);
         networkErrorRetryRef.current = 0;
-        freezeCountRef.current = 0;
         video.play().catch(() => {
           setPlayerStatus("error");
         });
@@ -280,16 +254,6 @@ export function useHlsPlayer(
         }
       });
 
-      hls.on(Hls.Events.BUFFER_APPENDED, () => {
-        setPlayerStatus("playing");
-      });
-
-      hls.on(Hls.Events.MEDIA_ENDED, () => {
-        if (onMediaEndedRef.current) {
-          onMediaEndedRef.current();
-        }
-      });
-
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {
         if (data.fatal) {
           switch (data.type) {
@@ -297,33 +261,33 @@ export function useHlsPlayer(
               if (data.response?.code === 410 || data.response?.code === 404) {
                 networkErrorRetryRef.current++;
                 if (networkErrorRetryRef.current < 3) {
-                  console.error("[HLS] Network error (%d/3), retrying...", networkErrorRetryRef.current, data.details);
-                  hls.startLoad();
+                  console.warn("[HLS] Network error (%d/3), retrying...", networkErrorRetryRef.current, data.details);
+                  setTimeout(() => { try { hls.startLoad(); } catch {} }, 1000);
                 } else {
                   networkErrorRetryRef.current = 0;
                   setPlayerStatus("error");
                   if (onFatalErrorRef.current) {
-                    onFatalErrorRef.current(data.type);
+                    onFatalErrorRef.current("networkError");
                   } else {
-                    setError("Playback error: " + data.type);
+                    setError("Playback error: networkError");
                   }
                 }
               } else {
-                console.error("[HLS] Network error, retrying...", data.details);
-                hls.startLoad();
+                console.warn("[HLS] Network error, retrying:", data.details);
+                setTimeout(() => { try { hls.startLoad(); } catch {} }, 500);
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               mediaErrorRetryRef.current++;
-              if (mediaErrorRetryRef.current < 3) {
-                console.error("[HLS] Media error, recovering...", data.details);
-                hls.recoverMediaError();
+              if (mediaErrorRetryRef.current < 4) {
+                console.warn("[HLS] Media error, recovering (%d/4):", mediaErrorRetryRef.current, data.details);
+                try { hls.recoverMediaError(); } catch {}
               } else {
                 setPlayerStatus("error");
                 if (onFatalErrorRef.current) {
-                  onFatalErrorRef.current(data.type);
+                  onFatalErrorRef.current("mediaError");
                 } else {
-                  setError("Playback error: " + data.type);
+                  setError("Playback error: mediaError");
                 }
               }
               break;
@@ -337,46 +301,28 @@ export function useHlsPlayer(
               break;
           }
         } else {
-          if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
-            // 410 on non-fatal = segment permanently deleted, skip ahead or fallback
-            if (data.response?.code === 410) {
-              consecutive410Ref.current++;
-              if (consecutive410Ref.current >= 3) {
-                consecutive410Ref.current = 0;
-                setPlayerStatus("error");
-                if (onFatalErrorRef.current) {
-                  onFatalErrorRef.current("networkError");
-                }
-              } else {
-                // Try to skip ahead past the deleted segment
-                const video = videoRef.current;
-                if (video && video.buffered.length > 0) {
-                  for (let i = 0; i < video.buffered.length; i++) {
-                    if (video.buffered.start(i) > video.currentTime) {
-                      video.currentTime = video.buffered.start(i);
-                      break;
-                    }
-                  }
-                }
-              }
-            } else {
+          // Non-fatal: 410 on a segment = CDN deleted it, try to skip ahead
+          if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 410) {
+            consecutive410Ref.current++;
+            if (consecutive410Ref.current >= 5) {
               consecutive410Ref.current = 0;
-              setPlayerStatus("buffering");
+              if (onFatalErrorRef.current) {
+                onFatalErrorRef.current("networkError");
+              }
             }
+          } else {
+            consecutive410Ref.current = 0;
           }
         }
       });
 
       onLoadSubtitlesRef.current();
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+      // Safari native HLS
       video.src = url;
       video.addEventListener("loadedmetadata", () => {
-        video.play().catch(() => {
-          setPlayerStatus("error");
-        });
+        video.play().catch(() => setPlayerStatus("error"));
       }, { once: true });
-      video.addEventListener("waiting", () => setPlayerStatus("buffering"));
-      video.addEventListener("playing", () => setPlayerStatus("playing"));
       onLoadSubtitlesRef.current();
     } else {
       setError("HLS is not supported in this browser");
@@ -388,11 +334,7 @@ export function useHlsPlayer(
     const hls = hlsRef.current;
     if (!hls) return;
     setSelectedQuality(index);
-    if (index === -1) {
-      hls.currentLevel = -1;
-    } else {
-      hls.currentLevel = index;
-    }
+    hls.currentLevel = index;
   }
 
   function destroyHls() {
@@ -410,7 +352,8 @@ export function useHlsPlayer(
   function resetPlayer() {
     destroyHls();
     networkErrorRetryRef.current = 0;
-    freezeCountRef.current = 0;
+    mediaErrorRetryRef.current = 0;
+    consecutive410Ref.current = 0;
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(-1);
