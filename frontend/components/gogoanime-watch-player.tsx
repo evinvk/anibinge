@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download } from "lucide-react";
+import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download, Maximize2, Minimize2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
@@ -53,6 +53,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [showEpisodes, setShowEpisodes] = useState(false);
   const currentEpRef = useRef(initialEp);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
 
   const [statusText, setStatusText] = useState<string>("");
@@ -427,7 +428,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   return (
     <div>
-      <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+      <div ref={containerRef} className="relative aspect-video w-full overflow-hidden rounded-xl bg-black group">
         {player.loadingStream ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <div className="h-2 w-2 rounded-full bg-primary-400 animate-pulse" />
@@ -437,7 +438,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </div>
         )          : player.streamData ? (
           <>
-            <video ref={videoRef} className="h-full w-full" controls playsInline />
+            <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" />
             {player.playerStatus === "buffering" && !player.error && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="rounded-full bg-black/50 p-3">
@@ -446,7 +447,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
               </div>
             )}
             {subs.activeCues.length > 0 && (
-              <div className={`${isFullscreen ? 'fixed' : 'absolute'} bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none ${isFullscreen ? 'z-[9999]' : 'z-10'}`}>
+              <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-10">
                 {subs.activeCues.map((text, i) => (
                   <span
                     key={i}
@@ -457,6 +458,19 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 ))}
               </div>
             )}
+            <button
+              onClick={() => {
+                if (!document.fullscreenElement) {
+                  containerRef.current?.requestFullscreen().catch(() => {});
+                } else {
+                  document.exitFullscreen().catch(() => {});
+                }
+              }}
+              className="absolute top-2 right-2 z-20 rounded-md bg-black/50 p-1.5 text-white/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70 hover:text-white"
+              title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            >
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            </button>
           </>
         ) : nextEpCountdown > 0 ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/80">

@@ -1,3 +1,8 @@
+/* Hide native video fullscreen button — use our custom button instead */
+video::-webkit-media-controls-fullscreen-button {
+  display: none !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
