@@ -71,7 +71,7 @@ async def cache_headers(request: Request, call_next):
         return response
     if path == "/api/health":
         response.headers["Cache-Control"] = "no-store"
-    el    if any(p in path for p in ["/api/v1/auth/", "/api/v1/watchlist", "/api/v1/admin/", "/api/v1/notifications/", "/api/v1/comments/"]):
+    elif any(p in path for p in ["/api/v1/auth/", "/api/v1/watchlist", "/api/v1/admin/", "/api/v1/notifications/", "/api/v1/comments/"]):
         response.headers["Cache-Control"] = "private, no-cache"
     elif any(p in path for p in ["/api/v1/anime/trending", "/api/v1/schedule/", "/api/v1/anime/upcoming", "/api/v1/streaming/gogoanime/latest"]):
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
