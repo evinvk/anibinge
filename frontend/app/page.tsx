@@ -20,11 +20,10 @@ async function TrendingRow({ data }: { data: any[] }) {
 }
 
 export default async function HomePage() {
-  const pages = await Promise.all([
-    safeFetch(() => api.trending(1)),
-    safeFetch(() => api.trending(2)),
-    safeFetch(() => api.trending(3)),
-  ]);
+  const page1 = await safeFetch(() => api.trending(1));
+  const page2 = page1 ? await safeFetch(() => api.trending(2)) : null;
+  const page3 = page2 ? await safeFetch(() => api.trending(3)) : null;
+  const pages = [page1, page2, page3];
 
   const seen = new Set<string | number>();
   const trendingData = pages
