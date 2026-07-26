@@ -6,7 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
-import { AdsterraAd } from "@/components/adsterra-ad";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -133,10 +132,6 @@ function WatchPageInner({ slug }: { slug: string }) {
         {title && (
           <EpisodeComments slug={slug} episodeNumber={currentEp} />
         )}
-
-        <div className="mt-8 flex justify-center">
-          <AdsterraAd />
-        </div>
       </div>
     </div>
   );

@@ -3,7 +3,6 @@ import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
-import { AdsterraAd } from "@/components/adsterra-ad";
 
 export const revalidate = 300;
 
@@ -32,10 +31,6 @@ export default async function HomePage() {
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
         <TrendingRow data={trendingData} />
       </Suspense>
-
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-        <AdsterraAd className="flex justify-center" />
-      </div>
 
       <LatestReleasesSection />
     </>

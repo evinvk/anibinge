@@ -7,7 +7,7 @@ import { NotificationsProvider } from "@/lib/notifications-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
-import { MonetagPopunder } from "@/components/monetag-popunder";
+
 
 const sora = Sora({ subsets: ["latin"], variable: "--font-sora", display: "swap" });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
@@ -70,7 +70,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <NotificationsProvider>
               <div className="relative min-h-screen bg-aura-gradient bg-fixed">
                 <ServiceWorkerRegister />
-                <MonetagPopunder />
                 <Navbar />
                 <main>{children}</main>
                 <Footer />
@@ -79,7 +78,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </AuthProvider>
         </ThemeProvider>
       </body>
-      <script src="https://pl30495366.effectivecpmnetwork.com/1d/6b/a5/1d6ba5bb70bb38e1412d4a6f5c1da23f.js" async></script>
     </html>
   );
 }
