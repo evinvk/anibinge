@@ -3,11 +3,9 @@
 import { use, useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, AlertTriangle, Magnet, Globe } from "lucide-react";
+import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
-import { WebTorrentPlayer } from "@/components/webtorrent-player";
 import { EpisodeComments } from "@/components/episode-comments";
-import clsx from "clsx";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -22,7 +20,6 @@ function WatchPageInner({ slug }: { slug: string }) {
   const [currentEp, setCurrentEp] = useState(initialEp);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [source, setSource] = useState<"torrent" | "external">("torrent");
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -130,44 +127,7 @@ function WatchPageInner({ slug }: { slug: string }) {
         ) : (
           <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
         )}
-
-        {/* Source toggle */}
-        <div className="mb-3 flex gap-1.5">
-          <button
-            onClick={() => setSource("torrent")}
-            className={clsx(
-              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-              source === "torrent"
-                ? "bg-primary-600 text-white"
-                : "bg-white/5 text-mist hover:bg-white/10"
-            )}
-          >
-            <Magnet className="h-3.5 w-3.5" />
-            Torrent (P2P)
-          </button>
-          <button
-            onClick={() => setSource("external")}
-            className={clsx(
-              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
-              source === "external"
-                ? "bg-primary-600 text-white"
-                : "bg-white/5 text-mist hover:bg-white/10"
-            )}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            External
-          </button>
-        </div>
-
-        {source === "torrent" ? (
-          <WebTorrentPlayer
-            title={title}
-            episode={currentEp}
-            onEpisodeChange={setCurrentEp}
-          />
-        ) : (
-          <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} />
-        )}
+        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} />
 
         {title && (
           <EpisodeComments slug={slug} episodeNumber={currentEp} />

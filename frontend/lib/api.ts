@@ -352,17 +352,4 @@ export const api = {
     if (resolved !== undefined) path += `resolved=${resolved}&`;
     return authedRequest<{ issues: any[]; total: number }>(path, token);
   },
-
-  // Self-hosted / Nyaa
-  selfhostedSearch: (q: string, episode?: number, quality: string = "720p") => {
-    let path = `/api/v1/selfhosted/search?q=${encodeURIComponent(q)}&quality=${quality}`;
-    if (episode) path += `&episode=${episode}`;
-    return request<{ data: any[]; total: number }>(path, 60);
-  },
-  selfhostedSearchSimple: (q: string, page: number = 1) =>
-    request<{ data: any[] }>(`/api/v1/selfhosted/search/simple?q=${encodeURIComponent(q)}&page=${page}`, 60),
-  selfhostedResolve: (magnet: string) =>
-    request<{ valid: boolean; info_hash: string; magnet: string; trackers: string[] }>(
-      `/api/v1/selfhosted/resolve?magnet=${encodeURIComponent(magnet)}`, 300
-    ),
 };
