@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download, Maximize2, Minimize2 } from "lucide-react";
+import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download, Maximize2, Minimize2, RectangleHorizontal, Shrink } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
@@ -53,6 +53,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [showEpisodes, setShowEpisodes] = useState(false);
   const currentEpRef = useRef(initialEp);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTheater, setIsTheater] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
 
@@ -427,8 +428,19 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   }, [slug, currentEp, loadStream]);
 
   return (
-    <div>
-      <div ref={containerRef} className="relative aspect-video w-full overflow-hidden rounded-xl bg-black group">
+    <div className={clsx(
+      "transition-all duration-300",
+      isTheater && "fixed inset-0 z-50 bg-black flex flex-col"
+    )}>
+      <div
+        ref={containerRef}
+        className={clsx(
+          "relative w-full overflow-hidden bg-black group",
+          isTheater
+            ? "flex-1 rounded-none aspect-auto"
+            : "aspect-video rounded-xl"
+        )}
+      >
         {player.loadingStream ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
             <div className="h-2 w-2 rounded-full bg-primary-400 animate-pulse" />
@@ -457,6 +469,17 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                   </span>
                 ))}
               </div>
+            )}
+            {/* Theater mode close button (only visible in theater mode) */}
+            {isTheater && (
+              <button
+                onClick={() => setIsTheater(false)}
+                className="absolute top-3 right-14 z-20 rounded-md bg-black/60 px-2.5 py-1 text-xs font-medium text-white/80 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80 hover:text-white flex items-center gap-1.5"
+                title="Exit theater mode"
+              >
+                <Shrink className="h-3.5 w-3.5" />
+                Exit
+              </button>
             )}
             <button
               onClick={() => {
@@ -525,7 +548,72 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         )}
       </div>
 
-      {subs.subtitles.length > 0 && (
+      {/* Theater mode controls bar (shown inside theater overlay) */}
+      {isTheater && (
+        <div className="shrink-0 bg-black/90 px-4 py-2 flex items-center gap-3 border-t border-white/10 overflow-x-auto">
+          <button
+            onClick={() => setIsTheater(false)}
+            className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition shrink-0"
+          >
+            <Shrink className="h-3.5 w-3.5" />
+            Exit theater
+          </button>
+          <button
+            onClick={() => {
+              if (!document.fullscreenElement) {
+                containerRef.current?.requestFullscreen().catch(() => {});
+              } else {
+                document.exitFullscreen().catch(() => {});
+              }
+            }}
+            className="flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/20 transition shrink-0"
+          >
+            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+            {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          </button>
+          {(["sub", "dub"] as const).map((opt) => (
+            <button
+              key={opt}
+              onClick={() => { if (opt !== audio) { setAudio(opt); player.setError(null); } }}
+              className={clsx(
+                "rounded-md px-3 py-1.5 text-xs font-medium transition shrink-0",
+                audio === opt ? "bg-primary-600 text-white" : "bg-white/10 text-white/70 hover:bg-white/20"
+              )}
+            >
+              {opt === "sub" ? "Sub" : "Dub"}
+            </button>
+          ))}
+          {totalEps && totalEps > 1 && (
+            <button
+              onClick={() => { setAutoPlay((p) => !p); setNextEpCountdown(0); if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; } }}
+              className={clsx(
+                "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition shrink-0",
+                autoPlay ? "bg-primary-600/20 text-primary-300" : "bg-white/10 text-white/70 hover:bg-white/20"
+              )}
+            >
+              <Play className={clsx("h-3 w-3", !autoPlay && "opacity-50")} />
+              {autoPlay ? "Auto-play on" : "Auto-play off"}
+            </button>
+          )}
+          {totalEps && totalEps > 1 && (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => { const prev = Math.max(1, currentEp - 1); setCurrentEp(prev); onEpisodeChangeRef.current?.(prev); }}
+                disabled={currentEp <= 1}
+                className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white hover:bg-white/20 transition disabled:opacity-30"
+              >Prev</button>
+              <span className="text-xs font-mono text-white/70">Ep {currentEp}{totalEps ? ` / ${totalEps}` : ""}</span>
+              <button
+                onClick={() => { const next = currentEp + 1; setCurrentEp(next); onEpisodeChangeRef.current?.(next); }}
+                disabled={!!(totalEps && currentEp >= totalEps)}
+                className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white hover:bg-white/20 transition disabled:opacity-30"
+              >Next</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isTheater && subs.subtitles.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {subs.subtitles.map((sub, i) => (
             <button
@@ -555,7 +643,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         </div>
       )}
 
-      {totalEps && totalEps > 1 && (
+      {!isTheater && totalEps && totalEps > 1 && (
         <div className="mt-2">
           <button
             onClick={() => { setAutoPlay((p) => !p); setNextEpCountdown(0); if (countdownTimerRef.current) { clearInterval(countdownTimerRef.current); countdownTimerRef.current = null; } }}
@@ -611,7 +699,20 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         );
       })()}
 
-      <div className="mt-3 flex gap-2">
+      {!isTheater && (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            onClick={() => setIsTheater(true)}
+            className="flex items-center gap-1.5 rounded-md bg-white/5 px-3 py-1.5 text-xs font-medium text-mist hover:bg-white/10 hover:text-paper transition"
+            title="Theater mode"
+          >
+            <RectangleHorizontal className="h-3.5 w-3.5" />
+            Expand
+          </button>
+        </div>
+      )}
+
+      <div className={clsx("mt-3 flex gap-2", isTheater && "hidden")}>
         {(["sub", "dub"] as const).map((opt) => (
           <button
             key={opt}
@@ -651,7 +752,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         </button>
       </div>
 
-      {(totalEps && totalEps > 1) || currentEp > 1 ? (
+      {!isTheater && ((totalEps && totalEps > 1) || currentEp > 1) ? (
         <div className="mt-3">
           {totalEps && totalEps > 1 ? (
             <>
@@ -715,7 +816,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         </div>
       ) : null}
 
-      {player.error && !player.loadingStream && (
+      {!isTheater && player.error && !player.loadingStream && (
         <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span className="text-xs flex-1">{friendlyError(player.error)}</span>
