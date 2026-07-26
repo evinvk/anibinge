@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Search, Menu, X, Sparkles, User } from "lucide-react";
+import { Search, Menu, X, Sparkles, User, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SearchModal } from "@/components/search-modal";
 import { useAuth } from "@/lib/auth-context";
@@ -37,7 +37,7 @@ export function Navbar() {
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <button
             aria-label="Search"
             onClick={() => setSearchOpen(true)}
@@ -48,17 +48,18 @@ export function Navbar() {
           <NotificationBell />
           <Link
             href="/watchlist"
-            className="rounded-full bg-primary-600 px-3 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:px-4"
+            className="flex items-center gap-2 rounded-full bg-primary-600 px-2.5 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:px-4"
+            aria-label="My Watchlist"
           >
+            <Bookmark className="h-4 w-4 sm:hidden" />
             <span className="hidden sm:inline">My Watchlist</span>
-            <span className="sm:hidden">Watchlist</span>
           </Link>
           {!loading && (
             <>
               {user ? (
                 <Link
                   href="/profile"
-                  className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-sm text-mist transition-colors hover:text-paper"
+                  className="flex items-center gap-2 rounded-full border border-white/10 px-2 py-1.5 text-sm text-mist transition-colors hover:text-paper sm:px-3"
                 >
                   {user.avatar_url ? (
                     <img src={user.avatar_url} alt="" className="h-5 w-5 rounded-full object-cover" />
@@ -70,7 +71,7 @@ export function Navbar() {
               ) : (
                 <Link
                   href="/login"
-                  className="rounded-full border border-white/10 px-4 py-2 text-sm text-mist transition-colors hover:text-paper"
+                  className="rounded-full border border-white/10 px-3 py-2 text-sm text-mist transition-colors hover:text-paper sm:px-4"
                 >
                   Sign in
                 </Link>
