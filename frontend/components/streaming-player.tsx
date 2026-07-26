@@ -399,6 +399,18 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setMasterUrl(proxiedUrl);
         player.setLoadingStream(false);
         setStatusText("");
+        // Background fetch subtitles from fallback providers
+        const fetchEp = currentEpRef.current;
+        api.fetchSubtitles(animeTitle, fetchEp, resolvedAnilistRef.current || undefined)
+          .then((subRes) => {
+            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
+              subs.setSubs(subRes.subtitles.map((s: any) => ({
+                ...s,
+                file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
+              })));
+            }
+          })
+          .catch(() => {});
         return;
       }
 
@@ -409,9 +421,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setLoadingStream(false);
         setStatusText("");
         // Background fetch subtitles from fallback providers
-        api.fetchSubtitles(animeTitle, ep, resolvedAnilistRef.current || undefined)
+        const fetchEp2 = currentEpRef.current;
+        api.fetchSubtitles(animeTitle, fetchEp2, resolvedAnilistRef.current || undefined)
           .then((subRes) => {
-            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && videoRef.current) {
+            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp2 === currentEpRef.current) {
               subs.setSubs(subRes.subtitles.map((s: any) => ({
                 ...s,
                 file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,

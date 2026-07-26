@@ -148,6 +148,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         player.setMasterUrl(proxiedUrl);
         player.setLoadingStream(false);
         setStatusText("");
+        // Background fetch subtitles from fallback providers
+        const fetchEp = currentEpRef.current;
+        api.fetchSubtitles(title, fetchEp, resolvedAnilistRef.current || undefined)
+          .then((subRes) => {
+            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
+              subs.setSubs(subRes.subtitles.map((s: any) => ({
+                ...s,
+                file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
+              })));
+            }
+          })
+          .catch(() => {});
         return true;
       }
       if (data?.qualities) {
@@ -158,9 +170,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         player.setLoadingStream(false);
         setStatusText("");
         // Background fetch subtitles from fallback providers
-        api.fetchSubtitles(title, ep, resolvedAnilistRef.current || undefined)
+        const fetchEp2 = currentEpRef.current;
+        api.fetchSubtitles(title, fetchEp2, resolvedAnilistRef.current || undefined)
           .then((subRes) => {
-            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && videoRef.current) {
+            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp2 === currentEpRef.current) {
               subs.setSubs(subRes.subtitles.map((s: any) => ({
                 ...s,
                 file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
