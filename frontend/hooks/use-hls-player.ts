@@ -56,6 +56,7 @@ export function useHlsPlayer(
     let frameCallbackId: number | null = null;
     let lastVideoFrameStamp = Date.now();
     let videoFreezeRecoveries = 0;
+    let stallRecoveries = 0;
 
     // currentTime can keep advancing with audio even when the video decoder is
     // stuck. requestVideoFrameCallback detects that without repeated seeking.
@@ -87,6 +88,7 @@ export function useHlsPlayer(
         if (video.currentTime !== lastTime) {
           lastTime = video.currentTime;
           lastTimeStamp = Date.now();
+          stallRecoveries = 0;
 
           // Audio-only progress while no frame renders is a decoder freeze.
           // Recover once in place, then switch provider if it remains stuck.
@@ -122,15 +124,31 @@ export function useHlsPlayer(
                 // Tiny nudge to un-stick the decoder
                 video.currentTime = video.currentTime + 0.1;
               }
-              return;
+              break;
             }
             // Gap between ranges — jump to start of next buffered block
             if (start > video.currentTime + 0.5) {
               video.currentTime = start;
-              return;
+              break;
             }
+            // No buffered data at all — HLS.js should still be fetching.
           }
-          // No buffered data at all — HLS.js should be fetching; let it work
+
+          // currentTime hasn't moved in >4s no matter what we tried above,
+          // so this same branch will fire again next tick if it's a real
+          // freeze. Escalate instead of nudging/waiting forever: try HLS's
+          // own media-error recovery once, then switch streaming providers
+          // entirely if that still doesn't unstick it.
+          stallRecoveries++;
+          if (stallRecoveries === 1) {
+            const hls = hlsRef.current;
+            if (hls) {
+              try { hls.recoverMediaError(); } catch {}
+            }
+          } else if (stallRecoveries >= 3) {
+            stallRecoveries = 0;
+            onFatalErrorRef.current?.("stalled");
+          }
         }
       }, 1000);
     };

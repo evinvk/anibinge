@@ -29,6 +29,8 @@ const FRIENDLY_ERRORS: Record<string, string> = {
   mediaError: "Video format not supported by this source",
   sourceError: "Source format not supported",
   hlsError: "Unable to load video stream",
+  videoFreeze: "Playback froze on this source",
+  stalled: "Playback froze on this source",
 };
 
 function friendlyError(raw: string): string {
