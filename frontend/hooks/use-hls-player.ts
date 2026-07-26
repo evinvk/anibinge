@@ -409,6 +409,8 @@ export function useHlsPlayer(
 
   function resetPlayer() {
     destroyHls();
+    networkErrorRetryRef.current = 0;
+    freezeCountRef.current = 0;
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(-1);
