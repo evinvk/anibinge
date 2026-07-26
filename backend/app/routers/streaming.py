@@ -1399,27 +1399,29 @@ async def download_episode(
             if not seg_urls:
                 raise RuntimeError("No segments found in HLS playlist")
 
-            # Download all segments with retry and rate-limit backoff
+            # Download all segments concurrently with retry
             logger.info("Downloading %d HLS segments for %s", len(seg_urls), filename)
-            with open(concat_path, "w", encoding="utf-8") as cf:
-                for i, seg_url in enumerate(seg_urls):
+            sem = _aio.Semaphore(20)
+
+            async def _fetch_seg(idx: int, url: str) -> tuple[int, bytes]:
+                async with sem:
                     for attempt in range(5):
-                        seg_resp = await dl_client.get(seg_url, headers={"Referer": referer} if referer else {})
-                        if seg_resp.status_code == 429:
-                            wait = min(2 ** attempt, 16)
-                            logger.warning("Rate-limited on segment %d, retrying in %ds", i, wait)
-                            await _aio.sleep(wait)
+                        r = await dl_client.get(url, headers={"Referer": referer} if referer else {})
+                        if r.status_code == 429:
+                            await _aio.sleep(min(2 ** attempt, 16))
                             continue
-                        seg_resp.raise_for_status()
-                        break
-                    else:
-                        raise RuntimeError(f"Failed to download segment {i} after 5 attempts (429)")
-                    seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
-                    with open(seg_file, "wb") as sf:
-                        sf.write(seg_resp.content)
-                    cf.write(f"file '{seg_file}'\n")
-                    if (i + 1) % 10 == 0:
-                        await _aio.sleep(0.5)
+                        r.raise_for_status()
+                        return idx, r.content
+                    raise RuntimeError(f"Failed to download segment {idx} after 5 attempts")
+
+            results = await _aio.gather(*[_fetch_seg(i, u) for i, u in enumerate(seg_urls)])
+            for idx, data in sorted(results):
+                seg_file = _os.path.join(tmp_dir, f"seg_{idx:05d}.ts")
+                with open(seg_file, "wb") as sf:
+                    sf.write(data)
+            with open(concat_path, "w", encoding="utf-8") as cf:
+                for i in range(len(seg_urls)):
+                    cf.write(f"file '{_os.path.join(tmp_dir, f'seg_{i:05d}.ts')}'\n")
 
             # Use ffmpeg concat demuxer to remux into MP4 (avoids HLS demuxer extension issue)
             cmd = [
