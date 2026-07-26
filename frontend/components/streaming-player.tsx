@@ -25,10 +25,6 @@ interface StreamingPlayerProps {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-function makeProxyUrl(file: string, referer: string) {
-  return `/api/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
-}
-
 const FRIENDLY_ERRORS: Record<string, string> = {
   networkError: "Streaming source is temporarily unavailable",
   mediaError: "Video format not supported by this source",
@@ -53,6 +49,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);
+  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
+  const embedUrlRef = useRef<string | null>(null);
   const [statusText, setStatusText] = useState<string>("");
   const initialLoadDoneRef = useRef(false);
 
@@ -62,45 +60,26 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
 
-  const tryAnivexaFallback = useCallback(async (ep: number): Promise<boolean> => {
-    let aid = resolvedAnilistRef.current;
-    if (!aid) {
-      try {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), 15000);
-        const res = await fetch(
-          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(animeTitle)}`,
-          { signal: ac.signal }
-        ).then(r => r.json());
-        clearTimeout(timer);
-        if (res.anilist_id) {
-          aid = res.anilist_id;
-          resolvedAnilistRef.current = aid;
-        }
-      } catch { /* not critical */ }
-    }
-    if (!aid) return false;
+  const tryAnitsuFallback = useCallback(async (ep: number): Promise<boolean> => {
     setStatusText("");
     try {
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), 20000);
       const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&source=anivexa`,
-        { signal: ac.signal }
-      );
-      clearTimeout(timer);
-      if (!res.ok) throw new Error("not ok");
-      const json = await res.json();
-      if (json && (json.stream_url || json.embed_url)) {
-        player.sourceRef.current = "anivexa";
+        `${API_BASE}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}`
+      ).then(r => {
+        if (!r.ok) throw new Error("not ok");
+        return r.json();
+      });
+      if (res && (res.stream_url || res.embed_url)) {
+        player.sourceRef.current = "anitsu";
 
-        if (json.stream_url) {
-          subs.setSubs((json.subtitles || []).map((s: any) => {
-            return { ...s, file: makeProxyUrl(s.file, s.referer) };
+        if (res.stream_url) {
+          subs.setSubs((res.subtitles || []).map((s: any) => {
+            const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+            return { ...s, file: proxySubUrl };
           }));
 
-          if (json.stream_type === "mp4") {
-            const mp4Url = makeProxyUrl(json.stream_url, json.referer || "");
+          if (res.stream_type === "mp4") {
+            const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
             player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
             player.setLoadingStream(false);
             setStatusText("");
@@ -112,7 +91,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
             return true;
           }
 
-          const hlsUrl = makeProxyUrl(json.stream_url, json.referer || "");
+          const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
           let qualities = [{ quality: "Auto", url: hlsUrl }];
           try {
             const m3u8Resp = await fetch(hlsUrl);
@@ -131,7 +110,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
                     let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
                     if (resMatch) label += ` (${resMatch[1]})`;
                     const variantUrl = nextLine.startsWith("http")
-                      ? makeProxyUrl(nextLine, json.referer || "")
+                      ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
                       : nextLine.startsWith("/") ? nextLine : hlsUrl;
                     parsed.push({ quality: label, url: variantUrl });
                   }
@@ -148,6 +127,93 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           return true;
         }
 
+        if (res.embed_url) {
+          setEmbedUrl(res.embed_url);
+          embedUrlRef.current = res.embed_url;
+          player.setLoadingStream(false);
+          setStatusText("");
+          return true;
+        }
+      }
+    } catch { /* fallback failed */ }
+    setStatusText("");
+    return false;
+  }, [animeTitle]);
+
+  const tryWibuFallback = useCallback(async (ep: number): Promise<boolean> => {
+    setStatusText("");
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/v1/streaming/wibu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&server=vidstream`
+      ).then(r => {
+        if (!r.ok) throw new Error("not ok");
+        return r.json();
+      });
+      if (res && (res.stream_url || res.embed_url)) {
+        player.sourceRef.current = "wibu";
+
+        if (res.stream_url) {
+          subs.setSubs((res.subtitles || []).map((s: any) => {
+            const proxySubUrl = `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`;
+            return { ...s, file: proxySubUrl };
+          }));
+
+          if (res.stream_type === "mp4") {
+            const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+            player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+            player.setLoadingStream(false);
+            setStatusText("");
+            await new Promise(r => setTimeout(r, 100));
+            if (videoRef.current) {
+              videoRef.current.src = mp4Url;
+              videoRef.current.play().catch(() => {});
+            }
+            return true;
+          }
+
+          const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+          let qualities = [{ quality: "Auto", url: hlsUrl }];
+          try {
+            const m3u8Resp = await fetch(hlsUrl);
+            if (m3u8Resp.ok) {
+              const m3u8Text = await m3u8Resp.text();
+              const parsed: { quality: string; url: string }[] = [];
+              const lines = m3u8Text.split("\n");
+              for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith("#EXT-X-STREAM-INF:")) {
+                  const bwMatch = line.match(/BANDWIDTH=(\d+)/);
+                  const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
+                  const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
+                  if (bwMatch && nextLine && !nextLine.startsWith("#")) {
+                    const bw = parseInt(bwMatch[1]);
+                    let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
+                    if (resMatch) label += ` (${resMatch[1]})`;
+                    const variantUrl = nextLine.startsWith("http")
+                      ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
+                      : nextLine.startsWith("/") ? nextLine : hlsUrl;
+                    parsed.push({ quality: label, url: variantUrl });
+                  }
+                }
+              }
+              if (parsed.length > 1) qualities = parsed;
+            }
+          } catch { /* keep auto */ }
+
+          player.setMasterUrl(hlsUrl);
+          player.setStreamData({ qualities });
+          player.setLoadingStream(false);
+          setStatusText("");
+          return true;
+        }
+
+        if (res.embed_url) {
+          setEmbedUrl(res.embed_url);
+          embedUrlRef.current = res.embed_url;
+          player.setLoadingStream(false);
+          setStatusText("");
+          return true;
+        }
       }
     } catch { /* fallback failed */ }
     setStatusText("");
@@ -157,7 +223,18 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
 
-    // If GogoAnime failed, try Anivexa as fallback
+    // If embed is available, just show it
+    if (embedUrlRef.current) {
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      player.setLoadingStream(false);
+      return;
+    }
+
+    // If GogoAnime failed, try Anitsu as fallback
     if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === null) {
       player.sourceRef.current = null;
       player.destroyHls();
@@ -167,7 +244,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       player.setPlayerStatus("idle");
       player.setLoadingStream(true);
       setStatusText("");
-      const ok = await tryAnivexaFallback(currentEpRef.current);
+      const ok = await tryAnitsuFallback(currentEpRef.current);
+      if (!ok) {
+        const ok2 = await tryWibuFallback(currentEpRef.current);
+        if (!ok2) {
+          player.setError(friendlyError("Playback error: " + errorType));
+          player.setLoadingStream(false);
+        }
+      }
+      return;
+    }
+
+    // If Anitsu failed, try Wibu as fallback
+    if (player.sourceRef.current === "anitsu") {
+      player.sourceRef.current = null;
+      player.destroyHls();
+      player.setStreamData(null);
+      player.setMasterUrl(null);
+      player.setError(null);
+      player.setPlayerStatus("idle");
+      player.setLoadingStream(true);
+      setStatusText("");
+      const ok = await tryWibuFallback(currentEpRef.current);
       if (!ok) {
         player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
@@ -175,8 +273,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       return;
     }
 
-    // If Anivexa failed, try GogoAnime as fallback
-    if (player.sourceRef.current === "anivexa" && selectedSlug) {
+    // If Wibu failed, try GogoAnime as fallback
+    if (player.sourceRef.current === "wibu" && selectedSlug) {
       player.sourceRef.current = null;
       player.destroyHls();
       player.setStreamData(null);
@@ -196,6 +294,14 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         setStatusText("");
         return;
       }
+      if (data?.embed_url) {
+        player.sourceRef.current = "gogoanime";
+        player.setLoadingStream(false);
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
+        setStatusText("");
+        return;
+      }
       if (data?.qualities) {
         player.sourceRef.current = "gogoanime";
         player.setStreamData({ qualities: data.qualities });
@@ -208,7 +314,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
     player.setError(friendlyError("Playback error: " + errorType));
     player.setLoadingStream(false);
-  }, [selectedSlug, audio, tryAnivexaFallback]);
+  }, [selectedSlug, audio, tryAnitsuFallback, tryWibuFallback]);
 
   const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError);
 
@@ -258,20 +364,28 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
+    setEmbedUrl(null);
+    embedUrlRef.current = null;
     player.fallbackAttemptedRef.current = false;
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    // 1. Try GogoAnime first
+    // 1. Try GogoAnime first (iframe/embed as primary)
     if (slug) {
       setStatusText("");
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
 
-      // If backend only returned embed_url (extraction failed), fall through to Anivexa
-      if (data?.embed_url && !data?.direct_stream) {
-        // fall through to Anivexa below
-      } else if (data?.direct_stream?.stream_url) {
+      if (data?.embed_url) {
+        player.sourceRef.current = "gogoanime";
+        player.setLoadingStream(false);
+        setEmbedUrl(data.embed_url);
+        embedUrlRef.current = data.embed_url;
+        setStatusText("");
+        return;
+      }
+
+      if (data?.direct_stream?.stream_url) {
         player.sourceRef.current = "gogoanime";
         const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
         let qualities = [{ quality: "Auto", url: proxiedUrl }];
@@ -313,15 +427,22 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       }
     }
 
-    // 2. If GogoAnime failed, try Anivexa as fallback
+    // 2. If GogoAnime failed, try Anitsu as fallback
     setStatusText("");
-    const anivexaOk = await tryAnivexaFallback(ep);
-    if (anivexaOk) return;
+    const anitsuOk = await tryAnitsuFallback(ep);
+    if (anitsuOk) return;
+
+    // 3. If Anitsu failed, try Wibu as fallback
+    setStatusText("");
+    const wibuOk = await tryWibuFallback(ep);
+    if (wibuOk) return;
 
     player.setLoadingStream(false);
     setStatusText("");
-    player.setError("Streaming is temporarily unavailable. Try again later.");
-  }, [tryAnivexaFallback, animeTitle, audio]);
+    if (!embedUrlRef.current) {
+      player.setError("Streaming is temporarily unavailable. Try again later.");
+    }
+  }, [tryAnitsuFallback, tryWibuFallback, animeTitle, audio]);
 
   useEffect(() => {
     if (selectedSlug && currentEp) {
@@ -371,10 +492,12 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
+    setEmbedUrl(null);
+    embedUrlRef.current = null;
     loadStream(selectedSlug, currentEp);
   }, [selectedSlug, currentEp, loadStream]);
 
-  const showResults = results.length > 0 || player.loadingStream || player.streamData || player.masterUrl;
+  const showResults = results.length > 0 || player.loadingStream || player.streamData || embedUrl || player.masterUrl;
 
   if (!showResults) return null;
 
@@ -404,7 +527,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
-      {player.error && !player.streamData && (
+      {player.error && !player.streamData && !embedUrl && (
         <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
           <AlertTriangle className="h-4 w-4 shrink-0" />
           <span className="text-xs flex-1">{player.error}</span>
@@ -458,6 +581,14 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               fsTargetRef.current
             )}
           </>
+        ) : embedUrl ? (
+          <iframe
+            src={embedUrl}
+            className="h-full w-full border-0"
+            allow="autoplay; fullscreen; picture-in-picture"
+            allowFullScreen
+            referrerPolicy="no-referrer"
+          />
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />

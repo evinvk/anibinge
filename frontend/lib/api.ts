@@ -282,6 +282,10 @@ export const api = {
   anivexaResolve: (q: string) =>
     request<{ anilist_id: number | null; title: any }>(`/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(q)}`, 30),
 
+  // Anitsu streaming (AnimeXin — 2nd fallback for donghua)
+  anitsuStream: (q: string, ep: number) =>
+    request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
+
   // Wibu streaming (3rd fallback)
   wibuStream: (q: string, ep: number, server: string = "vidstream") =>
     request<any>(`/api/v1/streaming/wibu/stream?q=${encodeURIComponent(q)}&ep=${ep}&server=${server}`, 30),

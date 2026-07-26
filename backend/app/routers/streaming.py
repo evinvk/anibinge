@@ -574,20 +574,6 @@ async def get_gogoanime_stream(
 
             raise HTTPException(status_code=404, detail="No streaming sources found")
 
-        # Try to extract direct stream URL from embed page
-        extracted = await gogoanime_client.extract_embed_stream(embed_url)
-        if extracted and extracted.get("stream_url"):
-            stream_url = extracted["stream_url"]
-            return {
-                "data": {
-                    "embed_url": embed_url,
-                    "direct_stream": {
-                        "stream_url": stream_url,
-                        "referer": extracted.get("referer", ""),
-                    },
-                }
-            }
-
         return {"data": {"embed_url": embed_url}}
     except HTTPException:
         raise
@@ -920,6 +906,33 @@ async def anivexa_stream(
         raise HTTPException(status_code=503, detail="Anivexa stream unavailable")
 
 
+@router.get("/anitsu/stream")
+@limiter.limit("30/minute")
+async def anitsu_stream(
+    request: Request,
+    q: str = Query(..., min_length=2, description="Anime title to search"),
+    ep: int = Query(..., ge=1, description="Episode number"),
+):
+    """Search by title, resolve to AniList ID, and get stream from Animetsu (AnimeXin).
+    Used as second fallback after GogoAnime."""
+    try:
+        from app.services import anilist_client, anitsu_client
+        result = await anilist_client.search_anime(q, per_page=5)
+        media = result.get("Page", {}).get("media", [])
+        if not media:
+            raise HTTPException(status_code=404, detail="Anime not found on AniList")
+        anilist_id = media[0]["id"]
+
+        stream_data = await anitsu_client.get_stream(anilist_id, ep)
+        if not stream_data or (not stream_data.get("stream_url") and not stream_data.get("embed_url")):
+            raise HTTPException(status_code=404, detail="Stream not available on AnimeXin")
+        return stream_data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="AnimeXin stream unavailable")
+
+
 @router.get("/wibu/stream")
 @limiter.limit("30/minute")
 async def wibu_stream(
@@ -1008,7 +1021,7 @@ async def anivexa_master_m3u8(
             from urllib.parse import urlparse
             parsed = urlparse(m3u8_url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
-            m3u8_text = _rewrite_m3u8_generic(m3u8_text, m3u8_url, base_url)
+            m3u8_text = _rewrite_anivexa_m3u8(m3u8_text, m3u8_url, base_url)
 
         return Response(
             content=m3u8_text,
@@ -1096,7 +1109,7 @@ async def anivexa_proxy(
             from urllib.parse import urlparse
             parsed = urlparse(decoded_url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
-            body = _rewrite_m3u8_generic(body, decoded_url, base_url, proxy_base="/api/v1/streaming/anivexa/proxy", use_base64=True)
+            body = _rewrite_anivexa_m3u8(body, decoded_url, base_url)
 
             if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
                 raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
@@ -1125,11 +1138,12 @@ async def anivexa_proxy(
         raise HTTPException(status_code=502, detail="Proxy request failed")
 
 
-def _rewrite_m3u8_generic(m3u8_text: str, current_url: str, base_url: str, proxy_base: str = "/api/v1/streaming/proxy", use_base64: bool = False) -> str:
-    """Rewrite relative URLs in M3U8 to go through the given proxy endpoint. Filters ad segments."""
-    from urllib.parse import urljoin, urlparse, quote
+def _rewrite_anivexa_m3u8(m3u8_text: str, current_url: str, base_url: str) -> str:
+    """Rewrite relative URLs in M3U8 to go through the anivexa proxy endpoint. Filters ad segments."""
+    from urllib.parse import urljoin, urlparse
     import re
 
+    proxy_base = "/api/v1/streaming/anivexa/proxy"
     lines = m3u8_text.split("\n")
     result = []
     i = 0
@@ -1161,12 +1175,9 @@ def _rewrite_m3u8_generic(m3u8_text: str, current_url: str, base_url: str, proxy
             i += 1
             continue
 
-        # Rewrite to proxy
-        if use_base64:
-            encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
-            result.append(f"{proxy_base}?url={encoded}")
-        else:
-            result.append(f"{proxy_base}?url={quote(resolved, safe='')}")
+        # Encode and rewrite to proxy
+        encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
+        result.append(f"{proxy_base}?url={encoded}")
         i += 1
 
     return "\n".join(result)
@@ -1282,7 +1293,6 @@ async def download_episode(
         stream_url = None
         referer = ""
         stream_type = None
-        subtitles = []
 
         # Path 1: GogoAnime — reuse the proven get_stream_sources()
         if slug:
@@ -1326,18 +1336,8 @@ async def download_episode(
                     stream_url = result.get("stream_url")
                     referer = result.get("referer", "")
                     stream_type = result.get("stream_type", "mp4")
-                    subtitles = result.get("subtitles", [])
             except Exception as e:
                 logger.warning("Anivexa download resolve failed: %s", e)
-
-        # Always try Anivexa for subtitles even if video came from GogoAnime
-        if not subtitles and anilist_id:
-            try:
-                sub_result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
-                if sub_result:
-                    subtitles = sub_result.get("subtitles", [])
-            except Exception:
-                pass
 
         if not stream_url:
             raise HTTPException(status_code=404, detail="No streaming source available")
@@ -1380,162 +1380,69 @@ async def download_episode(
         import os as _os
         import shutil as _shutil
 
+        # Parse master m3u8 to pick best variant — ffmpeg can't auto-select from multi-program masters
+        if "EXT-X-STREAM-INF" in body:
+            best_url = None
+            best_bw = -1
+            for line in body.splitlines():
+                line = line.strip()
+                if line.startswith("#EXT-X-STREAM-INF"):
+                    bw = 0
+                    for part in line.split(","):
+                        if "BANDWIDTH=" in part:
+                            try:
+                                bw = int(part.split("=")[1].strip())
+                            except ValueError:
+                                pass
+                elif line and not line.startswith("#") and best_bw is not None:
+                    if bw > best_bw:
+                        best_bw = bw
+                        from urllib.parse import urljoin as _urljoin
+                        best_url = _urljoin(stream_url, line)
+                    bw = 0
+            if best_url:
+                stream_url = best_url
+
         safe_name = _re.sub(r'[^\w\-]', '_', filename)
         tmp_dir = _tmpfile.mkdtemp()
         mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
-        concat_path = _os.path.join(tmp_dir, "segments.txt")
         try:
-            # Fetch variant playlist
-            from urllib.parse import urljoin as _urljoin
-            var_resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
-            var_resp.raise_for_status()
-            var_body = var_resp.text
+            cmd = [
+                "ffmpeg", "-y",
+                "-referer", referer or "",
+                "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
+                "-headers", f"Referer: {referer or ''}\r\n",
+                "-allowed_extensions", "ALL",
+                "-i", stream_url,
+                "-map", "0",
+                "-c", "copy",
+                "-movflags", "+faststart",
+                mp4_path,
+            ]
+            proc = await _aio.create_subprocess_exec(
+                *cmd,
+                stdout=_aio.subprocess.PIPE,
+                stderr=_aio.subprocess.PIPE,
+            )
+            stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=300)
 
-            # If this is still a master, pick best variant
-            if "EXT-X-STREAM-INF" in var_body:
-                best_url = None
-                best_bw = -1
-                for line in var_body.splitlines():
-                    line = line.strip()
-                    if line.startswith("#EXT-X-STREAM-INF"):
-                        bw = 0
-                        for part in line.split(","):
-                            if "BANDWIDTH=" in part:
-                                try:
-                                    bw = int(part.split("=")[1].strip())
-                                except ValueError:
-                                    pass
-                    elif line and not line.startswith("#") and best_bw is not None:
-                        if bw > best_bw:
-                            best_bw = bw
-                            best_url = _urljoin(stream_url, line)
-                        bw = 0
-                if best_url:
-                    stream_url = best_url
-                    var_resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
-                    var_resp.raise_for_status()
-                    var_body = var_resp.text
+            if proc.returncode != 0:
+                err_msg = stderr.decode(errors="replace")[-500:]
+                logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
+                raise RuntimeError(f"ffmpeg failed: {err_msg}")
 
-            # Parse segment URLs from playlist
-            seg_urls = []
-            for line in var_body.splitlines():
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    seg_urls.append(_urljoin(stream_url, line))
+            with open(mp4_path, "rb") as f:
+                mp4_content = f.read()
 
-            if not seg_urls:
-                raise RuntimeError("No segments found in HLS playlist")
-
-            batch_size = 30
-
-            # Download all segments concurrently in small batches
-            logger.info("Downloading %d HLS segments for %s", len(seg_urls), filename)
-            sem = _aio.Semaphore(8)
-
-            async def _fetch_seg(idx: int, url: str) -> tuple[int, bytes]:
-                async with sem:
-                    for attempt in range(5):
-                        r = await dl_client.get(url, headers={"Referer": referer} if referer else {})
-                        if r.status_code == 429:
-                            await _aio.sleep(min(2 ** (attempt + 1), 16))
-                            continue
-                        r.raise_for_status()
-                        return idx, r.content
-                    raise RuntimeError(f"Segment {idx} failed after 5 retries")
-
-            # Download subtitle files if available
-            sub_files = []
-            if subtitles:
-                for i, sub in enumerate(subtitles[:5]):
-                    try:
-                        sub_url = sub.get("file", "")
-                        if not sub_url:
-                            continue
-                        sub_resp = await dl_client.get(sub_url, headers={"Referer": sub.get("referer", "")})
-                        if sub_resp.status_code == 200:
-                            ext = "vtt"
-                            if ".srt" in sub_url:
-                                ext = "srt"
-                            sub_path = _os.path.join(tmp_dir, f"sub_{i}.{ext}")
-                            with open(sub_path, "wb") as sf:
-                                sf.write(sub_resp.content)
-                            sub_files.append({"path": sub_path, "label": sub.get("label", f"Sub {i}")})
-                    except Exception as e:
-                        logger.warning("Subtitle download failed: %s", e)
-
-            if sub_files:
-                # Write segments to disk, mux with ffmpeg to embed subtitles
-                concat_path = _os.path.join(tmp_dir, "concat.txt")
-                for batch_start in range(0, len(seg_urls), batch_size):
-                    batch_end = min(batch_start + batch_size, len(seg_urls))
-                    batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
-                    results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
-                    for idx, data in sorted(results):
-                        seg_file = _os.path.join(tmp_dir, f"seg_{idx:05d}.ts")
-                        with open(seg_file, "wb") as sf:
-                            sf.write(data)
-                    del results
-
-                with open(concat_path, "w", encoding="utf-8") as cf:
-                    for i in range(len(seg_urls)):
-                        cf.write(f"file '{_os.path.join(tmp_dir, f'seg_{i:05d}.ts')}'\n")
-
-                # Build ffmpeg command with subtitle inputs
-                cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_path]
-                for sf in sub_files:
-                    cmd.extend(["-i", sf["path"]])
-                cmd.extend(["-map", "0:v", "-map", "0:a?", "-map", "0:s?"])
-                for i in range(len(sub_files)):
-                    cmd.extend(["-map", str(i + 1)])
-                cmd.extend(["-c", "copy", "-movflags", "+faststart", "pipe:1"])
-
-                proc = await _aio.create_subprocess_exec(
-                    *cmd, stdout=_aio.subprocess.PIPE, stderr=_aio.subprocess.PIPE,
-                )
-
-                async def _stream_muxed():
-                    try:
-                        while True:
-                            chunk = await proc.stdout.read(65536)
-                            if not chunk:
-                                break
-                            yield chunk
-                    finally:
-                        await proc.wait()
-                        try:
-                            _shutil.rmtree(tmp_dir, ignore_errors=True)
-                        except Exception:
-                            pass
-                        await dl_client.aclose()
-
-                return StreamingResponse(
-                    _stream_muxed(), media_type="video/mp4",
-                    headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
-                )
-            else:
-                # No subtitles — stream segments directly, no disk needed
-                async def _stream():
-                    try:
-                        for batch_start in range(0, len(seg_urls), batch_size):
-                            batch_end = min(batch_start + batch_size, len(seg_urls))
-                            batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
-                            results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
-                            for idx, data in sorted(results):
-                                yield data
-                            del results
-                            if batch_end < len(seg_urls):
-                                await _aio.sleep(0.1)
-                    finally:
-                        try:
-                            _shutil.rmtree(tmp_dir, ignore_errors=True)
-                        except Exception:
-                            pass
-                        await dl_client.aclose()
-
-                return StreamingResponse(
-                    _stream(), media_type="video/mp4",
-                    headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
-                )
+            await dl_client.aclose()
+            return Response(
+                content=mp4_content,
+                media_type="video/mp4",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
+                    "Content-Length": str(len(mp4_content)),
+                },
+            )
         finally:
             try:
                 _shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -1548,69 +1455,6 @@ async def download_episode(
         await dl_client.aclose()
         logger.error("Download failed (slug=%s, ep=%s, audio=%s): %s", slug, ep, audio, e, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Download failed: {type(e).__name__}: {e}")
-
-
-# ── Generic proxy endpoint ──────────────────────────────────────────
-
-@router.get("/proxy")
-@limiter.limit("300/minute")
-async def generic_proxy(
-    request: Request,
-    url: str = Query(..., description="URL to proxy"),
-    referer: str = Query("", description="Optional referer override"),
-):
-    """Generic streaming proxy that works for any allowed CDN host.
-    Unlike the source-specific proxies, this accepts a plain URL instead of base64-encoded.
-    Rewrites M3U8 content to route segments through this proxy."""
-    if not _is_proxy_url_allowed(url):
-        from urllib.parse import urlparse
-        blocked_host = urlparse(url).hostname
-        logger.warning("Generic proxy blocked host: %s (URL: %.200s)", blocked_host, url)
-        raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
-
-    upstream_referer = referer or _get_upstream_referer(url)
-    fetch_headers = {**_PROXY_HEADERS, "Referer": upstream_referer, "Origin": upstream_referer.rstrip("/")}
-
-    try:
-        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=fetch_headers, follow_redirects=True)
-        resp = await client.get(url)
-
-        if resp.is_error:
-            raise _httpx.HTTPStatusError(f"Upstream {resp.status_code}", request=resp.request, response=resp)
-
-        content_type = resp.headers.get("content-type", "")
-        body = resp.text
-
-        if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
-            from urllib.parse import urlparse as _urlparse
-            parsed = _urlparse(url)
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
-            body = _rewrite_m3u8_generic(body, url, base_url)
-
-            if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
-                raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
-
-            return Response(
-                content=body,
-                media_type="application/vnd.apple.mpegurl",
-                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
-            )
-
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
-    except _httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Proxy request failed: {e}")
 
 
 # ── Diagnostic endpoint ──────────────────────────────────────────────
