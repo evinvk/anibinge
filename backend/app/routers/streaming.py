@@ -1399,61 +1399,75 @@ async def download_episode(
             if not seg_urls:
                 raise RuntimeError("No segments found in HLS playlist")
 
-            # Download all segments concurrently with retry
+            # Download all segments concurrently in small batches to avoid 429s and memory blowup
             logger.info("Downloading %d HLS segments for %s", len(seg_urls), filename)
-            sem = _aio.Semaphore(20)
+            sem = _aio.Semaphore(8)
 
             async def _fetch_seg(idx: int, url: str) -> tuple[int, bytes]:
                 async with sem:
                     for attempt in range(5):
                         r = await dl_client.get(url, headers={"Referer": referer} if referer else {})
                         if r.status_code == 429:
-                            await _aio.sleep(min(2 ** attempt, 16))
+                            await _aio.sleep(min(2 ** (attempt + 1), 16))
                             continue
                         r.raise_for_status()
                         return idx, r.content
-                    raise RuntimeError(f"Failed to download segment {idx} after 5 attempts")
+                    raise RuntimeError(f"Segment {idx} failed after 5 retries")
 
-            results = await _aio.gather(*[_fetch_seg(i, u) for i, u in enumerate(seg_urls)])
-            for idx, data in sorted(results):
-                seg_file = _os.path.join(tmp_dir, f"seg_{idx:05d}.ts")
-                with open(seg_file, "wb") as sf:
-                    sf.write(data)
+            # Download in batches of 30 to manage memory
+            batch_size = 30
+            for batch_start in range(0, len(seg_urls), batch_size):
+                batch_end = min(batch_start + batch_size, len(seg_urls))
+                batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
+                results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
+                for idx, data in sorted(results):
+                    seg_file = _os.path.join(tmp_dir, f"seg_{idx:05d}.ts")
+                    with open(seg_file, "wb") as sf:
+                        sf.write(data)
+                del results
+                if batch_end < len(seg_urls):
+                    await _aio.sleep(0.2)
+
             with open(concat_path, "w", encoding="utf-8") as cf:
                 for i in range(len(seg_urls)):
                     cf.write(f"file '{_os.path.join(tmp_dir, f'seg_{i:05d}.ts')}'\n")
 
-            # Use ffmpeg concat demuxer to remux into MP4 (avoids HLS demuxer extension issue)
+            await dl_client.aclose()
+
+            # Stream ffmpeg output directly to avoid loading MP4 into memory
             cmd = [
                 "ffmpeg", "-y",
                 "-f", "concat", "-safe", "0",
                 "-i", concat_path,
                 "-c", "copy",
                 "-movflags", "+faststart",
-                mp4_path,
+                "pipe:1",
             ]
             proc = await _aio.create_subprocess_exec(
                 *cmd,
                 stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.PIPE,
             )
-            stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=300)
 
-            if proc.returncode != 0:
-                err_msg = stderr.decode(errors="replace")[-500:]
-                logger.error("ffmpeg concat→MP4 failed (code %d): %s", proc.returncode, err_msg)
-                raise RuntimeError(f"ffmpeg failed: {err_msg}")
+            async def _stream():
+                try:
+                    while True:
+                        chunk = await proc.stdout.read(65536)
+                        if not chunk:
+                            break
+                        yield chunk
+                finally:
+                    await proc.wait()
+                    try:
+                        _shutil.rmtree(tmp_dir, ignore_errors=True)
+                    except Exception:
+                        pass
 
-            with open(mp4_path, "rb") as f:
-                mp4_content = f.read()
-
-            await dl_client.aclose()
-            return Response(
-                content=mp4_content,
+            return StreamingResponse(
+                _stream(),
                 media_type="video/mp4",
                 headers={
                     "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(mp4_content)),
                 },
             )
         finally:
