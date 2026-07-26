@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
+import { MonetagPopunder } from "@/components/monetag-popunder";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -114,6 +115,7 @@ function WatchPageInner({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen bg-void">
+      <MonetagPopunder />
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <Link
           href="/"
