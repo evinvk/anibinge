@@ -1282,6 +1282,7 @@ async def download_episode(
         stream_url = None
         referer = ""
         stream_type = None
+        subtitles = []
 
         # Path 1: GogoAnime — reuse the proven get_stream_sources()
         if slug:
@@ -1325,8 +1326,18 @@ async def download_episode(
                     stream_url = result.get("stream_url")
                     referer = result.get("referer", "")
                     stream_type = result.get("stream_type", "mp4")
+                    subtitles = result.get("subtitles", [])
             except Exception as e:
                 logger.warning("Anivexa download resolve failed: %s", e)
+
+        # Always try Anivexa for subtitles even if video came from GogoAnime
+        if not subtitles and anilist_id:
+            try:
+                sub_result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+                if sub_result:
+                    subtitles = sub_result.get("subtitles", [])
+            except Exception:
+                pass
 
         if not stream_url:
             raise HTTPException(status_code=404, detail="No streaming source available")
@@ -1415,7 +1426,9 @@ async def download_episode(
             if not seg_urls:
                 raise RuntimeError("No segments found in HLS playlist")
 
-            # Download all segments concurrently in small batches to avoid 429s and memory blowup
+            batch_size = 30
+
+            # Download all segments concurrently in small batches
             logger.info("Downloading %d HLS segments for %s", len(seg_urls), filename)
             sem = _aio.Semaphore(8)
 
@@ -1430,33 +1443,99 @@ async def download_episode(
                         return idx, r.content
                     raise RuntimeError(f"Segment {idx} failed after 5 retries")
 
-            # Download in batches and stream directly — no disk, no ffmpeg
-            batch_size = 30
-            async def _stream():
-                try:
-                    for batch_start in range(0, len(seg_urls), batch_size):
-                        batch_end = min(batch_start + batch_size, len(seg_urls))
-                        batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
-                        results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
-                        for idx, data in sorted(results):
-                            yield data
-                        del results
-                        if batch_end < len(seg_urls):
-                            await _aio.sleep(0.1)
-                finally:
+            # Download subtitle files if available
+            sub_files = []
+            if subtitles:
+                for i, sub in enumerate(subtitles[:5]):
                     try:
-                        _shutil.rmtree(tmp_dir, ignore_errors=True)
-                    except Exception:
-                        pass
-                    await dl_client.aclose()
+                        sub_url = sub.get("file", "")
+                        if not sub_url:
+                            continue
+                        sub_resp = await dl_client.get(sub_url, headers={"Referer": sub.get("referer", "")})
+                        if sub_resp.status_code == 200:
+                            ext = "vtt"
+                            if ".srt" in sub_url:
+                                ext = "srt"
+                            sub_path = _os.path.join(tmp_dir, f"sub_{i}.{ext}")
+                            with open(sub_path, "wb") as sf:
+                                sf.write(sub_resp.content)
+                            sub_files.append({"path": sub_path, "label": sub.get("label", f"Sub {i}")})
+                    except Exception as e:
+                        logger.warning("Subtitle download failed: %s", e)
 
-            return StreamingResponse(
-                _stream(),
-                media_type="video/mp4",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                },
-            )
+            if sub_files:
+                # Write segments to disk, mux with ffmpeg to embed subtitles
+                concat_path = _os.path.join(tmp_dir, "concat.txt")
+                for batch_start in range(0, len(seg_urls), batch_size):
+                    batch_end = min(batch_start + batch_size, len(seg_urls))
+                    batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
+                    results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
+                    for idx, data in sorted(results):
+                        seg_file = _os.path.join(tmp_dir, f"seg_{idx:05d}.ts")
+                        with open(seg_file, "wb") as sf:
+                            sf.write(data)
+                    del results
+
+                with open(concat_path, "w", encoding="utf-8") as cf:
+                    for i in range(len(seg_urls)):
+                        cf.write(f"file '{_os.path.join(tmp_dir, f'seg_{i:05d}.ts')}'\n")
+
+                # Build ffmpeg command with subtitle inputs
+                cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_path]
+                for sf in sub_files:
+                    cmd.extend(["-i", sf["path"]])
+                cmd.extend(["-map", "0:v", "-map", "0:a?", "-map", "0:s?"])
+                for i in range(len(sub_files)):
+                    cmd.extend(["-map", str(i + 1)])
+                cmd.extend(["-c", "copy", "-movflags", "+faststart", "pipe:1"])
+
+                proc = await _aio.create_subprocess_exec(
+                    *cmd, stdout=_aio.subprocess.PIPE, stderr=_aio.subprocess.PIPE,
+                )
+
+                async def _stream_muxed():
+                    try:
+                        while True:
+                            chunk = await proc.stdout.read(65536)
+                            if not chunk:
+                                break
+                            yield chunk
+                    finally:
+                        await proc.wait()
+                        try:
+                            _shutil.rmtree(tmp_dir, ignore_errors=True)
+                        except Exception:
+                            pass
+                        await dl_client.aclose()
+
+                return StreamingResponse(
+                    _stream_muxed(), media_type="video/mp4",
+                    headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
+                )
+            else:
+                # No subtitles — stream segments directly, no disk needed
+                async def _stream():
+                    try:
+                        for batch_start in range(0, len(seg_urls), batch_size):
+                            batch_end = min(batch_start + batch_size, len(seg_urls))
+                            batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
+                            results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
+                            for idx, data in sorted(results):
+                                yield data
+                            del results
+                            if batch_end < len(seg_urls):
+                                await _aio.sleep(0.1)
+                    finally:
+                        try:
+                            _shutil.rmtree(tmp_dir, ignore_errors=True)
+                        except Exception:
+                            pass
+                        await dl_client.aclose()
+
+                return StreamingResponse(
+                    _stream(), media_type="video/mp4",
+                    headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
+                )
         finally:
             try:
                 _shutil.rmtree(tmp_dir, ignore_errors=True)
