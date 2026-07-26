@@ -518,18 +518,8 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
             return None
         return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
 
-    # Skip broken M3U8 resolution if we already have an embed URL
+    # Iframe is primary — return embed URL directly without extracting HLS
     if embed_url:
-        # Try to extract direct stream URL from the embed page
-        extracted = await extract_embed_stream(embed_url)
-        if extracted:
-            return {
-                "master_m3u8": None,
-                "qualities": [],
-                "embed_url": None,
-                "server_id": embed_server_id,
-                "direct_stream": extracted,
-            }
         return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
 
     result = await resolve_m3u8(proxy_url)
