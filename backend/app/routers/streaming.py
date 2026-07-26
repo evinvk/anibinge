@@ -1490,12 +1490,14 @@ async def generic_proxy(
         raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
 
     upstream_referer = referer or _get_upstream_referer(url)
-    fetch_headers = {**_PROXY_HEADERS, "Referer": upstream_referer}
+    fetch_headers = {**_PROXY_HEADERS, "Referer": upstream_referer, "Origin": upstream_referer.rstrip("/")}
 
     try:
         client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=fetch_headers, follow_redirects=True)
         resp = await client.get(url)
-        resp.raise_for_status()
+
+        if resp.is_error:
+            raise _httpx.HTTPStatusError(f"Upstream {resp.status_code}", request=resp.request, response=resp)
 
         content_type = resp.headers.get("content-type", "")
         body = resp.text
