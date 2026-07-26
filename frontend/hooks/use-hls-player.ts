@@ -35,7 +35,9 @@ export function useHlsPlayer(
   const loadGenRef = useRef(0);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mediaErrorRetryRef = useRef(0);
+  const networkErrorRetryRef = useRef(0);
   const freezeRecoveryRef = useRef(0);
+  const freezeCountRef = useRef(0);
   const bufferingStartRef = useRef(0);
   const consecutive410Ref = useRef(0);
   onFatalErrorRef.current = onFatalError;
@@ -77,8 +79,12 @@ export function useHlsPlayer(
         // Video frame not rendering while time advances → audio-only playback
         if (Date.now() - lastVideoFrameTime > 2000) {
           lastVideoFrameTime = Date.now();
-          if (onFatalErrorRef.current) {
-            onFatalErrorRef.current("videoFreeze");
+          freezeCountRef.current++;
+          if (freezeCountRef.current >= 3) {
+            freezeCountRef.current = 0;
+            if (onFatalErrorRef.current) {
+              onFatalErrorRef.current("videoFreeze");
+            }
           }
         }
       } else if (Date.now() - lastTimeChange > 2000) {
@@ -106,15 +112,23 @@ export function useHlsPlayer(
         lastTimeChange = Date.now();
         if (freezeRecoveryRef.current >= 3) {
           freezeRecoveryRef.current = 0;
-          if (onFatalErrorRef.current) {
-            onFatalErrorRef.current("videoFreeze");
+          freezeCountRef.current++;
+          if (freezeCountRef.current >= 3) {
+            freezeCountRef.current = 0;
+            if (onFatalErrorRef.current) {
+              onFatalErrorRef.current("videoFreeze");
+            }
           }
         }
       }
       if (bufferingStartRef.current > 0 && Date.now() - bufferingStartRef.current > 8000) {
         bufferingStartRef.current = 0;
-        if (onFatalErrorRef.current) {
-          onFatalErrorRef.current("videoFreeze");
+        freezeCountRef.current++;
+        if (freezeCountRef.current >= 3) {
+          freezeCountRef.current = 0;
+          if (onFatalErrorRef.current) {
+            onFatalErrorRef.current("videoFreeze");
+          }
         }
       }
       rafId = requestAnimationFrame(checkFreeze);
@@ -134,6 +148,7 @@ export function useHlsPlayer(
       seekingStartedRef.current = Date.now();
       bufferingStartRef.current = 0;
       freezeRecoveryRef.current = 0;
+      freezeCountRef.current = 0;
     };
     const onSeeked = () => {
       lastTime = video.currentTime;
@@ -150,6 +165,8 @@ export function useHlsPlayer(
       isSeekingRef.current = false;
       bufferingStartRef.current = 0;
       mediaErrorRetryRef.current = 0;
+      networkErrorRetryRef.current = 0;
+      freezeCountRef.current = 0;
       consecutive410Ref.current = 0;
       lastTime = video.currentTime;
       lastTimeChange = Date.now();
@@ -221,6 +238,8 @@ export function useHlsPlayer(
 
     setPlayerStatus("buffering");
     mediaErrorRetryRef.current = 0;
+    networkErrorRetryRef.current = 0;
+    freezeCountRef.current = 0;
 
     const gen = ++loadGenRef.current;
     const Hls = (await import("hls.js")).default;
@@ -246,6 +265,8 @@ export function useHlsPlayer(
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
         setSelectedQuality(-1);
         setLevels(hls.levels ? [...hls.levels] : []);
+        networkErrorRetryRef.current = 0;
+        freezeCountRef.current = 0;
         video.play().catch(() => {
           setPlayerStatus("error");
         });
@@ -274,11 +295,18 @@ export function useHlsPlayer(
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
               if (data.response?.code === 410 || data.response?.code === 404) {
-                setPlayerStatus("error");
-                if (onFatalErrorRef.current) {
-                  onFatalErrorRef.current(data.type);
+                networkErrorRetryRef.current++;
+                if (networkErrorRetryRef.current < 3) {
+                  console.error("[HLS] Network error (%d/3), retrying...", networkErrorRetryRef.current, data.details);
+                  hls.startLoad();
                 } else {
-                  setError("Playback error: " + data.type);
+                  networkErrorRetryRef.current = 0;
+                  setPlayerStatus("error");
+                  if (onFatalErrorRef.current) {
+                    onFatalErrorRef.current(data.type);
+                  } else {
+                    setError("Playback error: " + data.type);
+                  }
                 }
               } else {
                 console.error("[HLS] Network error, retrying...", data.details);
