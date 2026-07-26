@@ -22,24 +22,28 @@ logger = logging.getLogger("anibinge.cache")
 settings = get_settings()
 _redis: redis.Redis | None = None
 
-_pool = redis.ConnectionPool.from_url(
-    settings.REDIS_URL,
-    encoding="utf-8",
-    decode_responses=True,
-    max_connections=20,
-    socket_connect_timeout=2,
-    socket_timeout=2,
-)
-_redis = redis.Redis(connection_pool=_pool)
+try:
+    if settings.REDIS_URL and settings.REDIS_URL.startswith(("redis://", "rediss://", "unix://")):
+        _pool = redis.ConnectionPool.from_url(
+            settings.REDIS_URL,
+            encoding="utf-8",
+            decode_responses=True,
+            max_connections=20,
+            socket_connect_timeout=2,
+            socket_timeout=2,
+        )
+        _redis = redis.Redis(connection_pool=_pool)
+except Exception as e:
+    logger.warning("Redis initialization skipped: %s. Application will run in uncached mode.", e)
 
 # Once a Redis connection failure has been observed, stop retrying it on
 # every single request (each attempt costs a connection-timeout's worth of
 # latency). We retry again after a short cooldown in case Redis recovers.
-_redis_unavailable_until: float = 0.0
+_redis_unavailable_until: float = 0.0 if _redis else float("inf")
 _REDIS_RETRY_COOLDOWN_SECONDS = 30.0
 
 
-async def get_redis() -> redis.Redis:
+async def get_redis() -> redis.Redis | None:
     return _redis
 
 
