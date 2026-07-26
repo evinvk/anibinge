@@ -323,10 +323,12 @@ export const api = {
 
   // Episode comments
   getComments: (slug: string, episodeNumber: number, sort: string = "newest") =>
-    request<{ comments: EpisodeCommentData[]; total: number }>(
-      `/api/v1/comments?slug=${encodeURIComponent(slug)}&episode_number=${episodeNumber}&sort=${sort}`,
-      0
-    ),
+    fetch(`${API_BASE}/api/v1/comments?slug=${encodeURIComponent(slug)}&episode_number=${episodeNumber}&sort=${sort}&_t=${Date.now()}`, {
+      cache: "no-store",
+    }).then(async (res) => {
+      if (!res.ok) throw new ApiError(res.status, `Request to comments failed: ${res.status}`);
+      return res.json() as Promise<{ comments: EpisodeCommentData[]; total: number }>;
+    }),
   postComment: (token: string, slug: string, episodeNumber: number, body: string, tag: string = "comment", parentId?: number) =>
     authedRequest<EpisodeCommentData>("/api/v1/comments", token, {
       method: "POST",
