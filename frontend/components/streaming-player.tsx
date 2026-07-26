@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { createPortal } from "react-dom";
 import { Play, ChevronDown, Loader2, AlertTriangle, Monitor, RotateCcw, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
@@ -61,7 +60,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const totalEpsRef = useRef(totalEps);
   totalEpsRef.current = totalEps;
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const fsTargetRef = useRef<Element | null>(null);
 
   const tryAnitsuFallback = useCallback(async (ep: number): Promise<boolean> => {
     setStatusText("");
@@ -315,9 +313,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   useEffect(() => {
     const onFsChange = () => {
-      const el = document.fullscreenElement;
-      setIsFullscreen(!!el);
-      fsTargetRef.current = el;
+      setIsFullscreen(!!document.fullscreenElement);
     };
     document.addEventListener("fullscreenchange", onFsChange);
     return () => document.removeEventListener("fullscreenchange", onFsChange);
@@ -555,7 +551,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               </div>
             )}
             {subs.activeCues.length > 0 && (
-              <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none">
+              <div className={`${isFullscreen ? 'fixed' : 'absolute'} bottom-12 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none ${isFullscreen ? 'z-[9999]' : ''}`}>
                 {subs.activeCues.map((text, i) => (
                   <span
                     key={i}
@@ -565,19 +561,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
                   </span>
                 ))}
               </div>
-            )}
-            {subs.activeCues.length > 0 && isFullscreen && fsTargetRef.current && createPortal(
-              <div className="absolute bottom-16 left-0 right-0 flex flex-col items-center gap-0.5 px-4 pointer-events-none z-50">
-                {subs.activeCues.map((text, i) => (
-                  <span
-                    key={i}
-                    className="rounded bg-black/70 px-3 py-1 text-center text-base font-medium text-white shadow-lg md:text-lg"
-                  >
-                    {text}
-                  </span>
-                ))}
-              </div>,
-              fsTargetRef.current
             )}
           </>
         ) : nextEpCountdown > 0 ? (
