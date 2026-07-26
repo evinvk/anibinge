@@ -1414,74 +1414,25 @@ async def download_episode(
                         return idx, r.content
                     raise RuntimeError(f"Segment {idx} failed after 5 retries")
 
-            # Download in batches and write directly to disk
+            # Download in batches and stream directly — no disk, no ffmpeg
             batch_size = 30
-            for batch_start in range(0, len(seg_urls), batch_size):
-                batch_end = min(batch_start + batch_size, len(seg_urls))
-                batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
-                results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
-                for idx, data in sorted(results):
-                    seg_file = _os.path.join(tmp_dir, f"seg_{idx:05d}.ts")
-                    with open(seg_file, "wb") as sf:
-                        sf.write(data)
-                del results
-                if batch_end < len(seg_urls):
-                    await _aio.sleep(0.1)
-
-            # Concatenate TS segments directly (TS format is designed for binary concat)
-            for i in range(len(seg_urls)):
-                seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
-                with open(seg_file, "rb") as sf:
-                    while True:
-                        chunk = sf.read(65536)
-                        if not chunk:
-                            break
-
-            concat_file = _os.path.join(tmp_dir, "concat.ts")
-            with open(concat_file, "wb") as out_f:
-                for i in range(len(seg_urls)):
-                    seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
-                    with open(seg_file, "rb") as sf:
-                        while True:
-                            chunk = sf.read(65536)
-                            if not chunk:
-                                break
-                            out_f.write(chunk)
-
-            # Clean up individual segment files to free disk
-            for i in range(len(seg_urls)):
-                try:
-                    _os.remove(_os.path.join(tmp_dir, f"seg_{i:05d}.ts"))
-                except Exception:
-                    pass
-
-            # Remux TS → MP4 via pipe (much faster since TS segments are already contiguous)
-            cmd = [
-                "ffmpeg", "-y",
-                "-i", concat_file,
-                "-c", "copy",
-                "-movflags", "+faststart",
-                "pipe:1",
-            ]
-            proc = await _aio.create_subprocess_exec(
-                *cmd,
-                stdout=_aio.subprocess.PIPE,
-                stderr=_aio.subprocess.PIPE,
-            )
-
             async def _stream():
                 try:
-                    while True:
-                        chunk = await proc.stdout.read(65536)
-                        if not chunk:
-                            break
-                        yield chunk
+                    for batch_start in range(0, len(seg_urls), batch_size):
+                        batch_end = min(batch_start + batch_size, len(seg_urls))
+                        batch = [(i, seg_urls[i]) for i in range(batch_start, batch_end)]
+                        results = await _aio.gather(*[_fetch_seg(i, u) for i, u in batch])
+                        for idx, data in sorted(results):
+                            yield data
+                        del results
+                        if batch_end < len(seg_urls):
+                            await _aio.sleep(0.1)
                 finally:
-                    await proc.wait()
                     try:
                         _shutil.rmtree(tmp_dir, ignore_errors=True)
                     except Exception:
                         pass
+                    await dl_client.aclose()
 
             return StreamingResponse(
                 _stream(),
