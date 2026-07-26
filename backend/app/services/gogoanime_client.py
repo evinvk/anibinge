@@ -274,14 +274,22 @@ async def resolve_m3u8(proxy_url: str) -> tuple[str, str] | None:
 
 
 def _resolve_url(base: str, relative: str) -> str:
-    """Resolve a relative URL against a base URL."""
+    """Resolve a relative URL against a base URL.
+    Uses the base URL's own origin for host-relative paths (/...).
+    Handles base URLs with or without a trailing path component."""
+    from urllib.parse import urlparse
     if relative.startswith("http"):
         return relative
+    parsed = urlparse(base)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
     if relative.startswith("/"):
-        return f"{_BASE_URL}{relative}"
-    # relative path
-    base_path = base.rsplit("/", 1)[0] + "/"
-    return base_path + relative
+        return f"{origin}{relative}"
+    # relative path — use the directory of the base URL
+    if parsed.path and parsed.path != "/":
+        base_dir = base.rsplit("/", 1)[0] + "/"
+    else:
+        base_dir = origin + "/"
+    return base_dir + relative
 
 
 _AD_DOMAINS = {
@@ -568,7 +576,21 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
         qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
 
     logger.info("GogoAnime stream %s ep-%d: %d quality options, embed=%s", slug, episode_number, len(qualities), bool(embed_url))
-    return {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
+
+    # Return direct_stream too so the frontend goes through the embed-proxy pipeline
+    # (which handles referer/CORS properly) instead of the /master endpoint.
+    # The referer for the proxy URL will be determined automatically by the embed-proxy
+    # endpoint based on the upstream domain.
+    direct_stream_url = resolved_url if resolved_url.startswith("http") else f"{_BASE_URL}{resolved_url}"
+    direct_stream = {"stream_url": direct_stream_url, "referer": _get_embed_domain(direct_stream_url)}
+
+    return {
+        "master_m3u8": rewritten_master,
+        "qualities": qualities,
+        "embed_url": embed_url,
+        "server_id": embed_server_id,
+        "direct_stream": direct_stream,
+    }
 
 
 def get_catalog() -> list[dict]:

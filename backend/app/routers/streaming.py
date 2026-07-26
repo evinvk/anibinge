@@ -499,7 +499,6 @@ async def gogoanime_master_m3u8(
 ):
     """Serve the rewritten master M3U8 directly so hls.js can resolve variant URLs correctly.
     Blob URLs break relative URL resolution; serving from our domain fixes this."""
-    from urllib.parse import urlparse
     try:
         episode = await gogoanime_client.get_episode(slug, ep)
         if not episode:
@@ -513,9 +512,9 @@ async def gogoanime_master_m3u8(
         if not m3u8_text:
             raise HTTPException(status_code=503, detail="Failed to resolve M3U8 from GogoAnime")
 
-        parsed = urlparse(resolved_url)
-        base_url = f"{parsed.scheme}://{parsed.netloc}"
-        rewritten = gogoanime_client._rewrite_m3u8_urls(m3u8_text, base_url)
+        # Pass the full resolved URL as base so _rewrite_m3u8_urls can resolve
+        # relative segment/variant URLs against the correct CDN origin and path.
+        rewritten = gogoanime_client._rewrite_m3u8_urls(m3u8_text, resolved_url)
 
         return Response(
             content=rewritten,
@@ -650,10 +649,7 @@ async def gogoanime_proxy(
 
         # If it's M3U8 content, rewrite URLs to go through this proxy
         if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
-            from urllib.parse import urlparse
-            parsed = urlparse(decoded_url)
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
-            body = gogoanime_client._rewrite_m3u8_urls(body, base_url)
+            body = gogoanime_client._rewrite_m3u8_urls(body, decoded_url)
 
             if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
                 raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
@@ -1223,10 +1219,7 @@ async def fallback_stream(
                     result = await gogoanime_client.resolve_m3u8(proxy_url)
                     if result:
                         m3u8_text, resolved_url = result
-                        from urllib.parse import urlparse
-                        parsed = urlparse(resolved_url)
-                        base_url = f"{parsed.scheme}://{parsed.netloc}"
-                        rewritten = gogoanime_client._rewrite_m3u8_urls(m3u8_text, base_url)
+                        rewritten = gogoanime_client._rewrite_m3u8_urls(m3u8_text, resolved_url)
                         master_path = f"/api/v1/streaming/gogoanime/{slug}/master?ep={ep}"
                         return {
                             "source": "gogoanime",
