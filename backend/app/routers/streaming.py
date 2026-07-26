@@ -536,45 +536,38 @@ async def get_gogoanime_stream(
     ep: int = Query(..., ge=1, description="Episode number"),
     audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
-    """Resolve GogoAnime embed URL for an episode. Returns the embed page URL for iframe playback."""
+    """Resolve GogoAnime HLS stream for an episode. Returns direct_stream (M3U8 via proxy)
+    or qualities (master playlist path) for hls.js playback."""
     try:
         from app.services import gogoanime_client
-        episode = await gogoanime_client.get_episode(slug, ep)
-        if not episode:
-            raise HTTPException(status_code=404, detail="Episode not found")
-
-        server_info = episode.get("server") or {}
-        qualities_list = server_info.get("qualities", [])
-        preferred = audio.upper()
-        ordered_groups = []
-        for qg in qualities_list:
-            if qg.get("title", "").upper() == preferred:
-                ordered_groups.insert(0, qg)
-            else:
-                ordered_groups.append(qg)
-
-        embed_url = None
-        for quality_group in ordered_groups:
-            if embed_url:
-                break
-            for server in quality_group.get("serverList", []):
-                sid = server.get("serverId", "")
-                if sid.startswith("anivexa:"):
-                    continue
-                resolved = await gogoanime_client.resolve_server_url(sid)
-                if resolved:
-                    embed_url = resolved
-                    break
-
-        if not embed_url:
-            proxy_url = episode.get("defaultStreamingUrl", "")
-            if proxy_url:
-                full = proxy_url if proxy_url.startswith("http") else f"{gogoanime_client._BASE_URL}{proxy_url}"
-                return {"data": {"embed_url": full}}
-
+        effective_slug = _dub_slug(slug, audio)
+        sources = await gogoanime_client.get_stream_sources(effective_slug, ep, audio)
+        if not sources:
             raise HTTPException(status_code=404, detail="No streaming sources found")
 
-        return {"data": {"embed_url": embed_url}}
+        direct = sources.get("direct_stream")
+        if direct and direct.get("stream_url"):
+            return {"data": {
+                "direct_stream": direct,
+            }}
+
+        master = sources.get("master_m3u8")
+        if master:
+            return {"data": {
+                "master_m3u8": master,
+                "qualities": sources.get("qualities", []),
+            }}
+
+        # If get_stream_sources returned only an embed_url, try to extract from it
+        embed = sources.get("embed_url")
+        if embed:
+            extracted = await gogoanime_client.extract_embed_stream(embed)
+            if extracted and extracted.get("stream_url"):
+                return {"data": {
+                    "direct_stream": extracted,
+                }}
+
+        raise HTTPException(status_code=404, detail="No playable HLS stream found on GogoAnime")
     except HTTPException:
         raise
     except Exception as e:
