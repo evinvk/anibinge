@@ -408,6 +408,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
                 ...s,
                 file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
               })));
+              // Kick off VTT parsing immediately (subtitlesRef is already updated)
+              subs.loadSubtitles();
             }
           })
           .catch(() => {});
@@ -429,6 +431,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
                 ...s,
                 file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
               })));
+              // Kick off VTT parsing immediately
+              subs.loadSubtitles();
             }
           })
           .catch(() => {});

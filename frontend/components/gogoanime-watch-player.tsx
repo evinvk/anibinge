@@ -157,6 +157,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 ...s,
                 file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
               })));
+              // Kick off VTT parsing immediately
+              subs.loadSubtitles();
             }
           })
           .catch(() => {});
@@ -178,6 +180,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 ...s,
                 file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
               })));
+              // Kick off VTT parsing immediately
+              subs.loadSubtitles();
             }
           })
           .catch(() => {});
