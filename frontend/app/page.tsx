@@ -14,15 +14,28 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   }
 }
 
-async function TrendingRow({ data }: { data: any }) {
-  if (!data) return null;
+async function TrendingRow({ data }: { data: any[] }) {
+  if (!data || data.length === 0) return null;
   return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
 }
 
 export default async function HomePage() {
-  const trendingRes = await safeFetch(() => api.trending());
-  const trendingData = trendingRes?.data;
-  const heroAnime = trendingData?.[0];
+  const pages = await Promise.all([
+    safeFetch(() => api.trending(1)),
+    safeFetch(() => api.trending(2)),
+    safeFetch(() => api.trending(3)),
+  ]);
+
+  const seen = new Set<string | number>();
+  const trendingData = pages
+    .flatMap((p) => p?.data ?? [])
+    .filter((anime) => {
+      if (seen.has(anime.id)) return false;
+      seen.add(anime.id);
+      return true;
+    });
+
+  const heroAnime = trendingData[0];
 
   return (
     <>
