@@ -644,7 +644,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
-      {subs.subtitles.length > 1 && (
+      {subs.subtitles.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {subs.subtitles.map((sub, i) => (
             <button
