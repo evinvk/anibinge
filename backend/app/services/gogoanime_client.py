@@ -511,11 +511,64 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
                 logger.info("GogoAnime resolved %s embed: %s → %s", group_name, server_name, result)
                 break
 
-    if not embed_url:
-        logger.warning("GogoAnime: no embed server for %s ep-%d", slug, episode_number)
+    proxy_url = episode.get("defaultStreamingUrl", "")
+    if not proxy_url:
+        if not embed_url:
+            logger.warning("GogoAnime: no streaming sources for %s ep-%d", slug, episode_number)
+            return None
+        return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
+
+    # Try to extract direct stream from embed URL if available
+    if embed_url:
+        extracted = await extract_embed_stream(embed_url)
+        if extracted:
+            return {
+                "master_m3u8": None,
+                "qualities": [],
+                "embed_url": None,
+                "server_id": embed_server_id,
+                "direct_stream": extracted,
+            }
+        # Embed extraction failed — fall through to M3U8 proxy resolution
+
+    result = await resolve_m3u8(proxy_url)
+    if not result:
         return None
 
-    return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
+    m3u8_content, resolved_url = result
+
+    # Parse quality variants from the master M3U8
+    qualities = []
+    lines = m3u8_content.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if line.startswith("#EXT-X-STREAM-INF"):
+            attrs = {}
+            for part in line.split(","):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    attrs[k.strip()] = v.strip().strip('"')
+            quality = attrs.get("NAME") or attrs.get("RESOLUTION", "default")
+            if quality == "default" and "x" in quality.lower():
+                quality = quality.split("x")[-1] + "p"
+            # Next non-empty, non-comment line is the URL
+            i += 1
+            while i < len(lines) and (not lines[i].strip() or lines[i].startswith("#")):
+                i += 1
+            if i < len(lines):
+                variant_url = _resolve_url(resolved_url, lines[i].strip())
+                qualities.append({"quality": quality, "url": variant_url})
+        i += 1
+
+    # Rewrite master M3U8 so variant URLs go through our proxy
+    rewritten_master = _rewrite_m3u8_urls(m3u8_content, resolved_url)
+
+    if not qualities:
+        qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
+
+    logger.info("GogoAnime stream %s ep-%d: %d quality options, embed=%s", slug, episode_number, len(qualities), bool(embed_url))
+    return {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
 
 
 def get_catalog() -> list[dict]:
