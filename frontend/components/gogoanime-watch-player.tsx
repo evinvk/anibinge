@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download } from "lucide-react";
+import { ChevronDown, Loader2, AlertTriangle, Monitor, RotateCcw, Download } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
@@ -56,9 +56,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [isFullscreen, setIsFullscreen] = useState(false);
   const fsTargetRef = useRef<Element | null>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
-  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
-  const embedUrlRef = useRef<string | null>(null);
-  const [embedReferer, setEmbedReferer] = useState<string>("");
   const [statusText, setStatusText] = useState<string>("");
   const [downloading, setDownloading] = useState(false);
 
@@ -87,23 +84,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         if (!r.ok) throw new Error("not ok");
         return r.json();
       });
-      if (res && (res.stream_url || res.embed_url)) {
-        if (res.embed_url) {
-          subs.setSubs([]);
-          player.sourceRef.current = "anivexa";
-          setEmbedUrl(res.embed_url);
-          embedUrlRef.current = res.embed_url;
-          player.setLoadingStream(false);
-          setStatusText("");
-          return true;
-        }
-        if (!res.stream_url) {
-          player.setLoadingStream(false);
-          player.setStreamData(null);
-          player.setMasterUrl(null);
-          setStatusText("");
-          return false;
-        }
+      if (res && res.stream_url) {
         subs.setSubs((res.subtitles || []).map((s: any) => ({
           ...s,
           file: proxySubUrl(s.file, s.referer),
@@ -168,16 +149,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     try {
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
-
-      if (data?.embed_url) {
-        subs.setSubs([]);
-        player.sourceRef.current = "gogoanime";
-        setEmbedUrl(data.embed_url);
-        embedUrlRef.current = data.embed_url;
-        player.setLoadingStream(false);
-        setStatusText("");
-        return true;
-      }
     } catch { /* failed */ }
     setStatusText("");
     return false;
@@ -188,28 +159,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: fallbackAttemptedRef.current });
 
-    if (errorType === "videoFreeze" && embedUrlRef.current) {
-      player.destroyHls();
-      player.setStreamData(null);
-      player.setMasterUrl(null);
-      player.setError(null);
-      player.setLoadingStream(false);
-      player.setPlayerStatus("idle");
-      setStatusText("");
-      return;
-    }
-
     if (fallbackAttemptedRef.current) {
-      if (embedUrlRef.current) {
-        player.destroyHls();
-        player.setStreamData(null);
-        player.setMasterUrl(null);
-        player.setError(null);
-        player.setLoadingStream(false);
-        player.setPlayerStatus("idle");
-        setStatusText("");
-        return;
-      }
       player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
       setStatusText("");
@@ -301,8 +251,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
-    setEmbedUrl(null);
-    embedUrlRef.current = null;
     fallbackAttemptedRef.current = false;
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
@@ -322,8 +270,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
-    setEmbedUrl(null);
-    embedUrlRef.current = null;
     loadStream(slug, currentEp);
   }, [slug, currentEp, loadStream]);
 
@@ -373,14 +319,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
               fsTargetRef.current
             )}
           </>
-        ) : embedUrl ? (
-          <iframe
-            src={embedUrl}
-            className="h-full w-full border-0"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="no-referrer"
-          />
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
