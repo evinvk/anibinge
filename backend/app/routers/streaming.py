@@ -1353,41 +1353,68 @@ async def download_episode(
         import os as _os
         import shutil as _shutil
 
-        # Parse master m3u8 to pick best variant — ffmpeg can't auto-select from multi-program masters
-        if "EXT-X-STREAM-INF" in body:
-            best_url = None
-            best_bw = -1
-            for line in body.splitlines():
-                line = line.strip()
-                if line.startswith("#EXT-X-STREAM-INF"):
-                    bw = 0
-                    for part in line.split(","):
-                        if "BANDWIDTH=" in part:
-                            try:
-                                bw = int(part.split("=")[1].strip())
-                            except ValueError:
-                                pass
-                elif line and not line.startswith("#") and best_bw is not None:
-                    if bw > best_bw:
-                        best_bw = bw
-                        from urllib.parse import urljoin as _urljoin
-                        best_url = _urljoin(stream_url, line)
-                    bw = 0
-            if best_url:
-                stream_url = best_url
-
         safe_name = _re.sub(r'[^\w\-]', '_', filename)
         tmp_dir = _tmpfile.mkdtemp()
         mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
+        concat_path = _os.path.join(tmp_dir, "segments.txt")
         try:
+            # Fetch variant playlist
+            from urllib.parse import urljoin as _urljoin
+            var_resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
+            var_resp.raise_for_status()
+            var_body = var_resp.text
+
+            # If this is still a master, pick best variant
+            if "EXT-X-STREAM-INF" in var_body:
+                best_url = None
+                best_bw = -1
+                for line in var_body.splitlines():
+                    line = line.strip()
+                    if line.startswith("#EXT-X-STREAM-INF"):
+                        bw = 0
+                        for part in line.split(","):
+                            if "BANDWIDTH=" in part:
+                                try:
+                                    bw = int(part.split("=")[1].strip())
+                                except ValueError:
+                                    pass
+                    elif line and not line.startswith("#") and best_bw is not None:
+                        if bw > best_bw:
+                            best_bw = bw
+                            best_url = _urljoin(stream_url, line)
+                        bw = 0
+                if best_url:
+                    stream_url = best_url
+                    var_resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
+                    var_resp.raise_for_status()
+                    var_body = var_resp.text
+
+            # Parse segment URLs from playlist
+            seg_urls = []
+            for line in var_body.splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    seg_urls.append(_urljoin(stream_url, line))
+
+            if not seg_urls:
+                raise RuntimeError("No segments found in HLS playlist")
+
+            # Download all segments and concatenate
+            logger.info("Downloading %d HLS segments for %s", len(seg_urls), filename)
+            with open(concat_path, "w", encoding="utf-8") as cf:
+                for i, seg_url in enumerate(seg_urls):
+                    seg_resp = await dl_client.get(seg_url, headers={"Referer": referer} if referer else {})
+                    seg_resp.raise_for_status()
+                    seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
+                    with open(seg_file, "wb") as sf:
+                        sf.write(seg_resp.content)
+                    cf.write(f"file '{seg_file}'\n")
+
+            # Use ffmpeg concat demuxer to remux into MP4 (avoids HLS demuxer extension issue)
             cmd = [
                 "ffmpeg", "-y",
-                "-referer", referer or "",
-                "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
-                "-headers", f"Referer: {referer or ''}\r\n",
-                "-allowed_extensions", "ALL",
-                "-i", stream_url,
-                "-map", "0",
+                "-f", "concat", "-safe", "0",
+                "-i", concat_path,
                 "-c", "copy",
                 "-movflags", "+faststart",
                 mp4_path,
@@ -1401,7 +1428,7 @@ async def download_episode(
 
             if proc.returncode != 0:
                 err_msg = stderr.decode(errors="replace")[-500:]
-                logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
+                logger.error("ffmpeg concat→MP4 failed (code %d): %s", proc.returncode, err_msg)
                 raise RuntimeError(f"ffmpeg failed: {err_msg}")
 
             with open(mp4_path, "rb") as f:
