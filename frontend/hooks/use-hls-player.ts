@@ -24,6 +24,7 @@ export function useHlsPlayer(
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
+  const [levels, setLevels] = useState<any[]>([]);
   const hlsRef = useRef<any>(null);
   const sourceRef = useRef<"gogoanime" | "anitsu" | "anivexa" | "wibu" | null>(null);
   const fallbackAttemptedRef = useRef(false);
@@ -35,7 +36,6 @@ export function useHlsPlayer(
   const freezeRecoveryRef = useRef(0);
   const bufferingStartRef = useRef(0);
   const consecutive410Ref = useRef(0);
-  const networkRetryRef = useRef(0);
   onFatalErrorRef.current = onFatalError;
   onLoadSubtitlesRef.current = onLoadSubtitles;
 
@@ -147,7 +147,6 @@ export function useHlsPlayer(
       isSeekingRef.current = false;
       bufferingStartRef.current = 0;
       mediaErrorRetryRef.current = 0;
-      networkRetryRef.current = 0;
       consecutive410Ref.current = 0;
       lastTime = video.currentTime;
       lastTimeChange = Date.now();
@@ -219,7 +218,6 @@ export function useHlsPlayer(
 
     setPlayerStatus("buffering");
     mediaErrorRetryRef.current = 0;
-    networkRetryRef.current = 0;
 
     const gen = ++loadGenRef.current;
     const Hls = (await import("hls.js")).default;
@@ -243,8 +241,8 @@ export function useHlsPlayer(
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-        networkRetryRef.current = 0;
         setSelectedQuality(-1);
+        setLevels(hls.levels ? [...hls.levels] : []);
         video.play().catch(() => {
           setPlayerStatus("error");
         });
@@ -266,7 +264,7 @@ export function useHlsPlayer(
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              if (data.response?.code === 410 || data.response?.code === 404 || data.response?.code === 403) {
+              if (data.response?.code === 410 || data.response?.code === 404) {
                 setPlayerStatus("error");
                 if (onFatalErrorRef.current) {
                   onFatalErrorRef.current(data.type);
@@ -274,18 +272,8 @@ export function useHlsPlayer(
                   setError("Playback error: " + data.type);
                 }
               } else {
-                networkRetryRef.current++;
-                if (networkRetryRef.current > 3) {
-                  setPlayerStatus("error");
-                  if (onFatalErrorRef.current) {
-                    onFatalErrorRef.current(data.type);
-                  } else {
-                    setError("Playback error: " + data.type);
-                  }
-                } else {
-                  console.error("[HLS] Network error, retrying...", data.details);
-                  hls.startLoad();
-                }
+                console.error("[HLS] Network error, retrying...", data.details);
+                hls.startLoad();
               }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -379,6 +367,7 @@ export function useHlsPlayer(
       hlsRef.current.destroy();
       hlsRef.current = null;
     }
+    setLevels([]);
   }
 
   function resetPlayer() {
@@ -386,6 +375,7 @@ export function useHlsPlayer(
     setStreamData(null);
     setMasterUrl(null);
     setSelectedQuality(-1);
+    setLevels([]);
     setPlayerStatus("idle");
     sourceRef.current = null;
     fallbackAttemptedRef.current = false;
@@ -397,6 +387,7 @@ export function useHlsPlayer(
     masterUrl,
     setMasterUrl,
     selectedQuality,
+    levels,
     loadingStream,
     setLoadingStream,
     error,

@@ -609,8 +609,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       )}
 
       {player.streamData && (() => {
-        const hls = player.hlsRef.current;
-        const levels = hls?.levels;
+        const levels = player.levels;
         if (!levels || levels.length < 2) return null;
         return (
           <div className="mt-3 flex flex-wrap gap-2">

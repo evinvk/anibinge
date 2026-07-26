@@ -500,7 +500,8 @@ async def gogoanime_master_m3u8(
     """Serve the rewritten master M3U8 directly so hls.js can resolve variant URLs correctly.
     Blob URLs break relative URL resolution; serving from our domain fixes this."""
     try:
-        episode = await gogoanime_client.get_episode(slug, ep)
+        effective_slug = _dub_slug(slug, audio)
+        episode = await gogoanime_client.get_episode(effective_slug, ep)
         if not episode:
             raise HTTPException(status_code=404, detail="Episode not found on GogoAnime")
 
