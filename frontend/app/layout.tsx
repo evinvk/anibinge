@@ -51,6 +51,9 @@ export const metadata: Metadata = {
       { url: "/favicon.svg?v=2", type: "image/svg+xml" },
       { url: "/favicon.ico?v=2", sizes: "any" },
     ],
+    apple: [
+      { url: "/favicon.svg?v=2", type: "image/svg+xml" },
+    ],
   },
   robots: { index: true, follow: true },
 };
