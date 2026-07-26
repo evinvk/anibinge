@@ -163,9 +163,18 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await api.postComment(token, slug, episodeNumber, body.trim(), tag, replyTo ?? undefined);
+      const newComment = await api.postComment(token, slug, episodeNumber, body.trim(), tag, replyTo ?? undefined);
       setBody(""); setTag("comment"); setReplyTo(null);
-      await fetchComments();
+      if (newComment.parent_id) {
+        const addReply = (list: EpisodeCommentData[]): EpisodeCommentData[] =>
+          list.map((c) => c.id === newComment.parent_id
+            ? { ...c, replies: [...(c.replies || []), newComment], replies_count: (c.replies_count || 0) + 1 }
+            : { ...c, replies: addReply(c.replies || []) });
+        setComments(addReply);
+      } else {
+        setComments((prev) => [newComment, ...prev]);
+      }
+      setTotal((prev) => prev + 1);
     } catch (err: any) {
       console.error("Comment post failed:", err);
       setError(err?.message || "Failed to post comment. Please try again.");
