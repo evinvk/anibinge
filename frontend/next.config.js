@@ -56,6 +56,7 @@ const nextConfig = {
       new webpack.ProvidePlugin({
         Buffer: ["buffer", "Buffer"],
         process: "process/browser",
+        global: require.resolve("./polyfills/global"),
       })
     );
     return config;
