@@ -585,6 +585,7 @@ _CORS_HEADERS = {
 
 _PROXY_ALLOWED_HOSTS = {
     "gogocdn.net", "gogostream.com", "gogohd.net",
+    "gogoanimehd.to",
     "vidstreaming.io", "gogoservers.mema",
     "anivexa-api-eight.vercel.app",
     "megap.kotocdn.site", "fxpy7.watching.onl", "lostproject.club",
