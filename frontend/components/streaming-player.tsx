@@ -49,8 +49,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);
-  const [embedUrl, setEmbedUrl] = useState<string | null>(null);
-  const embedUrlRef = useRef<string | null>(null);
   const [statusText, setStatusText] = useState<string>("");
   const initialLoadDoneRef = useRef(false);
 
@@ -125,15 +123,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           player.setLoadingStream(false);
           setStatusText("");
           return true;
-        }
-
-        if (res.embed_url) {
-          setEmbedUrl(res.embed_url);
-          embedUrlRef.current = res.embed_url;
-          player.setLoadingStream(false);
-          setStatusText("");
-          return true;
-        }
+        }        // embed-only sources not supported — skip to next fallback
       }
     } catch { /* fallback failed */ }
     setStatusText("");
@@ -205,15 +195,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
           player.setLoadingStream(false);
           setStatusText("");
           return true;
-        }
-
-        if (res.embed_url) {
-          setEmbedUrl(res.embed_url);
-          embedUrlRef.current = res.embed_url;
-          player.setLoadingStream(false);
-          setStatusText("");
-          return true;
-        }
+        }        // embed-only sources not supported — skip to next fallback
       }
     } catch { /* fallback failed */ }
     setStatusText("");
@@ -222,17 +204,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const onFatalError = useCallback(async (errorType: string) => {
     console.error("[onFatalError]", { errorType, source: player.sourceRef.current });
-
-    // If embed is available, just show it
-    if (embedUrlRef.current) {
-      player.destroyHls();
-      player.setStreamData(null);
-      player.setMasterUrl(null);
-      player.setError(null);
-      player.setPlayerStatus("idle");
-      player.setLoadingStream(false);
-      return;
-    }
 
     // If GogoAnime failed, try Anitsu as fallback
     if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === null) {
@@ -291,14 +262,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
         player.setMasterUrl(proxiedUrl);
         player.setLoadingStream(false);
-        setStatusText("");
-        return;
-      }
-      if (data?.embed_url) {
-        player.sourceRef.current = "gogoanime";
-        player.setLoadingStream(false);
-        setEmbedUrl(data.embed_url);
-        embedUrlRef.current = data.embed_url;
         setStatusText("");
         return;
       }
@@ -364,26 +327,15 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
-    setEmbedUrl(null);
-    embedUrlRef.current = null;
     player.fallbackAttemptedRef.current = false;
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    // 1. Try GogoAnime first (iframe/embed as primary)
+    // 1. Try GogoAnime first (scrape M3U8 and proxy)
     if (slug) {
       setStatusText("");
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
-
-      if (data?.embed_url) {
-        player.sourceRef.current = "gogoanime";
-        player.setLoadingStream(false);
-        setEmbedUrl(data.embed_url);
-        embedUrlRef.current = data.embed_url;
-        setStatusText("");
-        return;
-      }
 
       if (data?.direct_stream?.stream_url) {
         player.sourceRef.current = "gogoanime";
@@ -439,9 +391,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
     player.setLoadingStream(false);
     setStatusText("");
-    if (!embedUrlRef.current) {
-      player.setError("Streaming is temporarily unavailable. Try again later.");
-    }
+    player.setError("Streaming is temporarily unavailable. Try again later.");
   }, [tryAnitsuFallback, tryWibuFallback, animeTitle, audio]);
 
   useEffect(() => {
@@ -492,12 +442,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
-    setEmbedUrl(null);
-    embedUrlRef.current = null;
     loadStream(selectedSlug, currentEp);
   }, [selectedSlug, currentEp, loadStream]);
 
-  const showResults = results.length > 0 || player.loadingStream || player.streamData || embedUrl || player.masterUrl;
+  const showResults = results.length > 0 || player.loadingStream || player.streamData || player.masterUrl;
 
   if (!showResults) return null;
 
@@ -524,16 +472,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               {r.title}
             </button>
           ))}
-        </div>
-      )}
-
-      {player.error && !player.streamData && !embedUrl && (
-        <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="text-xs flex-1">{player.error}</span>
-          <button onClick={handleRetry} className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium hover:bg-amber-500/30 transition">
-            Retry
-          </button>
         </div>
       )}
 
@@ -581,14 +519,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               fsTargetRef.current
             )}
           </>
-        ) : embedUrl ? (
-          <iframe
-            src={embedUrl}
-            className="h-full w-full border-0"
-            allow="autoplay; fullscreen; picture-in-picture"
-            allowFullScreen
-            referrerPolicy="no-referrer"
-          />
         ) : player.error ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-mist">
             <AlertTriangle className="h-6 w-6 text-amber-400" />
@@ -749,16 +679,6 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
               ))}
             </div>
           )}
-        </div>
-      )}
-
-      {player.error && !player.loadingStream && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-amber-400">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span className="text-xs flex-1">{friendlyError(player.error)}</span>
-          <button onClick={handleRetry} className="shrink-0 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium hover:bg-amber-500/30 transition">
-            Retry
-          </button>
         </div>
       )}
 
