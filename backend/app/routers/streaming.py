@@ -1399,16 +1399,27 @@ async def download_episode(
             if not seg_urls:
                 raise RuntimeError("No segments found in HLS playlist")
 
-            # Download all segments and concatenate
+            # Download all segments with retry and rate-limit backoff
             logger.info("Downloading %d HLS segments for %s", len(seg_urls), filename)
             with open(concat_path, "w", encoding="utf-8") as cf:
                 for i, seg_url in enumerate(seg_urls):
-                    seg_resp = await dl_client.get(seg_url, headers={"Referer": referer} if referer else {})
-                    seg_resp.raise_for_status()
+                    for attempt in range(5):
+                        seg_resp = await dl_client.get(seg_url, headers={"Referer": referer} if referer else {})
+                        if seg_resp.status_code == 429:
+                            wait = min(2 ** attempt, 16)
+                            logger.warning("Rate-limited on segment %d, retrying in %ds", i, wait)
+                            await _aio.sleep(wait)
+                            continue
+                        seg_resp.raise_for_status()
+                        break
+                    else:
+                        raise RuntimeError(f"Failed to download segment {i} after 5 attempts (429)")
                     seg_file = _os.path.join(tmp_dir, f"seg_{i:05d}.ts")
                     with open(seg_file, "wb") as sf:
                         sf.write(seg_resp.content)
                     cf.write(f"file '{seg_file}'\n")
+                    if (i + 1) % 10 == 0:
+                        await _aio.sleep(0.5)
 
             # Use ffmpeg concat demuxer to remux into MP4 (avoids HLS demuxer extension issue)
             cmd = [
