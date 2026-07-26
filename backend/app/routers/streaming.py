@@ -574,6 +574,20 @@ async def get_gogoanime_stream(
 
             raise HTTPException(status_code=404, detail="No streaming sources found")
 
+        # Try to extract direct stream URL from embed page
+        extracted = await gogoanime_client.extract_embed_stream(embed_url)
+        if extracted and extracted.get("stream_url"):
+            stream_url = extracted["stream_url"]
+            return {
+                "data": {
+                    "embed_url": embed_url,
+                    "direct_stream": {
+                        "stream_url": stream_url,
+                        "referer": extracted.get("referer", ""),
+                    },
+                }
+            }
+
         return {"data": {"embed_url": embed_url}}
     except HTTPException:
         raise

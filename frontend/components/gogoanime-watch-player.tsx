@@ -149,6 +149,39 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     try {
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
       const data = streamRes?.data;
+      if (!data) return false;
+
+      // Prefer direct stream (extracted from embed by backend)
+      if (data.direct_stream?.stream_url) {
+        const streamUrl = data.direct_stream.stream_url;
+        const referer = data.direct_stream.referer || "";
+        const proxyUrl = `/api/proxy?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}`;
+        subs.setSubs([]);
+        player.sourceRef.current = "gogoanime";
+
+        if (streamUrl.includes(".mp4")) {
+          player.setStreamData({ qualities: [{ quality: "Auto", url: proxyUrl }] });
+          player.setLoadingStream(false);
+          setStatusText("");
+          await new Promise(r => setTimeout(r, 100));
+          if (videoRef.current) {
+            videoRef.current.src = proxyUrl;
+            videoRef.current.play().catch(() => {});
+          }
+          return true;
+        }
+
+        player.setMasterUrl(proxyUrl);
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxyUrl }] });
+        player.setLoadingStream(false);
+        setStatusText("");
+        return true;
+      }
+
+      // If backend couldn't extract, fall through to Anivexa
+      if (data.embed_url) {
+        return false;
+      }
     } catch { /* failed */ }
     setStatusText("");
     return false;
