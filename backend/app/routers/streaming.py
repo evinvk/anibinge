@@ -1008,7 +1008,7 @@ async def anivexa_master_m3u8(
             from urllib.parse import urlparse
             parsed = urlparse(m3u8_url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
-            m3u8_text = _rewrite_anivexa_m3u8(m3u8_text, m3u8_url, base_url)
+            m3u8_text = _rewrite_m3u8_generic(m3u8_text, m3u8_url, base_url)
 
         return Response(
             content=m3u8_text,
@@ -1096,7 +1096,7 @@ async def anivexa_proxy(
             from urllib.parse import urlparse
             parsed = urlparse(decoded_url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
-            body = _rewrite_anivexa_m3u8(body, decoded_url, base_url)
+            body = _rewrite_m3u8_generic(body, decoded_url, base_url, proxy_base="/api/v1/streaming/anivexa/proxy", use_base64=True)
 
             if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
                 raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
@@ -1125,12 +1125,11 @@ async def anivexa_proxy(
         raise HTTPException(status_code=502, detail="Proxy request failed")
 
 
-def _rewrite_anivexa_m3u8(m3u8_text: str, current_url: str, base_url: str) -> str:
-    """Rewrite relative URLs in M3U8 to go through the anivexa proxy endpoint. Filters ad segments."""
-    from urllib.parse import urljoin, urlparse
+def _rewrite_m3u8_generic(m3u8_text: str, current_url: str, base_url: str, proxy_base: str = "/api/v1/streaming/proxy", use_base64: bool = False) -> str:
+    """Rewrite relative URLs in M3U8 to go through the given proxy endpoint. Filters ad segments."""
+    from urllib.parse import urljoin, urlparse, quote
     import re
 
-    proxy_base = "/api/v1/streaming/anivexa/proxy"
     lines = m3u8_text.split("\n")
     result = []
     i = 0
@@ -1162,9 +1161,12 @@ def _rewrite_anivexa_m3u8(m3u8_text: str, current_url: str, base_url: str) -> st
             i += 1
             continue
 
-        # Encode and rewrite to proxy
-        encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
-        result.append(f"{proxy_base}?url={encoded}")
+        # Rewrite to proxy
+        if use_base64:
+            encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
+            result.append(f"{proxy_base}?url={encoded}")
+        else:
+            result.append(f"{proxy_base}?url={quote(resolved, safe='')}")
         i += 1
 
     return "\n".join(result)
@@ -1467,6 +1469,67 @@ async def download_episode(
         await dl_client.aclose()
         logger.error("Download failed (slug=%s, ep=%s, audio=%s): %s", slug, ep, audio, e, exc_info=True)
         raise HTTPException(status_code=502, detail=f"Download failed: {type(e).__name__}: {e}")
+
+
+# ── Generic proxy endpoint ──────────────────────────────────────────
+
+@router.get("/proxy")
+@limiter.limit("300/minute")
+async def generic_proxy(
+    request: Request,
+    url: str = Query(..., description="URL to proxy"),
+    referer: str = Query("", description="Optional referer override"),
+):
+    """Generic streaming proxy that works for any allowed CDN host.
+    Unlike the source-specific proxies, this accepts a plain URL instead of base64-encoded.
+    Rewrites M3U8 content to route segments through this proxy."""
+    if not _is_proxy_url_allowed(url):
+        from urllib.parse import urlparse
+        blocked_host = urlparse(url).hostname
+        logger.warning("Generic proxy blocked host: %s (URL: %.200s)", blocked_host, url)
+        raise HTTPException(status_code=400, detail="URL not in allowed proxy list")
+
+    upstream_referer = referer or _get_upstream_referer(url)
+    fetch_headers = {**_PROXY_HEADERS, "Referer": upstream_referer}
+
+    try:
+        client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=fetch_headers, follow_redirects=True)
+        resp = await client.get(url)
+        resp.raise_for_status()
+
+        content_type = resp.headers.get("content-type", "")
+        body = resp.text
+
+        if "mpegurl" in content_type or body.strip().startswith("#EXTM3U"):
+            from urllib.parse import urlparse as _urlparse
+            parsed = _urlparse(url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            body = _rewrite_m3u8_generic(body, url, base_url)
+
+            if "#EXTINF" not in body and "#EXT-X-STREAM-INF" not in body:
+                raise HTTPException(status_code=404, detail="M3U8 has no real video segments after ad filtering")
+
+            return Response(
+                content=body,
+                media_type="application/vnd.apple.mpegurl",
+                headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
+            )
+
+        return Response(
+            content=resp.content,
+            media_type=content_type or "video/mp2t",
+            headers={
+                **_CORS_HEADERS,
+                "Cache-Control": "public, max-age=86400",
+                "Content-Length": str(len(resp.content)),
+            },
+        )
+    except _httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Proxy request failed: {e}")
 
 
 # ── Diagnostic endpoint ──────────────────────────────────────────────

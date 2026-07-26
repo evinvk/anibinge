@@ -28,8 +28,8 @@ interface Props {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-function proxySubUrl(file: string, referer: string) {
-  return `/api/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
+function makeProxyUrl(file: string, referer: string) {
+  return `${API_BASE}/api/v1/streaming/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
 }
 
 const FRIENDLY_ERRORS: Record<string, string> = {
@@ -66,9 +66,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     if (!aid) {
       setStatusText("");
       try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 15000);
         const res = await fetch(
-          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`
+          `${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`,
+          { signal: ac.signal }
         ).then(r => r.json());
+        clearTimeout(timer);
         if (res.anilist_id) {
           aid = res.anilist_id;
           resolvedAnilistRef.current = aid;
@@ -78,21 +82,24 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     if (!aid) return false;
     setStatusText("");
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`
-      ).then(r => {
-        if (!r.ok) throw new Error("not ok");
-        return r.json();
-      });
-      if (res && res.stream_url) {
-        subs.setSubs((res.subtitles || []).map((s: any) => ({
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 20000);
+      const r = await fetch(
+        `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${audio}`,
+        { signal: ac.signal }
+      );
+      clearTimeout(timer);
+      if (!r.ok) throw new Error("not ok");
+      const json = await r.json();
+      if (json && json.stream_url) {
+        subs.setSubs((json.subtitles || []).map((s: any) => ({
           ...s,
-          file: proxySubUrl(s.file, s.referer),
+          file: makeProxyUrl(s.file, s.referer),
         })));
         player.sourceRef.current = "anivexa";
 
-        if (res.stream_type === "mp4") {
-          const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+        if (json.stream_type === "mp4") {
+          const mp4Url = makeProxyUrl(json.stream_url, json.referer || "");
           player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
           player.setLoadingStream(false);
           setStatusText("");
@@ -104,7 +111,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           return true;
         }
 
-        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
+        const hlsUrl = makeProxyUrl(json.stream_url, json.referer || "");
         let qualities = [{ quality: "Auto", url: hlsUrl }];
         try {
           const m3u8Resp = await fetch(hlsUrl);
@@ -122,9 +129,9 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                   const bw = parseInt(bwMatch[1]);
                   let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
                   if (resMatch) label += ` (${resMatch[1]})`;
-                  const variantUrl = nextLine.startsWith("http")
-                    ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
-                    : nextLine.startsWith("/") ? nextLine : hlsUrl;
+                    const variantUrl = nextLine.startsWith("http")
+                      ? makeProxyUrl(nextLine, json.referer || "")
+                      : nextLine.startsWith("/") ? nextLine : hlsUrl;
                   parsed.push({ quality: label, url: variantUrl });
                 }
               }
@@ -155,24 +162,24 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       if (data.direct_stream?.stream_url) {
         const streamUrl = data.direct_stream.stream_url;
         const referer = data.direct_stream.referer || "";
-        const proxyUrl = `/api/proxy?url=${encodeURIComponent(streamUrl)}&referer=${encodeURIComponent(referer)}`;
+        const proxiedUrl = makeProxyUrl(streamUrl, referer);
         subs.setSubs([]);
         player.sourceRef.current = "gogoanime";
 
         if (streamUrl.includes(".mp4")) {
-          player.setStreamData({ qualities: [{ quality: "Auto", url: proxyUrl }] });
+          player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
           player.setLoadingStream(false);
           setStatusText("");
           await new Promise(r => setTimeout(r, 100));
           if (videoRef.current) {
-            videoRef.current.src = proxyUrl;
+            videoRef.current.src = proxiedUrl;
             videoRef.current.play().catch(() => {});
           }
           return true;
         }
 
-        player.setMasterUrl(proxyUrl);
-        player.setStreamData({ qualities: [{ quality: "Auto", url: proxyUrl }] });
+        player.setMasterUrl(proxiedUrl);
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
         player.setLoadingStream(false);
         setStatusText("");
         return true;
