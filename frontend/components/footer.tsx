@@ -15,7 +15,6 @@ export function Footer() {
         <div>
           <h4 className="font-display text-sm font-semibold text-paper">Discover</h4>
           <ul className="mt-3 space-y-2 text-sm text-mist">
-            <li><Link href="/discover">AI Picks</Link></li>
             <li><Link href="/news">News</Link></li>
           </ul>
         </div>

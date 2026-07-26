@@ -12,7 +12,6 @@ const LINKS = [
   { href: "/browse", label: "Browse" },
   { href: "/seasonal", label: "Seasonal" },
   { href: "/schedule", label: "Schedule" },
-  { href: "/discover", label: "Discover" },
   { href: "/news", label: "News" },
 ];
 
