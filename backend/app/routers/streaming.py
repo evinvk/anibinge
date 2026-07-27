@@ -1419,13 +1419,40 @@ async def download_episode(
                         stream_url = direct.get("stream_url")
                         referer = direct.get("referer", "")
                         stream_type = "hls" if ".m3u8" in (stream_url or "") else "mp4"
-                    elif sources.get("master_m3u8_url"):
-                        stream_url = sources["master_m3u8_url"]
-                        referer = "https://gogoanimehd.to/"
-                        stream_type = "hls"
                     elif sources.get("master_m3u8"):
-                        stream_url = sources["master_m3u8"]
-                        stream_type = "hls"
+                        # Parse raw master M3U8 to find best variant CDN URL
+                        m3u8_text = sources.get("master_m3u8_raw") or sources["master_m3u8"]
+                        m3u8_base = sources.get("master_m3u8_url", "")
+                        best_variant = None
+                        best_bw = -1
+                        for line in m3u8_text.splitlines():
+                            line_s = line.strip()
+                            if line_s.startswith("#EXT-X-STREAM-INF"):
+                                bw = 0
+                                for part in line_s.split(","):
+                                    if "BANDWIDTH=" in part:
+                                        try:
+                                            bw = int(part.split("=")[1].strip())
+                                        except ValueError:
+                                            pass
+                            elif line_s and not line_s.startswith("#") and best_bw is not None:
+                                if bw > best_bw:
+                                    best_bw = bw
+                                    if line_s.startswith("http"):
+                                        best_variant = line_s
+                                    elif m3u8_base:
+                                        from urllib.parse import urljoin as _urljoin
+                                        best_variant = _urljoin(m3u8_base + "/", line_s)
+                                bw = 0
+                        if best_variant:
+                            stream_url = best_variant
+                            referer = "https://gogoanimehd.to/"
+                            stream_type = "hls"
+                            logger.info("GogoAnime download: resolved variant URL: %.200s", best_variant)
+                        elif m3u8_base:
+                            stream_url = m3u8_base
+                            referer = "https://gogoanimehd.to/"
+                            stream_type = "hls"
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
