@@ -57,6 +57,27 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-void">
+      {/* JSON-LD structured data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "TVSeries",
+            name: detail.title,
+            description: detail.description || undefined,
+            image: detail.poster || undefined,
+            genre: detail.genres,
+            numberOfEpisodes: totalEps || undefined,
+            aggregateRating: detail.score ? {
+              "@type": "AggregateRating",
+              ratingValue: detail.score,
+              bestRating: 10,
+              ratingCount: 1,
+            } : undefined,
+          }),
+        }}
+      />
       {/* Banner */}
       <div className="relative h-64 w-full overflow-hidden sm:h-80">
         {hasValidImageUrl(detail.poster) && (
@@ -129,9 +150,13 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
 
             <div className="mt-4 flex flex-wrap gap-2">
               {detail.genres.map((g) => (
-                <span key={g} className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist">
+                <Link
+                  key={g}
+                  href={`/browse?genres=${encodeURIComponent(g)}`}
+                  className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-red-400/30 hover:text-paper"
+                >
                   {g}
-                </span>
+                </Link>
               ))}
             </div>
 

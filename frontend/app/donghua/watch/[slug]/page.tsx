@@ -10,21 +10,26 @@ interface PageProps {
   searchParams: Promise<{ ep?: string }>;
 }
 
-async function fetchDonghuaTitle(slug: string): Promise<string> {
+async function fetchDonghuaDetail(slug: string): Promise<{ title: string; description: string; poster: string | null; genres: string[] }> {
   try {
     const res = await fetch(`${API_BASE}/api/v1/donghua/anime/${slug}`, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
-    if (data.data?.title) return data.data.title;
+    if (data.data) return { title: data.data.title, description: data.data.description || "", poster: data.data.poster, genres: data.data.genres || [] };
   } catch {}
-  return slug.replace(/-/g, " ");
+  return { title: slug.replace(/-/g, " "), description: "", poster: null, genres: [] };
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const title = await fetchDonghuaTitle(slug);
+  const detail = await fetchDonghuaDetail(slug);
   return {
-    title: `Watch ${title} — Donghua Episodes Online`,
-    description: `Watch ${title} donghua online free. Stream episodes with subtitles.`,
+    title: `Watch ${detail.title} — Donghua Episodes Online`,
+    description: detail.description?.slice(0, 160) || `Watch ${detail.title} donghua online free. Stream episodes with subtitles.`,
+    openGraph: {
+      title: `Watch ${detail.title} Free — Donghua Sub`,
+      description: detail.description?.slice(0, 160) || `Stream ${detail.title} donghua with English subtitles.`,
+      images: detail.poster ? [detail.poster] : [],
+    },
   };
 }
 

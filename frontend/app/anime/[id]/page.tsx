@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -123,9 +124,13 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
 
             <div className="mt-4 flex flex-wrap gap-2">
               {detail.genres?.map((g: any) => (
-                <span key={g.mal_id ?? g.name} className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400">
+                <Link
+                  key={g.mal_id ?? g.name}
+                  href={`/browse?genres=${encodeURIComponent(g.name)}`}
+                  className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400 transition-colors hover:bg-primary-600/30"
+                >
                   {g.name}
-                </span>
+                </Link>
               ))}
             </div>
 
