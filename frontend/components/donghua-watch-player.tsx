@@ -75,7 +75,12 @@ export default function DonghuaWatchPage({ slug }: Props) {
     setCurrentEp(ep);
   };
 
-  const proxyUrl = streamUrl ? api.donghuaProxy(streamUrl, "https://animexin.dev/") : null;
+  const iframeSrc = (() => {
+    if (!streamUrl) return null;
+    // Protocol-relative URLs need https: prefix for iframe src
+    if (streamUrl.startsWith("//")) return `https:${streamUrl}`;
+    return streamUrl;
+  })();
 
   return (
     <div className="min-h-screen bg-void">
@@ -105,14 +110,13 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <AlertTriangle className="h-8 w-8 text-amber-400" />
               <p className="text-sm text-mist">{error}</p>
             </div>
-          ) : proxyUrl ? (
+          ) : iframeSrc ? (
             <iframe
               key={`${currentEp}-${activeServer}`}
-              src={proxyUrl}
-              className="absolute inset-0 h-full w-full"
+              src={iframeSrc}
+              className="absolute inset-0 h-full w-full border-0"
               allow="autoplay; fullscreen; picture-in-picture"
-              allowFullScreen
-              frameBorder={0}
+              referrerPolicy="no-referrer"
             />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
