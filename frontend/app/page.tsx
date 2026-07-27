@@ -10,11 +10,11 @@ export const revalidate = 300;
 export const metadata: Metadata = {
   title: "Watch Anime Online Free — Stream & Track Episodes",
   description:
-    "Stream anime online free in HD. Browse trending series, track your watchlist, and never miss new episodes. Sub & dub available.",
+    "Watch anime online free in HD. Stream sub & dub episodes, browse trending series, track your progress, and never miss new releases.",
   openGraph: {
     title: "Watch Anime Online Free — Stream & Track Episodes",
     description:
-      "Stream anime online free in HD. Browse trending series, track your watchlist, and never miss new episodes.",
+      "Watch anime online free in HD. Stream sub & dub episodes, browse trending series, track your progress.",
   },
 };
 

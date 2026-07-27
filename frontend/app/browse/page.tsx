@@ -5,7 +5,7 @@ import { InfiniteAnimeGrid } from "@/components/infinite-anime-grid";
 export const metadata = {
   title: "Browse Anime by Genre, Season & Studio",
   description:
-    "Browse thousands of anime series. Filter by genre, season, studio, status, and more. Find your next favorite show.",
+    "Browse thousands of anime to watch online free. Filter by genre, season, studio, status, and more. Find your next favorite show to stream.",
 };
 
 interface BrowsePageProps {
