@@ -1456,6 +1456,8 @@ async def download_episode(
                 except Exception:
                     pass
 
+            logger.info("Download fallback: slug=%s anilist_id=%s ep=%d audio=%s", slug, anilist_id, ep, audio)
+
             if anilist_id:
                 try:
                     result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
@@ -1463,6 +1465,7 @@ async def download_episode(
                         stream_url = result.get("stream_url")
                         referer = result.get("referer", "")
                         stream_type = result.get("stream_type", "mp4")
+                        logger.info("Download anivexa result: url=%.200s type=%s provider=%s", stream_url, stream_type, result.get("provider"))
                 except Exception as e:
                     logger.warning("Anivexa download resolve failed: %s", e)
 
