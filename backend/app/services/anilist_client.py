@@ -610,83 +610,93 @@ class AniListClient:
         """
         return await self._query(query, {"id": anime_id})
 
-    async def get_recently_aired(self, page: int = 1, per_page: int = 30) -> list[dict]:
+    async def get_recently_aired(self, per_page: int = 50) -> list[dict]:
         """Get the most recently aired episodes across all anime.
 
-        Two-step approach:
-        1. Fetch popular RELEASING anime with nextAiringEpisode data
-        2. Query their actual past airing schedule for exact timestamps
+        Uses a single AniList query for RELEASING anime with nextAiringEpisode
+        data to compute what recently aired. The most recently aired episode
+        for each show is nextAiringEpisode.episode - 1, aired roughly one
+        weekly cycle before the next episode.
 
-        Returns a list of {mediaId, episode, airingAt, title, coverImage, genres}
-        sorted by most recent air time first.
+        Returns a list sorted by most recent air time first.
         """
-        # Step 1: Get RELEASING anime with airing info (sorted by popularity for best coverage)
-        media_info: dict[int, dict] = {}
-        for pg in range(1, 6):
-            try:
-                q = """
-                query($page:Int,$perPage:Int){
-                  Page(page:$page,perPage:$perPage){
-                    media(type:ANIME,status:RELEASING,sort:POPULARITY_DESC){
-                      id
-                      title{romaji english native}
-                      coverImage{extraLarge large}
-                      genres
-                      format
-                      episodes
-                      status
-                      nextAiringEpisode{
-                        airingAt
-                        timeUntilAiring
-                        episode
-                      }
-                    }
+        import time as _time
+        now = _time.time()
+        ONE_WEEK = 604800
+
+        try:
+            q = """
+            query($perPage:Int){
+              Page(page:1,perPage:$perPage){
+                media(type:ANIME,status:RELEASING,sort:ID_DESC){
+                  id
+                  title{romaji english native}
+                  coverImage{extraLarge large}
+                  genres
+                  format
+                  episodes
+                  status
+                  nextAiringEpisode{
+                    airingAt
+                    timeUntilAiring
+                    episode
                   }
                 }
-                """
-                result = await self._query(q, {"page": pg, "perPage": 50})
-                media_list = result.get("Page", {}).get("media", [])
-                if not media_list:
-                    break
-                for m in media_list:
-                    mid = m.get("id")
-                    if mid:
-                        media_info[mid] = m
-            except Exception:
-                break
-
-        if not media_info:
+              }
+            }
+            """
+            result = await self._query(q, {"perPage": per_page})
+            all_media = result.get("Page", {}).get("media", [])
+        except Exception:
             return []
 
-        media_ids = list(media_info.keys())
-
-        # Step 2: Get actual past airing times
-        aired = await self.get_airing_schedule(media_ids, per_page=per_page * 3)
-
-        if not aired:
+        if not all_media:
             return []
 
-        # Sort by most recent first
-        aired.sort(key=lambda x: x.get("airingAt", 0), reverse=True)
+        results = []
+        for m in all_media:
+            next_ep = m.get("nextAiringEpisode")
+            if not next_ep or not next_ep.get("airingAt"):
+                continue
 
-        out = []
-        for a in aired[:per_page * 2]:
-            mid = a.get("mediaId")
-            info = media_info.get(mid, {})
-            title_obj = info.get("title", {})
-            out.append({
-                "mediaId": mid,
-                "episode": a.get("episode"),
-                "airingAt": a.get("airingAt"),
+            ep_num = next_ep.get("episode")
+            air_at = next_ep["airingAt"]
+            time_until = next_ep.get("timeUntilAiring", 0) or 0
+
+            if not ep_num or ep_num < 2:
+                continue
+
+            # Most recently aired = ep_num - 1
+            # It aired (airingAt - time_until - ONE_WEEK + time_until) ago
+            # More precisely: the last episode aired at air_at - time_until - ONE_WEEK + time_until
+            # = air_at - ONE_WEEK
+            recent_ep = ep_num - 1
+            recent_air_at = air_at - time_until - ONE_WEEK + time_until
+            # Actually: last ep aired at air_at - ONE_WEEK (for weekly)
+            recent_air_at = air_at - ONE_WEEK
+            aired_ago = int(now - recent_air_at)
+
+            # Only episodes that aired within the last 14 days
+            if aired_ago < 0 or aired_ago > 1209600:
+                continue
+
+            title_obj = m.get("title", {})
+            cover = (m.get("coverImage") or {})
+            results.append({
+                "mediaId": m.get("id"),
+                "episode": recent_ep,
+                "aired_ago": aired_ago,
                 "title": title_obj.get("english") or title_obj.get("romaji") or "",
                 "title_jp": title_obj.get("romaji") or "",
-                "coverImage": (info.get("coverImage") or {}).get("large") or (info.get("coverImage") or {}).get("extraLarge"),
-                "genres": info.get("genres") or [],
-                "totalEpisodes": info.get("episodes"),
-                "format": info.get("format"),
-                "status": info.get("status"),
+                "coverImage": cover.get("large") or cover.get("extraLarge"),
+                "genres": m.get("genres") or [],
+                "totalEpisodes": m.get("episodes"),
+                "format": m.get("format"),
+                "status": m.get("status"),
             })
-        return out
+
+        results.sort(key=lambda x: x.get("aired_ago", 999999))
+        return results
 
     async def close(self):
         """Close the HTTP client."""
