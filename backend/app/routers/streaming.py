@@ -328,7 +328,7 @@ def _dub_slug(slug: str, audio: str) -> str:
 def _parse_hls_variants_and_segments(m3u8_text: str, base_url: str) -> list[str]:
     """Parse an HLS m3u8 playlist. If master playlist, pick best variant and parse that.
     Returns list of segment URLs to download in order."""
-    from urllib.parse import urljoin
+    from urllib.parse import urljoin, urlparse
     lines = m3u8_text.strip().splitlines()
 
     if not lines or not lines[0].strip().startswith("#EXTM3U"):
@@ -356,23 +356,27 @@ def _parse_hls_variants_and_segments(m3u8_text: str, base_url: str) -> list[str]
                 if i < len(lines) and bw > best_bw:
                     best_bw = bw
                     variant_line = lines[i].strip()
-                    best_variant_url = variant_line if variant_line.startswith("http") else urljoin(base_url + "/", variant_line)
+                    # Resolve variant URL: strip filename from base, keep directory
+                    dir_base = base_url.rsplit("/", 1)[0] + "/" if "/" in base_url else base_url
+                    best_variant_url = variant_line if variant_line.startswith("http") else urljoin(dir_base, variant_line)
             i += 1
         if not best_variant_url:
             return []
-        # Fetch the variant playlist
         import httpx
-        resp = httpx.get(best_variant_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        parsed = urlparse(best_variant_url)
+        referer = "https://megaplay.buzz/" if "megap" in parsed.hostname else "https://ani.pm/" if "ani.pm" in parsed.hostname else ""
+        resp = httpx.get(best_variant_url, timeout=15, headers={"User-Agent": "Mozilla/5.0", "Referer": referer} if referer else {"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
         m3u8_text = resp.text
         base_url = best_variant_url
         lines = m3u8_text.strip().splitlines()
 
     segment_urls = []
+    dir_base = base_url.rsplit("/", 1)[0] + "/" if "/" in base_url else base_url
     for line in lines:
         line = line.strip()
         if line and not line.startswith("#"):
-            seg_url = line if line.startswith("http") else urljoin(base_url + "/", line)
+            seg_url = line if line.startswith("http") else urljoin(dir_base, line)
             segment_urls.append(seg_url)
     return segment_urls
 
