@@ -716,16 +716,25 @@ async def gogoanime_proxy(
                 headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
 
-        # Binary content (.ts segments, etc.)
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
+        # Binary content (.ts segments) — stream directly to avoid buffering delays
+        content_length = resp.headers.get("content-length")
+        headers = {
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=86400",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
+        async def _stream_ts():
+            try:
+                async with client.stream("GET", decoded_url, headers={"Referer": "https://gogoanimehd.to/", "Origin": "https://gogoanimehd.to"}) as s:
+                    s.raise_for_status()
+                    async for chunk in s.aiter_bytes(65536):
+                        yield chunk
+            except Exception:
+                pass
+
+        return StreamingResponse(_stream_ts(), media_type=content_type or "video/mp2t", headers=headers)
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
@@ -824,16 +833,25 @@ async def gogoanime_embed_proxy(
                 headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
 
-        # Binary content (.ts segments, etc.)
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
+        # Binary content (.ts segments) — stream directly to avoid buffering delays
+        content_length = resp.headers.get("content-length")
+        headers = {
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=86400",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
+        async def _stream_ts():
+            try:
+                async with client.stream("GET", decoded_url, headers=fetch_headers) as s:
+                    s.raise_for_status()
+                    async for chunk in s.aiter_bytes(65536):
+                        yield chunk
+            except Exception:
+                pass
+
+        return StreamingResponse(_stream_ts(), media_type=content_type or "video/mp2t", headers=headers)
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
@@ -1209,16 +1227,25 @@ async def anivexa_proxy(
                 headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
 
-        # Binary content (.ts segments, etc.)
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
+        # Binary content (.ts segments) — stream directly to avoid buffering delays
+        content_length = resp.headers.get("content-length")
+        headers = {
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=86400",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
+        async def _stream_ts():
+            try:
+                async with client.stream("GET", decoded_url, headers=fetch_headers) as s:
+                    s.raise_for_status()
+                    async for chunk in s.aiter_bytes(65536):
+                        yield chunk
+            except Exception:
+                pass
+
+        return StreamingResponse(_stream_ts(), media_type=content_type or "video/mp2t", headers=headers)
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
