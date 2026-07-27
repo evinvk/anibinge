@@ -153,81 +153,63 @@ async def get_recent_episodes(
     """
     try:
         from app.services import gogoanime_client, anilist_client
-        import time as _time
 
-        now = _time.time()
-
-        # Fetch recently aired episodes from AniList (3 pages to have enough)
-        aired = []
-        for pg in range(1, 4):
-            try:
-                batch = await anilist_client.get_recently_aired(page=pg, per_page=50)
-                if not batch:
-                    break
-                aired.extend(batch)
-            except Exception:
-                break
-
-        if not aired:
-            return {"data": [], "page": page, "has_next": False}
-
-        # Dedupe by (mediaId, episode) — keep first (most recent)
-        seen = set()
-        unique = []
-        for a in aired:
-            key = (a.get("mediaId"), a.get("episode"))
-            if key in seen:
-                continue
-            seen.add(key)
-            unique.append(a)
-
-        # Build GogoAnime catalog lookup: normalized_title -> item
+        # GogoAnime catalog is sorted by last update time — the first items
+        # are the most recently uploaded. Use this directly.
         gogo_catalog = gogoanime_client.get_catalog()
-        gogo_by_norm: dict[str, dict] = {}
+
+        # Filter to items with episodes and a slug
+        candidates: list[dict] = []
         for item in gogo_catalog:
+            ep = item.get("latest_episode") or 0
             slug = item.get("slug", "")
-            if not slug:
+            if ep < 1 or not slug:
                 continue
-            for title_field in ["title", "title_english", "title_japanese"]:
-                t = item.get(title_field, "")
-                if t:
-                    norm = gogoanime_client._normalize(t)
-                    if norm:
-                        gogo_by_norm[norm] = item
 
-        # Build results
-        results = []
-        for a in unique:
-            title = a.get("title") or ""
-            episode = a.get("episode")
-            airing_at = a.get("airingAt") or 0
-            aired_ago = int(now - airing_at) if airing_at > 0 else 0
-
-            # Try to find GogoAnime slug
-            slug = None
-            poster = a.get("coverImage")
-            for try_title in [title, a.get("title_jp", "")]:
-                norm = gogoanime_client._normalize(try_title)
-                if norm and norm in gogo_by_norm:
-                    gogo_item = gogo_by_norm[norm]
-                    slug = gogo_item.get("slug")
-                    if not poster:
-                        poster = gogo_item.get("poster") or gogo_item.get("image")
-                    break
-
-            results.append({
+            title = item.get("title") or item.get("title_english") or ""
+            poster = item.get("poster") or item.get("image")
+            candidates.append({
                 "title": title,
-                "episode": episode,
+                "episode": ep,
                 "poster": poster,
                 "slug": slug,
-                "aired_ago": aired_ago,
-                "genres": a.get("genres") or [],
-                "anilist_id": a.get("mediaId"),
+                "aired_ago": 0,
+                "genres": [],
+                "anilist_id": None,
             })
 
+        # Enrich with AniList metadata (best effort, batch by schedule)
+        try:
+            # Use the existing schedule endpoint which fetches RELEASING anime
+            schedule = await anilist_client.get_schedule(page=1, per_page=50)
+            media_list = schedule.get("Page", {}).get("media", [])
+
+            al_by_norm: dict[str, dict] = {}
+            for m in media_list:
+                title_obj = m.get("title", {})
+                for key in ["english", "romaji", "native"]:
+                    t = title_obj.get(key, "")
+                    if t:
+                        norm = gogoanime_client._normalize(t)
+                        if norm:
+                            al_by_norm[norm] = m
+
+            for c in candidates:
+                c_norm = gogoanime_client._normalize(c["title"])
+                if c_norm and c_norm in al_by_norm:
+                    al_media = al_by_norm[c_norm]
+                    c["genres"] = al_media.get("genres", [])
+                    c["anilist_id"] = al_media.get("id")
+                    al_title = al_media.get("title", {})
+                    enriched = al_title.get("english") or al_title.get("romaji") or ""
+                    if enriched:
+                        c["title"] = enriched
+        except Exception:
+            pass
+
         start = (page - 1) * limit
-        page_eps = results[start:start + limit]
-        has_next = len(results) > start + limit
+        page_eps = candidates[start:start + limit]
+        has_next = len(candidates) > start + limit
 
         return {
             "data": page_eps,
