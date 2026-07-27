@@ -73,8 +73,9 @@ export function useHlsPlayer(
     const qualityCycle = () => {
       const hls = hlsRef.current;
       if (!hls || !hls.levels || hls.levels.length < 2) return false;
-      audioOnlyFreezeQualityCycle = (audioOnlyFreezeQualityCycle + 1) % hls.levels.length;
-      hls.nextLevel = audioOnlyFreezeQualityCycle;
+      // Drop to lowest quality to reduce bandwidth demand
+      const lowestLevel = hls.levels.length - 1;
+      hls.nextLevel = lowestLevel;
       return true;
     };
 
@@ -104,15 +105,21 @@ export function useHlsPlayer(
           ) {
             // Use requestVideoFrameCallback timestamp to detect video freeze
             const frameGap = now - lastVideoFrameStamp;
-            if (frameGap > 4000) {
+            if (frameGap > 3000) {
               lastVideoFrameStamp = now;
               videoFreezeRecoveries++;
               const hls = hlsRef.current;
               if (videoFreezeRecoveries === 1) {
-                try { hls?.recoverMediaError(); } catch {}
+                // Gentle: nudge currentTime to force frame decode
+                try { video.currentTime = video.currentTime + 0.01; } catch {}
               } else if (videoFreezeRecoveries === 2) {
+                // Medium: force hls.js to reload from buffer
+                try { hls?.startLoad(); } catch {}
+              } else if (videoFreezeRecoveries === 3) {
+                // Aggressive: drop to lowest quality
                 qualityCycle();
-              } else if (videoFreezeRecoveries >= 3) {
+              } else if (videoFreezeRecoveries >= 4) {
+                // Last resort: fatal error triggers source fallback
                 videoFreezeRecoveries = 0;
                 if (onFatalErrorRef.current) onFatalErrorRef.current("videoFreeze");
               }
@@ -143,6 +150,13 @@ export function useHlsPlayer(
 
           stallRecoveries++;
           if (stallRecoveries === 1) {
+            // Gentle: tell hls.js to resume loading
+            const hls = hlsRef.current;
+            if (hls) {
+              try { hls.startLoad(); } catch {}
+            }
+          } else if (stallRecoveries === 2) {
+            // Medium: try recovering media error
             const hls = hlsRef.current;
             if (hls) {
               try { hls.recoverMediaError(); } catch {}
@@ -270,21 +284,22 @@ export function useHlsPlayer(
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        maxBufferLength: 60,
-        maxMaxBufferLength: 120,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
         backBufferLength: 10,
-        stretchShortVideoTrack: true,
+        stretchShortVideoTrack: false,
         startLevel: -1,
         capLevelToPlayerSize: false,
-        maxBufferHole: 0.5,
-        nudgeMaxRetry: 10,
-        nudgeOffset: 0.3,
-        maxStarvationDelay: 4,
+        maxBufferHole: 0.3,
+        nudgeMaxRetry: 5,
+        nudgeOffset: 0.2,
+        maxStarvationDelay: 3,
         fragLoadingMaxRetry: 6,
         manifestLoadingMaxRetry: 3,
         levelLoadingMaxRetry: 4,
-        fragLoadingTimeOut: 20000,
-        manifestLoadingTimeOut: 15000,
+        fragLoadingTimeOut: 15000,
+        manifestLoadingTimeOut: 10000,
+        startFragPrefetch: true,
       });
       hlsRef.current = hls;
 

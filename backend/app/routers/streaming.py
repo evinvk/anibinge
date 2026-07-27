@@ -697,7 +697,7 @@ async def gogoanime_proxy(
 
     try:
         client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
-        resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/"})
+        resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/", "Origin": "https://gogoanimehd.to"})
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")
@@ -770,7 +770,7 @@ async def gogoanime_embed_proxy(
             parsed = urlparse(decoded_url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
 
-            # Rewrite segment/variant URLs to go through our embed-proxy
+            # Rewrite segment/variant URLs — CORS CDNs serve directly, others go through proxy
             proxy_base = "/api/v1/streaming/gogoanime/embed-proxy"
             lines = body.split("\n")
             rewritten = []
@@ -791,8 +791,12 @@ async def gogoanime_embed_proxy(
                         i += 1
                         continue
 
-                    encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
-                    rewritten.append(f"{proxy_base}?url={encoded}&referer={_b64.urlsafe_b64encode(upstream_referer.encode()).decode()}")
+                    # CORS CDNs can be fetched directly by the browser — skip proxy
+                    if not gogoanime_client._should_proxy(resolved):
+                        rewritten.append(resolved)
+                    else:
+                        encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
+                        rewritten.append(f"{proxy_base}?url={encoded}&referer={_b64.urlsafe_b64encode(upstream_referer.encode()).decode()}")
                 elif stripped.startswith("#EXTINF") and i + 1 < len(lines):
                     rewritten.append(line)
                     next_line = lines[i + 1].strip()
