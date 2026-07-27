@@ -333,6 +333,23 @@ _AD_DOMAINS = {
     "ad.doubleclick.net",
 }
 
+# Video CDNs that allow cross-origin requests — serve directly to browser
+# instead of routing through the backend proxy for faster playback.
+_DIRECT_CDN_DOMAINS = {
+    "gogocdn.net",
+    "gogostream.com",
+    "gogohd.net",
+    "gogoanimehd.to",
+    "animekai.to",
+    "vidstreaming.io",
+    "megaplay.cc",
+    "vidtube.pro",
+    "embtaku.pro",
+    "goload.pro",
+    "streamani.net",
+    "fembed.net",
+}
+
 
 def _is_ad_url(url: str) -> bool:
     """Check if a URL belongs to an ad CDN that serves PNG/image ads instead of video segments."""
@@ -346,8 +363,25 @@ def _is_ad_url(url: str) -> bool:
     return False
 
 
+def _should_proxy(url: str) -> bool:
+    """Return True if the URL should go through our backend proxy.
+    Video CDNs that support CORS can be fetched directly by the browser."""
+    from urllib.parse import urlparse
+    try:
+        host = urlparse(url).hostname or ""
+        if _is_ad_url(url):
+            return True
+        for cdn in _DIRECT_CDN_DOMAINS:
+            if host == cdn or host.endswith("." + cdn):
+                return False
+        return True
+    except Exception:
+        return True
+
+
 def _rewrite_m3u8_urls(content: str, base_url: str) -> str:
-    """Rewrite M3U8 URLs to go through our CORS proxy endpoint. Filters out ad segments."""
+    """Rewrite M3U8 URLs. Known video CDNs are served directly to the browser
+    for fast playback. Ads are filtered out. Unknown domains go through proxy."""
     from urllib.parse import urlparse
     lines = content.splitlines()
     result = []
@@ -360,11 +394,13 @@ def _rewrite_m3u8_urls(content: str, base_url: str) -> str:
             if _is_ad_url(resolved):
                 i += 1
                 continue
-            encoded = base64.urlsafe_b64encode(resolved.encode()).decode()
-            result.append(f"/api/v1/streaming/gogoanime/proxy?url={encoded}")
+            if _should_proxy(resolved):
+                encoded = base64.urlsafe_b64encode(resolved.encode()).decode()
+                result.append(f"/api/v1/streaming/gogoanime/proxy?url={encoded}")
+            else:
+                result.append(resolved)
         elif stripped.startswith("#EXTINF"):
             result.append(line)
-            # Check if the next line (segment URL) is an ad
             if i + 1 < len(lines):
                 next_line = lines[i + 1].strip()
                 if next_line and not next_line.startswith("#"):

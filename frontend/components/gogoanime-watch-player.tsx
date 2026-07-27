@@ -346,7 +346,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </div>
         ) : player.streamData ? (
           <>
-            <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" />
+            <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" crossOrigin="anonymous" />
             {player.playerStatus === "buffering" && !player.error && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="rounded-full bg-black/50 p-3">
