@@ -26,7 +26,6 @@ export function Navbar() {
         <Link href="/" className="flex items-center gap-2 font-display text-lg font-bold">
           <Sparkles className="h-5 w-5 text-primary-400" />
           <span className="text-gradient">Anibinge</span>
-          <span className="hidden text-[10px] font-normal tracking-wider text-mist sm:inline-block sm:text-[11px]">watch anime</span>
         </Link>
 
         <div className="hidden items-center gap-6 md:flex">
