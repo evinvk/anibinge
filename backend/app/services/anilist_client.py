@@ -610,6 +610,62 @@ class AniListClient:
         """
         return await self._query(query, {"id": anime_id})
 
+    async def get_recently_aired(self, page: int = 1, per_page: int = 30) -> list[dict]:
+        """Get the most recently aired episodes across all anime.
+
+        Returns a list of {mediaId, episode, airingAt, title, coverImage, genres}
+        sorted by most recent air time first.
+        """
+        query = """
+        query($page:Int,$perPage:Int){
+          Page(page:$page,perPage:$perPage){
+            airingSchedule(
+              sort:TIME_DESC,
+              notYetAired:false
+            ){
+              airingAt
+              episode
+              mediaId
+              media{
+                id
+                title{
+                  romaji
+                  english
+                  native
+                }
+                coverImage{
+                  extraLarge
+                  large
+                }
+                genres
+                format
+                status
+                episodes
+              }
+            }
+          }
+        }
+        """
+        result = await self._query(query, {"page": page, "perPage": per_page})
+        entries = result.get("Page", {}).get("airingSchedule", [])
+        out = []
+        for e in entries:
+            media = e.get("media") or {}
+            title_obj = media.get("title", {})
+            out.append({
+                "mediaId": e.get("mediaId"),
+                "episode": e.get("episode"),
+                "airingAt": e.get("airingAt"),
+                "title": title_obj.get("english") or title_obj.get("romaji") or "",
+                "title_jp": title_obj.get("romaji") or "",
+                "coverImage": (media.get("coverImage") or {}).get("large") or (media.get("coverImage") or {}).get("extraLarge"),
+                "genres": media.get("genres") or [],
+                "totalEpisodes": media.get("episodes"),
+                "format": media.get("format"),
+                "status": media.get("status"),
+            })
+        return out
+
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
@@ -646,3 +702,6 @@ async def get_anime_characters(anime_id: int) -> dict:
 
 async def get_airing_schedule(media_ids: list[int], per_page: int = 50) -> list[dict]:
     return await anilist_client.get_airing_schedule(media_ids, per_page=per_page)
+
+async def get_recently_aired(page: int = 1, per_page: int = 30) -> list[dict]:
+    return await anilist_client.get_recently_aired(page=page, per_page=per_page)
