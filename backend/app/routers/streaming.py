@@ -1469,8 +1469,8 @@ async def download_episode(
         if not stream_url:
             raise HTTPException(status_code=404, detail="No streaming source available")
 
-        stream_url = stream_url.strip()
-        referer = (referer or "").strip()
+        stream_url = "".join(stream_url.split())
+        referer = "".join((referer or "").split())
 
         # --- MP4 path: download directly and serve ---
         if stream_type == "mp4":

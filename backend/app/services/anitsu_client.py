@@ -46,7 +46,7 @@ def _extract_original_url(proxied_url: str) -> str:
     parsed = urlparse(url)
     qs = parse_qs(parsed.query)
     if "url" in qs:
-        return qs["url"][0].strip()
+        return "".join(qs["url"][0].split())
     return url
 
 
@@ -120,6 +120,8 @@ async def _try_provider(
 
     raw_url = best_source.get("originalUrl") or best_source.get("url", "")
     stream_url = _extract_original_url(raw_url)
+    if stream_url:
+        stream_url = "".join(stream_url.split())
     stream_type = "mp4" if best_source.get("type") == "mp4" else "hls"
     referer = best_source.get("upstreamReferer") or _get_referer_for_url(stream_url)
 
