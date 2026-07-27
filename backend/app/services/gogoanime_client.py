@@ -40,6 +40,12 @@ _catalog_loaded = False
 _catalog_lock = asyncio.Lock()
 _catalog_loaded_at: float = 0
 
+# Stream resolution cache: key = (slug, episode_number, audio) -> result
+_stream_cache: dict[str, tuple[float, dict | None]] = {}
+_STREAM_CACHE_TTL = 300  # 5 minutes
+_m3u8_cache: dict[str, tuple[float, tuple[str, str] | None]] = {}
+_M3U8_CACHE_TTL = 300  # 5 minutes
+
 
 async def _load_catalog_from_disk() -> dict[str, dict] | None:
     """Load the catalog from the disk cache file. Returns None if cache is missing or stale."""
@@ -241,12 +247,20 @@ def get_info_by_slug(slug: str) -> dict | None:
 
 
 async def get_episode(slug: str, episode_number: int) -> dict | None:
-    """Get episode data including the proxy streaming URL."""
+    """Get episode data including the proxy streaming URL. Results cached in memory."""
+    import time as _time
+    key = f"ep:{slug}:{episode_number}"
+    now = _time.time()
+    if key in _stream_cache:
+        ts, val = _stream_cache[key]
+        if now - ts < _STREAM_CACHE_TTL:
+            return val
     client = await _get_client()
     try:
-        resp = await client.get(f"{_BASE_URL}/api/episode/{slug}/ep-{episode_number}")
+        resp = await client.get(f"{_BASE_URL}/api/episode/{slug}/ep-{episode_number}", timeout=httpx.Timeout(8.0))
         resp.raise_for_status()
         data = resp.json()
+        _stream_cache[key] = (_time.time(), data)
         logger.info("GogoAnime episode %s ep-%d fetched", slug, episode_number)
         return data
     except Exception as e:
@@ -256,29 +270,41 @@ async def get_episode(slug: str, episode_number: int) -> dict | None:
 
 async def resolve_m3u8(proxy_url: str) -> tuple[str, str] | None:
     """Follow the proxy URL to get the actual M3U8 content.
-    Returns (m3u8_content, resolved_url) or None."""
+    Returns (m3u8_content, resolved_url) or None. Results cached in memory."""
+    import time as _time
+    now = _time.time()
+    if proxy_url in _m3u8_cache:
+        ts, val = _m3u8_cache[proxy_url]
+        if now - ts < _M3U8_CACHE_TTL:
+            return val
     client = await _get_client()
     try:
         full_url = proxy_url if proxy_url.startswith("http") else f"{_BASE_URL}{proxy_url}"
-        resp = await client.get(full_url)
+        resp = await client.get(full_url, timeout=httpx.Timeout(10.0))
         resp.raise_for_status()
         content_type = resp.headers.get("content-type", "")
 
         if "mpegurl" in content_type or resp.text.strip().startswith("#EXTM3U"):
-            return (resp.text, full_url)
+            result = (resp.text, full_url)
+            _m3u8_cache[proxy_url] = (_time.time(), result)
+            return result
 
         text = resp.text
         m3u8_match = re.search(r'https?://[^\s"\'<>]+\.m3u8[^\s"\'<>]*', text)
         if m3u8_match:
             m3u8_url = m3u8_match.group(0)
-            resp2 = await client.get(m3u8_url, headers={"Referer": _BASE_URL + "/"})
+            resp2 = await client.get(m3u8_url, headers={"Referer": _BASE_URL + "/"}, timeout=httpx.Timeout(10.0))
             resp2.raise_for_status()
-            return (resp2.text, m3u8_url)
+            result = (resp2.text, m3u8_url)
+            _m3u8_cache[proxy_url] = (_time.time(), result)
+            return result
 
         logger.warning("GogoAnime: no M3U8 found at %s", full_url)
+        _m3u8_cache[proxy_url] = (_time.time(), None)
         return None
     except Exception as e:
         logger.warning("GogoAnime M3U8 resolve failed for %s: %s", proxy_url, e)
+        _m3u8_cache[proxy_url] = (_time.time(), None)
         return None
 
 
@@ -489,8 +515,16 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
     """Get quality-tagged streaming sources for an episode.
     Returns {master_m3u8, qualities, embed_url, server_id, direct_stream} or None.
     direct_stream = {stream_url, referer} when extraction succeeds (no iframe needed)."""
+    import time as _time
+    cache_key = f"stream:{slug}:{episode_number}:{audio}"
+    now = _time.time()
+    if cache_key in _stream_cache:
+        ts, val = _stream_cache[cache_key]
+        if now - ts < _STREAM_CACHE_TTL:
+            return val
     episode = await get_episode(slug, episode_number)
     if not episode:
+        _stream_cache[cache_key] = (_time.time(), None)
         return None
 
     # Try to resolve embed server URL (the working playback path)
@@ -532,24 +566,30 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
     if not proxy_url:
         if not embed_url:
             logger.warning("GogoAnime: no streaming sources for %s ep-%d", slug, episode_number)
+            _stream_cache[cache_key] = (_time.time(), None)
             return None
-        return {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
+        result = {"master_m3u8": None, "qualities": [], "embed_url": embed_url, "server_id": embed_server_id}
+        _stream_cache[cache_key] = (_time.time(), result)
+        return result
 
     # Try to extract direct stream from embed URL if available
     if embed_url:
         extracted = await extract_embed_stream(embed_url)
         if extracted:
-            return {
+            result = {
                 "master_m3u8": None,
                 "qualities": [],
                 "embed_url": None,
                 "server_id": embed_server_id,
                 "direct_stream": extracted,
             }
+            _stream_cache[cache_key] = (_time.time(), result)
+            return result
         # Embed extraction failed — fall through to M3U8 proxy resolution
 
     result = await resolve_m3u8(proxy_url)
     if not result:
+        _stream_cache[cache_key] = (_time.time(), None)
         return None
 
     m3u8_content, resolved_url = result
@@ -585,7 +625,9 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
         qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
 
     logger.info("GogoAnime stream %s ep-%d: %d quality options, embed=%s", slug, episode_number, len(qualities), bool(embed_url))
-    return {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
+    result = {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
+    _stream_cache[cache_key] = (_time.time(), result)
+    return result
 
 
 def get_catalog() -> list[dict]:
