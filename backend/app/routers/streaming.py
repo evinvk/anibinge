@@ -148,9 +148,6 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
-    """
-    Get recently uploaded episodes across all anime.
-
     Uses GogoAnime catalog sorted by latest_episode descending, enriched with
     AniList metadata (title, genres, anilist_id) where available.
     """
