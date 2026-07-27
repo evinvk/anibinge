@@ -285,6 +285,32 @@ async def get_play_url(
         raise HTTPException(status_code=503, detail="Stream URL unavailable")
 
 
+def _pick_best_anilist_media(media_list: list[dict], query: str) -> dict | None:
+    """Score AniList search results by title match quality and format preference.
+    Prefers exact matches and TV/ONA formats to avoid streaming the wrong anime."""
+    q = query.lower().strip()
+    scored = []
+    for m in media_list:
+        t = (m.get("title") or {}) or {}
+        titles = [str(t.get("english","") or ""), str(t.get("romaji","") or ""), str(t.get("native","") or "")]
+        score = 0
+        for t2 in titles:
+            tl = t2.lower().strip()
+            if tl == q:
+                score += 100
+            elif tl.startswith(q):
+                score += 60
+            elif q in tl:
+                score += 30
+        fmt = (m.get("format") or "").upper()
+        if fmt in ("TV", "ONA"):
+            score += 10
+        if score > 0:
+            scored.append((score, m))
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1] if scored else None
+
+
 # ── GogoAnime endpoints ─────────────────────────────────────────────
 
 
@@ -913,16 +939,20 @@ async def anitsu_stream(
     audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Search by title, resolve to AniList ID, and get stream from Animetsu (AnimeXin).
-    Used as second fallback after GogoAnime. Supports sub/dub audio selection."""
+    Used as second fallback after GogoAnime. Supports sub/dub audio selection.
+    Uses title matching to avoid playing the wrong anime when search returns similar names."""
     try:
         from app.services import anilist_client
-        result = await anilist_client.search_anime(q, per_page=5)
+        result = await anilist_client.search_anime(q, per_page=10)
         media = result.get("Page", {}).get("media", [])
         if not media:
             raise HTTPException(status_code=404, detail="Anime not found on AniList")
-        anilist_id = media[0]["id"]
 
-        stream_data = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
+        best = _pick_best_anilist_media(media, q)
+        if not best:
+            raise HTTPException(status_code=404, detail="Anime not found on AniList")
+
+        stream_data = await anitsu_client_mod.get_stream(best["id"], ep, audio=audio)
         if not stream_data or (not stream_data.get("stream_url") and not stream_data.get("embed_url")):
             raise HTTPException(status_code=404, detail="Stream not available on AnimeXin")
         return stream_data
@@ -1294,7 +1324,14 @@ async def donghua_stream(
         from app.services import anilist_client as _al
         search_result = await _al.search_anime(q, per_page=10)
         media_list = search_result.get("Page", {}).get("media", [])
-        for media in media_list:
+
+        # Sort by title match quality — best matches tried first
+        scored_media = [(m, (m.get("title") or {}).get("english") or (m.get("title") or {}).get("romaji") or "") for m in media_list]
+        best = _pick_best_anilist_media(media_list, q)
+        if best:
+            scored_media.sort(key=lambda x: 0 if x[0].get("id") == best.get("id") else 1)
+
+        for media, _ in scored_media:
             mid = media.get("id")
             if not mid:
                 continue
