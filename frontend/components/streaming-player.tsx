@@ -67,12 +67,24 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const tryAnitsuFallback = useCallback(async (ep: number, epAudio: string = audio): Promise<boolean> => {
     setStatusText("");
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${epAudio}`
-      ).then(r => {
-        if (!r.ok) throw new Error("not ok");
-        return r.json();
-      });
+      const aid = resolvedAnilistRef.current;
+      let res: any;
+
+      if (aid) {
+        // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
+        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}&source=anitsu`;
+        res = await fetch(url).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+      } else {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        res = await fetch(
+          `${apiBase}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${epAudio}`
+        ).then(r => {
+          if (!r.ok) throw new Error("not ok");
+          return r.json();
+        });
+      }
+
       if (res && (res.stream_url || res.embed_url)) {
         player.sourceRef.current = "anitsu";
 
@@ -285,6 +297,39 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     setStatusText("");
     const anitsuOk = await tryAnitsuFallback(ep);
     if (anitsuOk) return;
+
+    // Try donghua endpoint as additional fallback (for Chinese anime not on GogoAnime)
+    if (resolvedAnilistRef.current) {
+      setStatusText("");
+      try {
+        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const res = await fetch(
+          `${apiBase}/api/v1/streaming/donghua/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${audio}&anilist_id=${resolvedAnilistRef.current}`
+        ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+        if (res?.data?.stream_url) {
+          const s = res.data;
+          player.sourceRef.current = "anitsu";
+          if (s.stream_type === "mp4") {
+            const mp4Url = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
+            player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+            player.setLoadingStream(false);
+            setStatusText("");
+            await new Promise(r => setTimeout(r, 100));
+            if (videoRef.current) {
+              videoRef.current.src = mp4Url;
+              videoRef.current.play().catch(() => {});
+            }
+            return;
+          }
+          const hlsUrl = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
+          player.setMasterUrl(hlsUrl);
+          player.setStreamData({ qualities: [{ quality: "Auto", url: hlsUrl }] });
+          player.setLoadingStream(false);
+          setStatusText("");
+          return;
+        }
+      } catch {}
+    }
 
     player.setLoadingStream(false);
     setStatusText("");

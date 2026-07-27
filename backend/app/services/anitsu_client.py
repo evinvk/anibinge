@@ -14,11 +14,30 @@ _client = get_shared_client(timeout=25.0, headers={
 })
 
 _PROVIDER_CHAIN = [
+    # Primary: anipm (sub & dub, multiple servers)
     ("anipm", "onyx-hls", "sub"),
     ("anipm", "megaplay", "sub"),
+    ("anipm", "vega-mp4", "sub"),
+    # Animekhor — donghua specialist (Chinese anime)
+    ("animekhor", "default", "sub"),
+    # Anikuro — 11 upstream providers
+    ("anikuro", "animeverse", "sub"),
+    ("anikuro", "kite", "sub"),
+    # Miruro — 7 streaming providers
+    ("miruro", "bonk", "sub"),
+    ("miruro", "kite", "sub"),
+    # Animetsu primary
+    ("animetsu", "kite", "sub"),
+    # Anilight — MegaPlay streams
+    ("anilight", "megaplay", "sub"),
+    # Animeyubi — AnimePahe mirror
     ("animeyubi", "kwik-mp4", "sub"),
+    # Dub variants
     ("anipm", "onyx-hls", "dub"),
     ("anipm", "megaplay", "dub"),
+    ("anikuro", "animeverse", "dub"),
+    ("anikuro", "kite", "dub"),
+    ("miruro", "bonk", "dub"),
 ]
 
 _REFERER_MAP = {
