@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowLeft, Play, Clock, ChevronLeft, Loader2 } from "lucide-react";
@@ -92,8 +92,6 @@ export default function RecentEpisodesPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasNext, setHasNext] = useState(false);
-  const [fetched, setFetched] = useState(false);
-
   const fetchPage = useCallback(
     async (pageNum: number, append: boolean) => {
       try {
@@ -109,10 +107,9 @@ export default function RecentEpisodesPage() {
     [],
   );
 
-  if (!fetched) {
-    setFetched(true);
+  useEffect(() => {
     fetchPage(1, false).finally(() => setLoading(false));
-  }
+  }, [fetchPage]);
 
   const loadMore = async () => {
     setLoadingMore(true);

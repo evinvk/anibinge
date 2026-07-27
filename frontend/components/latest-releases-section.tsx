@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { api } from "@/lib/api";
 import { LatestReleasesRow } from "@/components/latest-releases-row";
 import type { RecentEpisode } from "@/lib/api";
@@ -29,10 +29,9 @@ export function LatestReleasesSection() {
     [],
   );
 
-  // Initial load
-  useState(() => {
+  useEffect(() => {
     fetchPage(1, false).finally(() => setLoading(false));
-  });
+  }, [fetchPage]);
 
   const loadMore = async () => {
     setLoadingMore(true);
