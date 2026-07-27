@@ -306,15 +306,12 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    setStatusText("");
-    const gogoOk = await tryGogoanime(ep);
-    if (gogoOk) return;
-
-    setStatusText("");
-    const anitsuOk = await tryAnitsu(ep);
-    if (anitsuOk) return;
-
-    if (!gogoOk && !anitsuOk) {
+    setStatusText("Loading stream...");
+    const result = await Promise.race([
+      tryGogoanime(ep).then((ok) => ok && "gogoanime"),
+      tryAnitsu(ep).then((ok) => ok && "anitsu"),
+    ]);
+    if (!result) {
       player.setLoadingStream(false);
       setStatusText("");
       player.setError("Streaming is temporarily unavailable. Try again later.");

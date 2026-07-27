@@ -3,18 +3,23 @@ services:
     name: anibinge-api
     runtime: python
     buildCommand: pip install -r backend/requirements.txt
-    startCommand: cd backend && gunicorn -w 2 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --timeout 120
+    startCommand: cd backend && gunicorn -w 4 -k uvicorn.workers.UvicornWorker app.main:app --bind 0.0.0.0:$PORT --timeout 120 --max-requests 1000 --max-requests-jitter 50
     envVars:
       - key: ENV
         value: production
       - key: DEBUG
         value: false
       - key: PYTHON_VERSION
-        value: 3.11
+        value: "3.11"
       - key: DATABASE_URL
         fromDatabase:
           name: anibinge-db
           property: connectionString
+      # Redis via Upstash (free tier, 10k commands/day)
+      # 1. Sign up at https://upstash.com
+      # 2. Create a Redis database (Global, max 1MB)
+      # 3. Copy the REST URL -> REDIS_URL
+      # 4. Paste as secret env var below (remove sync: false)
       - key: REDIS_URL
         sync: false
       - key: ANIMESCHEDULE_API_TOKEN

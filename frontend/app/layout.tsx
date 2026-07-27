@@ -84,10 +84,17 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${sora.variable} ${inter.variable} ${jetbrains.variable}`}>
+        <link rel="preconnect" href={API_BASE} />
+        <link rel="dns-prefetch" href={API_BASE} />
+        <link rel="preconnect" href="https://gogocdn.net" />
+        <link rel="dns-prefetch" href="https://gogocdn.net" />
+        <link rel="preconnect" href="https://graphql.anilist.co" />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
             <NotificationsProvider>
