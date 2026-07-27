@@ -122,6 +122,8 @@ async def _try_provider(
     stream_url = _extract_original_url(raw_url)
     if stream_url:
         stream_url = "".join(stream_url.split())
+        if stream_url.startswith("//"):
+            stream_url = "https:" + stream_url
     stream_type = "mp4" if best_source.get("type") == "mp4" else "hls"
     referer = best_source.get("upstreamReferer") or _get_referer_for_url(stream_url)
 

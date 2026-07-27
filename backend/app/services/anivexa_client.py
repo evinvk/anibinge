@@ -113,6 +113,8 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
     streams = ssub.get("streams", [])
     for s in streams:
         url = "".join((s.get("url") or "").split())
+        if url.startswith("//"):
+            url = "https:" + url
         stype = "".join((s.get("type") or "").split())
         if stype == "mp4" and url and not m3u8_url:
             m3u8_url = url

@@ -1472,6 +1472,10 @@ async def download_episode(
         stream_url = "".join(stream_url.split())
         referer = "".join((referer or "").split())
 
+        if not stream_url.startswith("http://") and not stream_url.startswith("https://"):
+            logger.warning("Download: invalid stream_url protocol: %.100s", stream_url)
+            raise HTTPException(status_code=404, detail="No streaming source available")
+
         # --- MP4 path: download directly and serve ---
         if stream_type == "mp4":
             dl_headers = {"Referer": referer} if referer else {}
