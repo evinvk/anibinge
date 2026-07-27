@@ -62,6 +62,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [autoPlay, setAutoPlay] = useState(true);
   const [nextEpCountdown, setNextEpCountdown] = useState(0);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const preloadedStreamRef = useRef<{ ep: number; data: any } | null>(null);
+  const preloadingRef = useRef(false);
 
   const subs = useSubtitles(videoRef);
 
@@ -263,9 +265,20 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   useEffect(() => {
     if (currentEp) {
+      preloadedStreamRef.current = null;
       loadStream(slug, currentEp);
     }
   }, [slug, currentEp, audio]);
+
+  // Preload next episode in background
+  useEffect(() => {
+    if (!currentEp || !totalEps || currentEp >= totalEps || preloadingRef.current) return;
+    const nextEp = currentEp + 1;
+    preloadingRef.current = true;
+    api.gogoanimeStream(slug, nextEp, audio).then((res) => {
+      if (res?.data) preloadedStreamRef.current = { ep: nextEp, data: res.data };
+    }).catch(() => {}).finally(() => { preloadingRef.current = false; });
+  }, [currentEp, slug, audio, totalEps]);
 
   useEffect(() => {
     if (!resolvedAnilistRef.current && title) {
@@ -306,6 +319,30 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
+    // Check if this episode was preloaded
+    const preloaded = preloadedStreamRef.current;
+    if (preloaded?.ep === ep && preloaded.data) {
+      preloadedStreamRef.current = null;
+      const data = preloaded.data;
+      if (data.direct_stream?.stream_url) {
+        player.sourceRef.current = "gogoanime";
+        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
+        player.setMasterUrl(proxiedUrl);
+        player.setLoadingStream(false);
+        fetchSubtitlesInBackground(ep);
+        return;
+      }
+      if (data.qualities) {
+        player.sourceRef.current = "gogoanime";
+        player.setStreamData({ qualities: data.qualities });
+        player.setMasterUrl(api.gogoanimeMaster(s, ep, audio));
+        player.setLoadingStream(false);
+        fetchSubtitlesInBackground(ep);
+        return;
+      }
+    }
+
     setStatusText("Loading stream...");
     const result = await Promise.race([
       tryGogoanime(ep).then((ok) => ok && "gogoanime"),
@@ -316,7 +353,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       setStatusText("");
       player.setError("Streaming is temporarily unavailable. Try again later.");
     }
-  }, [tryGogoanime, tryAnitsu]);
+  }, [tryGogoanime, tryAnitsu, fetchSubtitlesInBackground, audio]);
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
@@ -338,19 +375,27 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         )}
       >
         {player.loadingStream ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-primary-400 animate-pulse" />
-            {statusText && (
-              <span className="text-[10px] text-mist">{statusText}</span>
-            )}
+          <div className="absolute inset-0 animate-pulse bg-void">
+            <div className="h-full w-full bg-gradient-to-r from-void via-surface-hi/30 to-void" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <div className="h-8 w-8 rounded-full border-2 border-primary-400/30 border-t-primary-400 animate-spin" />
+              {statusText && (
+                <span className="text-[11px] font-medium text-mist">{statusText}</span>
+              )}
+            </div>
           </div>
         ) : player.streamData ? (
           <>
             <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" crossOrigin="anonymous" />
             {player.playerStatus === "buffering" && !player.error && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="rounded-full bg-black/50 p-3">
-                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/20 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-primary-400" style={{ animationDelay: "0ms" }} />
+                    <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-primary-400" style={{ animationDelay: "150ms" }} />
+                    <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-primary-400" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  <span className="text-[10px] font-medium text-white/60">Buffering</span>
                 </div>
               </div>
             )}
