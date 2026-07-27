@@ -8,23 +8,20 @@ import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
 import { MonetagPopunder } from "@/components/monetag-popunder";
 
-interface WatchPageInnerProps {
-  slug: string;
-  initialTitle: string | null;
-  initialTotalEps: number | null;
-  initialAnilistId: number | null;
+interface PageProps {
+  params: Promise<{ slug: string }>;
 }
 
-function WatchPageInner({ slug, initialTitle, initialTotalEps, initialAnilistId }: WatchPageInnerProps) {
+function WatchPageInner({ slug }: { slug: string }) {
   const searchParams = useSearchParams();
   const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
-  const [title, setTitle] = useState<string | null>(initialTitle);
-  const [totalEps, setTotalEps] = useState<number | null>(initialTotalEps);
-  const [anilistId, setAnilistId] = useState<number | null>(initialAnilistId);
+  const [title, setTitle] = useState<string | null>(null);
+  const [totalEps, setTotalEps] = useState<number | null>(null);
+  const [anilistId, setAnilistId] = useState<number | null>(null);
   const [currentEp, setCurrentEp] = useState(initialEp);
-  const [loading, setLoading] = useState(!initialTitle);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef(!!initialTitle);
+  const fetchedRef = useRef(false);
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -123,14 +120,7 @@ function WatchPageInner({ slug, initialTitle, initialTotalEps, initialAnilistId 
   );
 }
 
-interface PageProps {
-  params: Promise<{ slug: string }>;
-  initialTitle?: string | null;
-  initialTotalEps?: number | null;
-  initialAnilistId?: number | null;
-}
-
-export default function WatchPage({ params, initialTitle, initialTotalEps, initialAnilistId }: PageProps) {
+export default function WatchPage({ params }: PageProps) {
   const { slug } = use(params);
   return (
     <Suspense fallback={
@@ -138,12 +128,7 @@ export default function WatchPage({ params, initialTitle, initialTotalEps, initi
         <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
       </div>
     }>
-      <WatchPageInner
-        slug={slug}
-        initialTitle={initialTitle ?? null}
-        initialTotalEps={initialTotalEps ?? null}
-        initialAnilistId={initialAnilistId ?? null}
-      />
+      <WatchPageInner slug={slug} />
     </Suspense>
   );
 }
