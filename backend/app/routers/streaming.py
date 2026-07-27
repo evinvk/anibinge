@@ -1381,15 +1381,15 @@ async def download_episode(
                         stream_url = direct.get("stream_url")
                         referer = direct.get("referer", "")
                         stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
+                    elif sources.get("master_m3u8"):
+                        stream_url = sources["master_m3u8"]
+                        stream_type = "hls"
                     elif sources.get("embed_url"):
                         extracted = await gogoanime_client.extract_embed_stream(sources["embed_url"])
                         if extracted:
                             stream_url = extracted.get("stream_url")
                             referer = extracted.get("referer", "")
                             stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
-                    elif sources.get("master_m3u8"):
-                        stream_url = sources["master_m3u8"]
-                        stream_type = "hls"
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
