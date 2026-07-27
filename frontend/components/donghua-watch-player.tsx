@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Play, Server } from "lucide-react";
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
+import { EpisodeComments } from "@/components/episode-comments";
 
 interface Props {
   slug: string;
@@ -207,6 +208,10 @@ export default function DonghuaWatchPage({ slug }: Props) {
               ))}
             </div>
           </div>
+        )}
+
+        {title && (
+          <EpisodeComments slug={slug} episodeNumber={currentEp} />
         )}
       </div>
     </div>
