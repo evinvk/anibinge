@@ -52,15 +52,15 @@ export function useHlsPlayer(
     let lastVideoFrameStamp = Date.now();
     let videoFreezeRecoveries = 0;
     let stallRecoveries = 0;
+    let audioOnlyFreezeQualityCycle = 0;
 
     const watchVideoFrames = () => {
-      if (typeof video.requestVideoFrameCallback !== "function" || frameCallbackId !== null) return;
-      const onFrame = () => {
+      if (typeof video.requestVideoFrameCallback !== "function") return;
+      frameCallbackId = video.requestVideoFrameCallback(function onFrame() {
         lastVideoFrameStamp = Date.now();
         videoFreezeRecoveries = 0;
         frameCallbackId = video.requestVideoFrameCallback(onFrame);
-      };
-      frameCallbackId = video.requestVideoFrameCallback(onFrame);
+      });
     };
 
     const stopWatchingVideoFrames = () => {
@@ -68,6 +68,14 @@ export function useHlsPlayer(
         video.cancelVideoFrameCallback(frameCallbackId);
       }
       frameCallbackId = null;
+    };
+
+    const qualityCycle = () => {
+      const hls = hlsRef.current;
+      if (!hls || !hls.levels || hls.levels.length < 2) return false;
+      audioOnlyFreezeQualityCycle = (audioOnlyFreezeQualityCycle + 1) % hls.levels.length;
+      hls.nextLevel = audioOnlyFreezeQualityCycle;
+      return true;
     };
 
     const startStallCheck = () => {
@@ -78,53 +86,61 @@ export function useHlsPlayer(
           lastTimeStamp = Date.now();
           return;
         }
-        if (video.currentTime !== lastTime) {
-          lastTime = video.currentTime;
-          lastTimeStamp = Date.now();
+
+        const ct = video.currentTime;
+        const now = Date.now();
+
+        // --- Standard stall detection (currentTime not advancing) ---
+        if (ct !== lastTime) {
+          lastTime = ct;
+          lastTimeStamp = now;
           videoFreezeRecoveries = 0;
+          stallRecoveries = 0;
+
+          // Cross-check: currentTime advanced but video frames might not be
           if (
-            typeof video.requestVideoFrameCallback === "function" &&
             video.videoWidth > 0 &&
-            document.visibilityState === "visible" &&
-            Date.now() - lastVideoFrameStamp > 8000
+            document.visibilityState === "visible"
           ) {
-            lastVideoFrameStamp = Date.now();
-            videoFreezeRecoveries++;
-            const hls = hlsRef.current;
-            if (videoFreezeRecoveries === 1 && hls) {
-              try { hls.recoverMediaError(); } catch {}
-            } else if (videoFreezeRecoveries >= 3) {
-              videoFreezeRecoveries = 0;
-              if (onFatalErrorRef.current) onFatalErrorRef.current("videoFreeze");
+            // Use requestVideoFrameCallback timestamp to detect video freeze
+            const frameGap = now - lastVideoFrameStamp;
+            if (frameGap > 4000) {
+              lastVideoFrameStamp = now;
+              videoFreezeRecoveries++;
+              const hls = hlsRef.current;
+              if (videoFreezeRecoveries === 1) {
+                try { hls?.recoverMediaError(); } catch {}
+              } else if (videoFreezeRecoveries === 2) {
+                qualityCycle();
+              } else if (videoFreezeRecoveries >= 3) {
+                videoFreezeRecoveries = 0;
+                if (onFatalErrorRef.current) onFatalErrorRef.current("videoFreeze");
+              }
             }
           }
           return;
         }
-        if (Date.now() - lastTimeStamp > 5000) {
-          lastTimeStamp = Date.now();
+
+        // --- currentTime hasn't moved for >5s (both audio + video stuck) ---
+        if (now - lastTimeStamp > 5000) {
+          lastTimeStamp = now;
           const buffered = video.buffered;
           for (let i = 0; i < buffered.length; i++) {
             const start = buffered.start(i);
             const end = buffered.end(i);
-            if (video.currentTime >= start && video.currentTime < end) {
-              const ahead = end - video.currentTime;
+            if (ct >= start && ct < end) {
+              const ahead = end - ct;
               if (ahead > 0.5) {
-                video.currentTime = video.currentTime + 0.1;
+                video.currentTime = ct + 0.1;
               }
               break;
             }
-            if (start > video.currentTime + 0.5) {
+            if (start > ct + 0.5) {
               video.currentTime = start;
               break;
             }
-            // No buffered data at all — HLS.js should still be fetching.
           }
 
-          // currentTime hasn't moved in >4s no matter what we tried above,
-          // so this same branch will fire again next tick if it's a real
-          // freeze. Escalate instead of nudging/waiting forever: try HLS's
-          // own media-error recovery once, then switch streaming providers
-          // entirely if that still doesn't unstick it.
           stallRecoveries++;
           if (stallRecoveries === 1) {
             const hls = hlsRef.current;
@@ -257,12 +273,13 @@ export function useHlsPlayer(
         maxBufferLength: 60,
         maxMaxBufferLength: 120,
         backBufferLength: 10,
+        stretchShortVideoTrack: true,
         startLevel: -1,
         capLevelToPlayerSize: false,
-        maxBufferHole: 0.3,
-        stretchShortVideoTrack: false,
-        nudgeMaxRetry: 5,
-        nudgeOffset: 0.1,
+        maxBufferHole: 0.5,
+        nudgeMaxRetry: 10,
+        nudgeOffset: 0.3,
+        maxStarvationDelay: 4,
         fragLoadingMaxRetry: 6,
         manifestLoadingMaxRetry: 3,
         levelLoadingMaxRetry: 4,

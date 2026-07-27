@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Sora, Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/lib/auth-context";
@@ -48,7 +49,7 @@ export const metadata: Metadata = {
     description: "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and discover new series.",
     images: [
       {
-        url: "/og.png",
+        url: "/og.svg",
         width: 1200,
         height: 630,
         alt: "Anibinge — Watch Anime Online Free in HD",
@@ -59,7 +60,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Anibinge — Watch Anime Online Free",
     description: "Watch anime online free in HD. Stream sub & dub, track your progress, discover new series.",
-    images: ["/og.png"],
+    images: ["/og.svg"],
   },
   manifest: "/manifest.json",
   icons: {
@@ -96,6 +97,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </NotificationsProvider>
           </AuthProvider>
         </ThemeProvider>
+        <Script
+          id="schema-org"
+          strategy="beforeInteractive"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              "name": "Anibinge",
+              "url": "https://anibinge.fun",
+              "description": "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and never miss new releases.",
+              "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                  "@type": "EntryPoint",
+                  "urlTemplate": "https://anibinge.fun/search?q={search_term_string}"
+                },
+                "query-input": "required name=search_term_string"
+              }
+            }),
+          }}
+        />
       </body>
     </html>
   );
