@@ -19,10 +19,14 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
   const { source } = await searchParams;
   try {
     const { data } = await api.detail(Number(id), source || "jikan");
+    const title = data.title_english || data.title || "Anime";
+    const year = data.year ? ` (${data.year})` : "";
     return {
-      title: data.title_english || data.title,
-      description: data.synopsis?.slice(0, 160),
+      title: `Watch ${title}${year} Online — Episodes & Info`,
+      description: data.synopsis?.slice(0, 160) || `Watch ${title} online free. Stream sub & dub episodes, read reviews, and track your progress.`,
       openGraph: {
+        title: `Watch ${title} Online Free — Stream Sub & Dub`,
+        description: data.synopsis?.slice(0, 160),
         images: [data.images?.jpg?.large_image_url],
       },
     };

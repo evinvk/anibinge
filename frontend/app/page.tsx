@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
@@ -5,6 +6,17 @@ import { CarouselRow } from "@/components/carousel-row";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 
 export const revalidate = 300;
+
+export const metadata: Metadata = {
+  title: "Watch Anime Online Free — Stream & Track Episodes",
+  description:
+    "Stream anime online free in HD. Browse trending series, track your watchlist, and never miss new episodes. Sub & dub available.",
+  openGraph: {
+    title: "Watch Anime Online Free — Stream & Track Episodes",
+    description:
+      "Stream anime online free in HD. Browse trending series, track your watchlist, and never miss new episodes.",
+  },
+};
 
 async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try {

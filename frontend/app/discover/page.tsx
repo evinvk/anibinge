@@ -2,7 +2,11 @@ import { api } from "@/lib/api";
 import { CarouselRow } from "@/components/carousel-row";
 import { DiscoverGrid } from "@/components/discover-grid";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Discover" };
+export const metadata = {
+  title: "Discover New Anime Handpicked for You",
+  description:
+    "Discover anime tailored to your taste. Explore trending series, top-rated classics, and hidden gems you'll love.",
+};
 
 export default async function DiscoverPage() {
   // "AI Recommendations" placeholder: currently backed by popularity-sorted

@@ -4,7 +4,11 @@ import { SeasonTabs } from "@/components/season-tabs";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Seasonal Anime" };
+export const metadata = {
+  title: "Seasonal Anime — What's New This Season",
+  description:
+    "See what's airing this anime season. Browse winter, spring, summer, and fall lineups. never miss a new release.",
+};
 
 const SEASONS = ["winter", "spring", "summer", "fall"] as const;
 

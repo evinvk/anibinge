@@ -18,18 +18,29 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Anibinge — Discover, Track & Never Miss an Episode",
+    default: "Watch Anime Online Free — Stream & Track Episodes",
     template: "%s | Anibinge",
   },
   description:
-    "Anibinge is a modern anime discovery platform: track what's airing, browse by studio or genre, and build your watchlist across thousands of series.",
-  keywords: ["anime", "anime tracker", "seasonal anime", "anime schedule", "watchlist", "anime database"],
+    "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and discover new series across thousands of titles.",
+  keywords: [
+    "watch anime online free",
+    "anime streaming",
+    "anime tracker",
+    "seasonal anime",
+    "anime schedule",
+    "anime watchlist",
+    "sub and dub anime",
+    "free anime website",
+    "anime database",
+    "anime episodes online"
+  ],
   openGraph: {
     type: "website",
     siteName: "Anibinge",
     url: SITE_URL,
-    title: "Anibinge — Discover, Track & Never Miss an Episode",
-    description: "Track what's airing, browse by studio or genre, and build your watchlist.",
+    title: "Watch Anime Online Free — Stream & Track Episodes",
+    description: "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and discover new series.",
     images: [
       {
         url: "/og.png",
