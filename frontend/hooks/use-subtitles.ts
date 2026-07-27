@@ -31,7 +31,6 @@ function parseVtt(vttText: string): { start: number; end: number; text: string }
     const lines = block.trim().split(/\r?\n/);
     const timeLine = lines.find((l) => l.includes("-->"));
     if (!timeLine) continue;
-    if (!timeLine.match(/-->/)) continue;
     const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
     if (!startStr || !endStr) continue;
     const cueLines = lines.filter((l) => l !== timeLine && !l.match(/^\d+$/));
@@ -41,19 +40,18 @@ function parseVtt(vttText: string): { start: number; end: number; text: string }
   return cues;
 }
 
+const vttCache = new Map<string, { start: number; end: number; text: string }[]>();
+
 export function useSubtitles(videoRef: React.RefObject<HTMLVideoElement | null>) {
   const [subtitles, setSubtitles] = useState<Subtitle[]>([]);
   const subtitlesRef = useRef<Subtitle[]>([]);
   const [activeCues, setActiveCues] = useState<string[]>([]);
   const cuesRef = useRef<{ start: number; end: number; text: string }[]>([]);
-  const [selectedSub, setSelectedSub] = useState<number>(0);
+  const [selectedSub, setSelectedSub] = useState<number>(-1);
   const parsedSubsRef = useRef<Map<number, { start: number; end: number; text: string }[]>>(new Map());
   const genRef = useRef(0);
-
-  // Track video element via callback ref so we can attach timeupdate when it exists
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
 
-  // Keep videoEl synced with the ref (use the state as the effect dep)
   useEffect(() => {
     setVideoEl(videoRef.current);
   });
@@ -81,16 +79,22 @@ export function useSubtitles(videoRef: React.RefObject<HTMLVideoElement | null>)
     const gen = ++genRef.current;
     const subs = subtitlesRef.current;
     if (!subs.length) return;
-    parsedSubsRef.current.clear();
 
     for (let i = 0; i < subs.length; i++) {
       if (gen !== genRef.current) return;
+      const cacheKey = subs[i].file;
+      const cached = vttCache.get(cacheKey);
+      if (cached) {
+        parsedSubsRef.current.set(i, cached);
+        continue;
+      }
       try {
         const resp = await fetch(subs[i].file);
         if (!resp.ok) continue;
         const vttText = await resp.text();
         const cues = parseVtt(vttText);
         if (cues.length > 0) {
+          vttCache.set(cacheKey, cues);
           parsedSubsRef.current.set(i, cues);
         }
       } catch {
@@ -124,7 +128,7 @@ export function useSubtitles(videoRef: React.RefObject<HTMLVideoElement | null>)
     setSubtitles([]);
     cuesRef.current = [];
     setActiveCues([]);
-    setSelectedSub(0);
+    setSelectedSub(-1);
     parsedSubsRef.current.clear();
   }
 

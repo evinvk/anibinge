@@ -30,7 +30,7 @@ _HEADERS = {
     "Referer": _BASE_URL + "/",
 }
 _CATALOG_TTL = 60 * 60 * 24  # 24 hours
-_MAX_CATALOG_PAGES = 300
+_MAX_CATALOG_PAGES = 100
 _CACHE_FILE = os.path.join(tempfile.gettempdir(), "gogoanime_catalog.json")
 
 _client: httpx.AsyncClient | None = None
@@ -121,17 +121,26 @@ async def _load_catalog():
     logger.info("GogoAnime: starting catalog load (fetching %d pages)...", _MAX_CATALOG_PAGES)
     start = time.monotonic()
 
-    # Fetch in batches of 10 to avoid overwhelming the server
     all_items = []
-    batch_size = 10
+    batch_size = 20
+    consecutive_empty = 0
     for batch_start in range(1, _MAX_CATALOG_PAGES + 1, batch_size):
         batch_end = min(batch_start + batch_size, _MAX_CATALOG_PAGES + 1)
         tasks = [_fetch_catalog_page(p) for p in range(batch_start, batch_end)]
         results = await asyncio.gather(*tasks)
+        batch_has_items = False
         for page_items in results:
             all_items.extend(page_items)
-        # Small delay between batches
-        await asyncio.sleep(0.2)
+            if page_items:
+                batch_has_items = True
+        if not batch_has_items:
+            consecutive_empty += 1
+            if consecutive_empty >= 2:
+                logger.info("GogoAnime catalog: stopped early at page %d (no more items)", batch_start)
+                break
+        else:
+            consecutive_empty = 0
+        await asyncio.sleep(0.1)
 
     # Build the search index
     new_catalog = {}

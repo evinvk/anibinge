@@ -120,7 +120,7 @@ async def get_anime_episodes(anime_id: int, page: int = 1, limit: int = 20) -> d
 
 @cached("streaming:episode_sources", ttl=1800)
 async def get_episode_sources(
-    anime_id: int, episode_number: int, server: str | None = None
+    anime_id: int, episode_number: int, server: str | None = None, audio: str = "sub"
 ) -> dict:
     """
     Get streaming sources for a specific episode of an anime.
@@ -135,10 +135,11 @@ async def get_episode_sources(
         }
 
     # Fetch stream sources from GogoAnime client
-    sources_data = await gogoanime_client.get_stream_sources(slug, episode_number, audio="sub")
+    sources_data = await gogoanime_client.get_stream_sources(slug, episode_number, audio=audio or "sub")
     if not sources_data:
         # Try dub if sub yields no sources
-        sources_data = await gogoanime_client.get_stream_sources(slug + "-dub", episode_number, audio="dub")
+        dub_slug = slug[:-4] if slug.endswith("-dub") else f"{slug}-dub"
+        sources_data = await gogoanime_client.get_stream_sources(dub_slug, episode_number, audio="dub")
 
     if not sources_data:
         return {
@@ -205,11 +206,11 @@ async def get_episode_sources(
     }
 
 
-async def get_episode_detail(anime_id: int, episode_number: int) -> dict:
+async def get_episode_detail(anime_id: int, episode_number: int, audio: str = "sub") -> dict:
     """
     Get detailed information and sources for a specific episode.
     """
-    sources_info = await get_episode_sources(anime_id, episode_number)
+    sources_info = await get_episode_sources(anime_id, episode_number, audio=audio)
     if "error" in sources_info and not sources_info.get("sources"):
         return {"error": sources_info.get("error", "Episode not found")}
 

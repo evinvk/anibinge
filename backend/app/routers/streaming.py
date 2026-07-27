@@ -17,6 +17,8 @@ from app.core.http import get_shared_client
 from app.services import streaming_provider
 from app.services import gogoanime_client
 from app.services import anivexa_client
+from app.services import wibu_client
+from app.services import anitsu_client as anitsu_client_mod
 
 logger = logging.getLogger("anibinge.streaming")
 
@@ -46,7 +48,7 @@ async def get_episodes(
         raise
     except Exception as e:
         logger.error("Failed to fetch episodes for anime %d: %s", anime_id, e)
-        raise HTTPException(status_code=503, detail="Streaming data temporarily unavailable")
+        raise HTTPException(status_code=503, detail="Episodes temporarily unavailable")
 
 
 @router.get("/anime/{anime_id}/episode/{episode_number}")
@@ -55,6 +57,7 @@ async def get_episode_detail(
     request: Request,
     anime_id: int,
     episode_number: int,
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get detailed information about a specific episode.
@@ -62,7 +65,7 @@ async def get_episode_detail(
     Returns episode metadata, all available streaming servers, subtitles, and quality options.
     """
     try:
-        data = await streaming_provider.get_episode_detail(anime_id, episode_number)
+        data = await streaming_provider.get_episode_detail(anime_id, episode_number, audio=audio)
         if "error" in data:
             raise HTTPException(status_code=404, detail="Episode not found")
         return data
@@ -80,6 +83,7 @@ async def get_episode_sources(
     anime_id: int,
     episode_number: int,
     server: str | None = Query(None, description="Optional: specific server (vidstream, streamtape, etc)"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get streaming sources for an episode.
@@ -87,7 +91,7 @@ async def get_episode_sources(
     Returns list of available servers with direct streaming links and quality options.
     """
     try:
-        data = await streaming_provider.get_episode_sources(anime_id, episode_number, server=server)
+        data = await streaming_provider.get_episode_sources(anime_id, episode_number, server=server, audio=audio)
         if "error" in data and not data.get("sources"):
             raise HTTPException(status_code=404, detail="No streaming sources found")
         return data
@@ -104,6 +108,7 @@ async def get_episode_subtitles(
     request: Request,
     anime_id: int,
     episode_number: int,
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get available subtitle tracks for an episode.
@@ -111,7 +116,7 @@ async def get_episode_subtitles(
     Returns subtitle options in various languages with download/embed URLs.
     """
     try:
-        data = await streaming_provider.get_episode_sources(anime_id, episode_number)
+        data = await streaming_provider.get_episode_sources(anime_id, episode_number, audio=audio)
         return {"subtitles": data.get("subtitles", []), "languages": []}
     except Exception as e:
         return {"subtitles": [], "languages": []}
@@ -292,6 +297,7 @@ async def get_play_url(
     anime_id: int,
     episode_number: int,
     server: str = Query("gogoanime_hls", description="Streaming server to use"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get a direct play URL for an episode (for embedding in player).
@@ -871,8 +877,7 @@ async def anivexa_stream(
                 "embed_url": embed_url,
             }
         if source == "anitsu":
-            from app.services import anitsu_client
-            result = await anitsu_client.get_stream(anilist_id, ep)
+            result = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
             if not result or (not result.get("stream_url") and not result.get("embed_url")):
                 raise HTTPException(status_code=404, detail="Stream not available on Animetsu")
             return result
@@ -898,39 +903,31 @@ async def fetch_subtitles(
     q: str = Query(..., min_length=2, description="Anime title"),
     ep: int = Query(..., ge=1, description="Episode number"),
     anilist_id: int | None = Query(None, description="Optional AniList ID"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Fetch subtitles for an episode from fallback providers (Anitsu → Wibu).
     Returns only subtitle data, no stream URL. Used by the frontend to get
-    subtitles even when the primary stream comes from GogoAnime."""
-    # Try Anitsu first
+    subtitles even when the primary stream comes from GogoAnime.
+    Now accepts audio parameter for dub/sub subtitle matching."""
     if anilist_id:
         try:
-            from app.services import anitsu_client
-            result = await anitsu_client.get_stream(anilist_id, ep)
+            result = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
             if result and result.get("subtitles"):
                 return {"subtitles": result["subtitles"], "provider": "anitsu"}
         except Exception:
             pass
     else:
         try:
-            from app.services import anilist_client, anitsu_client
+            from app.services import anilist_client
             result = await anilist_client.search_anime(q, per_page=5)
             media = result.get("Page", {}).get("media", [])
             if media:
                 anilist_id = media[0]["id"]
-                stream_data = await anitsu_client.get_stream(anilist_id, ep)
+                stream_data = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
                 if stream_data and stream_data.get("subtitles"):
                     return {"subtitles": stream_data["subtitles"], "provider": "anitsu"}
         except Exception:
             pass
-
-    # Fallback to Wibu
-    try:
-        result = await wibu_client.search_and_get_stream(q, ep)
-        if result and result.get("subtitles"):
-            return {"subtitles": result["subtitles"], "provider": "wibu"}
-    except Exception:
-        pass
 
     return {"subtitles": [], "provider": None}
 
@@ -941,18 +938,19 @@ async def anitsu_stream(
     request: Request,
     q: str = Query(..., min_length=2, description="Anime title to search"),
     ep: int = Query(..., ge=1, description="Episode number"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Search by title, resolve to AniList ID, and get stream from Animetsu (AnimeXin).
-    Used as second fallback after GogoAnime."""
+    Used as second fallback after GogoAnime. Supports sub/dub audio selection."""
     try:
-        from app.services import anilist_client, anitsu_client
+        from app.services import anilist_client
         result = await anilist_client.search_anime(q, per_page=5)
         media = result.get("Page", {}).get("media", [])
         if not media:
             raise HTTPException(status_code=404, detail="Anime not found on AniList")
         anilist_id = media[0]["id"]
 
-        stream_data = await anitsu_client.get_stream(anilist_id, ep)
+        stream_data = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
         if not stream_data or (not stream_data.get("stream_url") and not stream_data.get("embed_url")):
             raise HTTPException(status_code=404, detail="Stream not available on AnimeXin")
         return stream_data
@@ -1292,6 +1290,86 @@ async def fallback_stream(
     raise HTTPException(status_code=404, detail="No streaming sources available from any provider")
 
 
+@router.get("/donghua/stream")
+@limiter.limit("30/minute")
+async def donghua_stream(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Donghua title to search"),
+    ep: int = Query(1, ge=1, description="Episode number"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
+    anilist_id: int | None = Query(None, description="Optional AniList ID for direct lookup"),
+):
+    """Donghua-specific streaming endpoint.
+    Tries Anitsu/Animetsu first (which supports donghua better than GogoAnime),
+    then falls back to Anivexa providers.
+    Donghua titles often have different metadata on AniList."""
+    if anilist_id:
+        try:
+            result = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
+            if result and (result.get("stream_url") or result.get("embed_url")):
+                return {"source": "donghua", "data": result}
+        except Exception:
+            pass
+
+        try:
+            result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+            if result and (result.get("stream_url") or result.get("embed_url")):
+                return {"source": "donghua", "data": result}
+        except Exception:
+            pass
+
+    try:
+        from app.services import anilist_client as _al
+        search_result = await _al.search_anime(q, per_page=10)
+        media_list = search_result.get("Page", {}).get("media", [])
+        for media in media_list:
+            mid = media.get("id")
+            if not mid:
+                continue
+            try:
+                result = await anitsu_client_mod.get_stream(mid, ep, audio=audio)
+                if result and (result.get("stream_url") or result.get("embed_url")):
+                    return {"source": "donghua", "anilist_id": mid, "data": result}
+            except Exception:
+                continue
+            try:
+                result = await anivexa_client.get_stream_with_fallback(mid, ep, audio)
+                if result and (result.get("stream_url") or result.get("embed_url")):
+                    return {"source": "donghua", "anilist_id": mid, "data": result}
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning("Donghua search failed: %s", e)
+
+    raise HTTPException(status_code=404, detail="Donghua stream not available from any provider")
+
+
+@router.get("/donghua/resolve")
+@limiter.limit("30/minute")
+async def donghua_resolve(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Donghua title"),
+):
+    """Resolve a donghua title to AniList ID and metadata."""
+    try:
+        from app.services import anilist_client as _al
+        result = await _al.search_anime(q, per_page=10)
+        media_list = result.get("Page", {}).get("media", [])
+        results = []
+        for m in media_list:
+            results.append({
+                "anilist_id": m.get("id"),
+                "title": m.get("title", {}),
+                "episodes": m.get("episodes"),
+                "format": m.get("format"),
+                "status": m.get("status"),
+                "genres": m.get("genres", []),
+            })
+        return {"data": results, "query": q}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Donghua resolve failed")
+
+
 @router.get("/download")
 @limiter.limit("10/minute")
 async def download_episode(
@@ -1533,7 +1611,7 @@ async def diagnose_streaming(
     if aid:
         try:
             t0 = time.monotonic()
-            anitsu_result = await anitsu_client.get_stream(aid, ep)
+            anitsu_result = await anitsu_client_mod.get_stream(aid, ep)
             elapsed = time.monotonic() - t0
             report["sources"]["animetsu"] = {
                 "available": bool(anitsu_result.get("stream_url")),

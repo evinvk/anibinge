@@ -63,7 +63,7 @@ async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "
     # 1. Try Animetsu first (anipm, animeyubi — best quality, subtitles, skip markers)
     if not skip_anitsu:
         try:
-            result = await anitsu_client.get_stream(anilist_id, episode)
+            result = await anitsu_client.get_stream(anilist_id, episode, audio=audio)
             if result and result.get("stream_url"):
                 logger.info("Animetsu stream found: %s via %s", result.get("stream_type"), result.get("provider"))
                 return result

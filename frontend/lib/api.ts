@@ -293,6 +293,15 @@ export const api = {
   anitsuStream: (q: string, ep: number) =>
     request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
 
+  // Donghua-specific streaming (uses Anitsu + Anivexa, optimized for Chinese anime)
+  donghuaStream: (q: string, ep: number, audio = "sub", anilistId?: number) => {
+    let path = `/api/v1/streaming/donghua/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`;
+    if (anilistId) path += `&anilist_id=${anilistId}`;
+    return request<any>(path, 30);
+  },
+  donghuaResolve: (q: string) =>
+    request<{ data: any[]; query: string }>(`/api/v1/streaming/donghua/resolve?q=${encodeURIComponent(q)}`, 300),
+
   // Wibu streaming (3rd fallback)
   wibuStream: (q: string, ep: number, server: string = "vidstream") =>
     request<any>(`/api/v1/streaming/wibu/stream?q=${encodeURIComponent(q)}&ep=${ep}&server=${server}`, 30),

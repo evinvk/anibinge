@@ -41,15 +41,10 @@ export function useHlsPlayer(
   onLoadSubtitlesRef.current = onLoadSubtitles;
   onMediaEndedRef.current = onMediaEnded;
 
-  // Attach video element event listeners — run only when videoRef.current changes
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
 
-    // Simple stall recovery: if video is playing but currentTime hasn't moved
-    // for >4s and there IS buffered data ahead, nudge the playhead forward.
-    // This replaces the heavy rAF loop that caused audio/video desync by
-    // seeking too aggressively.
     let lastTime = video.currentTime;
     let lastTimeStamp = Date.now();
     let stallCheckId: ReturnType<typeof setInterval> | null = null;
@@ -58,8 +53,6 @@ export function useHlsPlayer(
     let videoFreezeRecoveries = 0;
     let stallRecoveries = 0;
 
-    // currentTime can keep advancing with audio even when the video decoder is
-    // stuck. requestVideoFrameCallback detects that without repeated seeking.
     const watchVideoFrames = () => {
       if (typeof video.requestVideoFrameCallback !== "function" || frameCallbackId !== null) return;
       const onFrame = () => {
@@ -88,45 +81,38 @@ export function useHlsPlayer(
         if (video.currentTime !== lastTime) {
           lastTime = video.currentTime;
           lastTimeStamp = Date.now();
-          stallRecoveries = 0;
-
-          // Audio-only progress while no frame renders is a decoder freeze.
-          // Recover once in place, then switch provider if it remains stuck.
+          videoFreezeRecoveries = 0;
           if (
             typeof video.requestVideoFrameCallback === "function" &&
             video.videoWidth > 0 &&
             document.visibilityState === "visible" &&
-            Date.now() - lastVideoFrameStamp > 6000
+            Date.now() - lastVideoFrameStamp > 8000
           ) {
             lastVideoFrameStamp = Date.now();
             videoFreezeRecoveries++;
             const hls = hlsRef.current;
             if (videoFreezeRecoveries === 1 && hls) {
               try { hls.recoverMediaError(); } catch {}
-            } else if (videoFreezeRecoveries >= 2) {
+            } else if (videoFreezeRecoveries >= 3) {
               videoFreezeRecoveries = 0;
-              onFatalErrorRef.current?.("videoFreeze");
+              if (onFatalErrorRef.current) onFatalErrorRef.current("videoFreeze");
             }
           }
           return;
         }
-        // currentTime frozen for >4s while playing
-        if (Date.now() - lastTimeStamp > 4000) {
+        if (Date.now() - lastTimeStamp > 5000) {
           lastTimeStamp = Date.now();
           const buffered = video.buffered;
-          // Look for buffered range ahead of current position
           for (let i = 0; i < buffered.length; i++) {
             const start = buffered.start(i);
             const end = buffered.end(i);
             if (video.currentTime >= start && video.currentTime < end) {
               const ahead = end - video.currentTime;
               if (ahead > 0.5) {
-                // Tiny nudge to un-stick the decoder
                 video.currentTime = video.currentTime + 0.1;
               }
               break;
             }
-            // Gap between ranges — jump to start of next buffered block
             if (start > video.currentTime + 0.5) {
               video.currentTime = start;
               break;
@@ -198,7 +184,6 @@ export function useHlsPlayer(
     };
     const onStalled = () => {
       setPlayerStatus("buffering");
-      // After 3s of stall, try to resume load in HLS.js
       if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
       stallTimerRef.current = setTimeout(() => {
         if (!video || video.paused || video.ended) return;
@@ -213,7 +198,6 @@ export function useHlsPlayer(
       if (onMediaEndedRef.current) onMediaEndedRef.current();
     };
     const onError = () => {
-      // Native video element error (non-HLS path)
       setPlayerStatus("error");
       setError("Playback error: mediaError");
     };
@@ -247,7 +231,6 @@ export function useHlsPlayer(
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("error", onError);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoRef.current]);
 
   const loadPlayer = useCallback(async (url: string) => {
@@ -271,26 +254,18 @@ export function useHlsPlayer(
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
-        // Larger buffer = fewer stalls and less chance of audio running ahead
         maxBufferLength: 60,
         maxMaxBufferLength: 120,
-        // Keep 10s back-buffer so backward seeks don't re-fetch
         backBufferLength: 10,
-        // Start at highest reasonable level (ABR will drop down if needed)
         startLevel: -1,
         capLevelToPlayerSize: false,
-        // Small hole: only auto-skip tiny gaps, not 1-second chunks
         maxBufferHole: 0.3,
-        // Keep audio/video in sync; don't stretch short tracks
         stretchShortVideoTrack: false,
-        // Nudge factor for A/V sync correction
         nudgeMaxRetry: 5,
         nudgeOffset: 0.1,
-        // Retry network errors aggressively before giving up
         fragLoadingMaxRetry: 6,
         manifestLoadingMaxRetry: 3,
         levelLoadingMaxRetry: 4,
-        // Slightly longer timeout to avoid false 404s on slow proxy
         fragLoadingTimeOut: 20000,
         manifestLoadingTimeOut: 15000,
       });
@@ -323,7 +298,6 @@ export function useHlsPlayer(
               if (data.response?.code === 410 || data.response?.code === 404) {
                 networkErrorRetryRef.current++;
                 if (networkErrorRetryRef.current < 3) {
-                  console.warn("[HLS] Network error (%d/3), retrying...", networkErrorRetryRef.current, data.details);
                   setTimeout(() => { try { hls.startLoad(); } catch {} }, 1000);
                 } else {
                   networkErrorRetryRef.current = 0;
@@ -337,7 +311,6 @@ export function useHlsPlayer(
               } else {
                 networkErrorRetryRef.current++;
                 if (networkErrorRetryRef.current < 4) {
-                  console.warn("[HLS] Network error (%d/4), retrying:", networkErrorRetryRef.current, data.details);
                   setTimeout(() => { try { hls.startLoad(); } catch {} }, 750);
                 } else {
                   networkErrorRetryRef.current = 0;
@@ -353,7 +326,6 @@ export function useHlsPlayer(
             case Hls.ErrorTypes.MEDIA_ERROR:
               mediaErrorRetryRef.current++;
               if (mediaErrorRetryRef.current < 4) {
-                console.warn("[HLS] Media error, recovering (%d/4):", mediaErrorRetryRef.current, data.details);
                 try { hls.recoverMediaError(); } catch {}
               } else {
                 setPlayerStatus("error");
@@ -374,7 +346,6 @@ export function useHlsPlayer(
               break;
           }
         } else {
-          // Non-fatal: 410 on a segment = CDN deleted it, try to skip ahead
           if (data.type === Hls.ErrorTypes.NETWORK_ERROR && data.response?.code === 410) {
             consecutive410Ref.current++;
             if (consecutive410Ref.current >= 5) {
@@ -389,14 +360,13 @@ export function useHlsPlayer(
         }
       });
 
-      onLoadSubtitlesRef.current();
+      if (onLoadSubtitlesRef.current) onLoadSubtitlesRef.current();
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
-      // Safari native HLS
       video.src = url;
       video.addEventListener("loadedmetadata", () => {
         video.play().catch(() => setPlayerStatus("error"));
       }, { once: true });
-      onLoadSubtitlesRef.current();
+      if (onLoadSubtitlesRef.current) onLoadSubtitlesRef.current();
     } else {
       setError("HLS is not supported in this browser");
       setPlayerStatus("error");
