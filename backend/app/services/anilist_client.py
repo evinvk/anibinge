@@ -613,56 +613,74 @@ class AniListClient:
     async def get_recently_aired(self, page: int = 1, per_page: int = 30) -> list[dict]:
         """Get the most recently aired episodes across all anime.
 
+        Two-step approach:
+        1. Fetch RELEASING anime IDs (paginated, sorted by popularity)
+        2. Query their past airing schedule sorted by TIME_DESC
+
         Returns a list of {mediaId, episode, airingAt, title, coverImage, genres}
         sorted by most recent air time first.
         """
-        query = """
-        query($page:Int,$perPage:Int){
-          Page(page:$page,perPage:$perPage){
-            airingSchedule(
-              sort:TIME_DESC,
-              notYetAired:false
-            ){
-              airingAt
-              episode
-              mediaId
-              media{
-                id
-                title{
-                  romaji
-                  english
-                  native
+        # Step 1: Get a pool of RELEASING anime IDs (enough to get diverse recent eps)
+        media_ids = []
+        media_info: dict[int, dict] = {}
+        for pg in range(1, 6):
+            try:
+                q = """
+                query($page:Int,$perPage:Int){
+                  Page(page:$page,perPage:$perPage){
+                    media(type:ANIME,status:RELEASING,sort:ID_DESC){
+                      id
+                      title{romaji english native}
+                      coverImage{extraLarge large}
+                      genres
+                      format
+                      episodes
+                      status
+                    }
+                  }
                 }
-                coverImage{
-                  extraLarge
-                  large
-                }
-                genres
-                format
-                status
-                episodes
-              }
-            }
-          }
-        }
-        """
-        result = await self._query(query, {"page": page, "perPage": per_page})
-        entries = result.get("Page", {}).get("airingSchedule", [])
+                """
+                result = await self._query(q, {"page": pg, "perPage": 50})
+                media_list = result.get("Page", {}).get("media", [])
+                if not media_list:
+                    break
+                for m in media_list:
+                    mid = m.get("id")
+                    if mid:
+                        media_ids.append(mid)
+                        media_info[mid] = m
+            except Exception:
+                break
+
+        if not media_ids:
+            return []
+
+        # Step 2: Get recently aired episodes using existing airingSchedule method
+        aired = await self.get_airing_schedule(media_ids, per_page=200)
+
+        if not aired:
+            return []
+
+        # Sort by airingAt desc (most recent first)
+        aired.sort(key=lambda x: x.get("airingAt", 0), reverse=True)
+
+        # Take only what we need
         out = []
-        for e in entries:
-            media = e.get("media") or {}
-            title_obj = media.get("title", {})
+        for a in aired[:per_page * 3]:  # fetch extra to account for missing gogoanime slugs
+            mid = a.get("mediaId")
+            info = media_info.get(mid, {})
+            title_obj = info.get("title", {})
             out.append({
-                "mediaId": e.get("mediaId"),
-                "episode": e.get("episode"),
-                "airingAt": e.get("airingAt"),
+                "mediaId": mid,
+                "episode": a.get("episode"),
+                "airingAt": a.get("airingAt"),
                 "title": title_obj.get("english") or title_obj.get("romaji") or "",
                 "title_jp": title_obj.get("romaji") or "",
-                "coverImage": (media.get("coverImage") or {}).get("large") or (media.get("coverImage") or {}).get("extraLarge"),
-                "genres": media.get("genres") or [],
-                "totalEpisodes": media.get("episodes"),
-                "format": media.get("format"),
-                "status": media.get("status"),
+                "coverImage": (info.get("coverImage") or {}).get("large") or (info.get("coverImage") or {}).get("extraLarge"),
+                "genres": info.get("genres") or [],
+                "totalEpisodes": info.get("episodes"),
+                "format": info.get("format"),
+                "status": info.get("status"),
             })
         return out
 
