@@ -1370,7 +1370,7 @@ async def download_episode(
         referer = ""
         stream_type = None
 
-        # Path 1: GogoAnime — reuse the proven get_stream_sources()
+        # Path 1: GogoAnime — try to get a downloadable stream
         if slug:
             effective = _dub_slug(slug, audio)
             try:
@@ -1384,36 +1384,50 @@ async def download_episode(
                     elif sources.get("master_m3u8"):
                         stream_url = sources["master_m3u8"]
                         stream_type = "hls"
-                    elif sources.get("embed_url"):
-                        extracted = await gogoanime_client.extract_embed_stream(sources["embed_url"])
-                        if extracted:
-                            stream_url = extracted.get("stream_url")
-                            referer = extracted.get("referer", "")
-                            stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
+                    # Skip embed_url extraction for download — kwik.cx requires
+                    # JavaScript execution, server-side GET always gets 403.
+                    # Anivexa fallback below handles this case.
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
-        # Path 2: Try Anivexa — resolve anilist_id from title if needed
-        if not stream_url and not anilist_id:
-            try:
-                from app.services import anilist_client as _al_client
-                title_from_filename = filename.rsplit("_E", 1)[0].replace("_", " ")
-                result = await _al_client.search_anime(title_from_filename, per_page=1)
-                media = result.get("Page", {}).get("media", [])
-                if media:
-                    anilist_id = media[0]["id"]
-            except Exception:
-                pass
+        # Path 2: Anivexa — resolve anilist_id from slug if needed
+        if not stream_url:
+            if not anilist_id:
+                # Try to get anilist_id from GogoAnime catalog by slug
+                try:
+                    from app.services import gogoanime_client as _gc
+                    info = _gc.get_info_by_slug(slug) if slug else None
+                    if info:
+                        title = info.get("title") or info.get("title_english") or ""
+                        if title:
+                            from app.services import anilist_client as _al_client
+                            result = await _al_client.search_anime(title, per_page=1)
+                            media = result.get("Page", {}).get("media", [])
+                            if media:
+                                anilist_id = media[0]["id"]
+                except Exception:
+                    pass
 
-        if not stream_url and anilist_id:
-            try:
-                result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
-                if result:
-                    stream_url = result.get("stream_url")
-                    referer = result.get("referer", "")
-                    stream_type = result.get("stream_type", "mp4")
-            except Exception as e:
-                logger.warning("Anivexa download resolve failed: %s", e)
+            if not anilist_id and filename:
+                try:
+                    from app.services import anilist_client as _al_client
+                    title_from_filename = filename.rsplit("_E", 1)[0].replace("_", " ")
+                    result = await _al_client.search_anime(title_from_filename, per_page=1)
+                    media = result.get("Page", {}).get("media", [])
+                    if media:
+                        anilist_id = media[0]["id"]
+                except Exception:
+                    pass
+
+            if anilist_id:
+                try:
+                    result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+                    if result:
+                        stream_url = result.get("stream_url")
+                        referer = result.get("referer", "")
+                        stream_type = result.get("stream_type", "mp4")
+                except Exception as e:
+                    logger.warning("Anivexa download resolve failed: %s", e)
 
         if not stream_url:
             raise HTTPException(status_code=404, detail="No streaming source available")
