@@ -735,5 +735,5 @@ async def get_anime_characters(anime_id: int) -> dict:
 async def get_airing_schedule(media_ids: list[int], per_page: int = 50) -> list[dict]:
     return await anilist_client.get_airing_schedule(media_ids, per_page=per_page)
 
-async def get_recently_aired(page: int = 1, per_page: int = 30) -> list[dict]:
-    return await anilist_client.get_recently_aired(page=page, per_page=per_page)
+async def get_recently_aired(per_page: int = 50) -> list[dict]:
+    return await anilist_client.get_recently_aired(per_page=per_page)
