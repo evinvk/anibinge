@@ -1555,6 +1555,7 @@ async def download_episode(
         ]
 
         await dl_client.aclose()
+        logger.info("Download ffmpeg: input=%.300s referer=%s type=%s", input_url, referer, stream_type)
         proc = await _aio.create_subprocess_exec(
             *ffmpeg_args,
             stdout=_aio.subprocess.DEVNULL,
@@ -1564,10 +1565,11 @@ async def download_episode(
         async def _run_ffmpeg_and_stream():
             try:
                 _, stderr_bytes = await _aio.wait_for(proc.communicate(), timeout=600)
+                stderr_text = stderr_bytes.decode(errors="replace")[-1000:]
                 if proc.returncode != 0:
-                    err_msg = stderr_bytes.decode(errors="replace")[-500:]
-                    logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
+                    logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, stderr_text)
                     return
+                logger.info("ffmpeg completed, mp4_path=%s size=%s", mp4_path, _os.path.getsize(mp4_path) if _os.path.exists(mp4_path) else "missing")
                 with open(mp4_path, "rb") as f:
                     while True:
                         chunk = f.read(262144)
@@ -1581,7 +1583,7 @@ async def download_episode(
                 except Exception:
                     pass
             except Exception as e:
-                logger.error("ffmpeg download error: %s", e)
+                logger.error("ffmpeg download error: %s", e, exc_info=True)
             finally:
                 try:
                     _shutil.rmtree(tmp_dir, ignore_errors=True)
