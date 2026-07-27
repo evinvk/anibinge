@@ -1484,47 +1484,30 @@ async def download_episode(
 
         import asyncio as _aio
 
-        async def _stream_ffmpeg(args: list[str], safe_name: str):
-            """Run ffmpeg with output pipe and stream chunks to client."""
-            proc = await _aio.create_subprocess_exec(
-                *args,
-                stdout=_aio.subprocess.PIPE,
-                stderr=_aio.subprocess.PIPE,
-            )
-            try:
-                while True:
-                    chunk = await proc.stdout.read(262144)
-                    if not chunk:
-                        break
-                    yield chunk
-                await proc.wait()
-                if proc.returncode != 0:
-                    err = (await proc.stderr.read()).decode(errors="replace")[-500:]
-                    logger.error("ffmpeg download failed (code %d): %s", proc.returncode, err)
-            finally:
-                await proc.stdout.read()
-                await proc.stderr.read()
-
         # --- MP4 path: stream directly ---
         if stream_type == "mp4":
             dl_headers = {"Referer": referer} if referer else {}
-            resp = await dl_client.get(stream_url, headers=dl_headers, follow_redirects=True)
-            resp.raise_for_status()
-            content_length = resp.headers.get("content-length")
+            content_length = None
+            try:
+                head = await dl_client.head(stream_url, headers=dl_headers, follow_redirects=True)
+                content_length = head.headers.get("content-length")
+            except Exception:
+                pass
 
             async def _stream_mp4():
-                async with dl_client.stream("GET", stream_url, headers=dl_headers, follow_redirects=True) as s:
-                    async for chunk in s.aiter_bytes(262144):
-                        yield chunk
+                try:
+                    async with dl_client.stream("GET", stream_url, headers=dl_headers, follow_redirects=True) as s:
+                        async for chunk in s.aiter_bytes(262144):
+                            yield chunk
+                finally:
+                    await dl_client.aclose()
 
-            await dl_client.aclose()
             headers = {"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'}
             if content_length:
                 headers["Content-Length"] = content_length
             return StreamingResponse(_stream_mp4(), media_type="video/mp4", headers=headers)
 
-        # --- HLS path: download via ffmpeg and stream output ---
-        # Build ffmpeg args — handle master m3u8 with multiple programs
+        # --- HLS path: pipe ffmpeg stdout directly, drain stderr concurrently ---
         ua = _PROXY_HEADERS.get("User-Agent", "")
         ffmpeg_args = [
             "ffmpeg", "-y",
@@ -1535,13 +1518,46 @@ async def download_episode(
             "-i", stream_url,
             "-map", "0",
             "-c", "copy",
-            "-movflags", "+faststart",
+            "-f", "mp4",
             "pipe:1",
         ]
 
         await dl_client.aclose()
+        proc = await _aio.create_subprocess_exec(
+            *ffmpeg_args,
+            stdout=_aio.subprocess.PIPE,
+            stderr=_aio.subprocess.PIPE,
+        )
+
+        async def _drain_stderr():
+            """Consume stderr to prevent buffer deadlock."""
+            while True:
+                chunk = await proc.stderr.read(4096)
+                if not chunk:
+                    break
+
+        async def _stream_hls():
+            stderr_task = _aio.create_task(_drain_stderr())
+            try:
+                while True:
+                    chunk = await proc.stdout.read(262144)
+                    if not chunk:
+                        break
+                    yield chunk
+                await stderr_task
+                await proc.wait()
+                if proc.returncode != 0:
+                    logger.error("ffmpeg HLS→MP4 failed with code %d", proc.returncode)
+            except _aio.CancelledError:
+                pass
+            except Exception as e:
+                logger.error("ffmpeg streaming error: %s", e)
+            finally:
+                if not stderr_task.done():
+                    stderr_task.cancel()
+
         return StreamingResponse(
-            _stream_ffmpeg(ffmpeg_args, safe_name),
+            _stream_hls(),
             media_type="video/mp4",
             headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
         )
