@@ -1406,7 +1406,7 @@ async def download_episode(
         stream_url = None
         referer = ""
         stream_type = None
-        ffmpeg_headers = {}
+        gogo_sources = None
 
         # Path 1: GogoAnime — try to get a downloadable stream
         if slug:
@@ -1414,45 +1414,15 @@ async def download_episode(
             try:
                 sources = await gogoanime_client.get_stream_sources(effective, ep, audio)
                 if sources:
+                    gogo_sources = sources
                     direct = sources.get("direct_stream")
                     if direct:
                         stream_url = direct.get("stream_url")
                         referer = direct.get("referer", "")
                         stream_type = "hls" if ".m3u8" in (stream_url or "") else "mp4"
                     elif sources.get("master_m3u8"):
-                        # Parse raw master M3U8 to find best variant CDN URL
-                        m3u8_text = sources.get("master_m3u8_raw") or sources["master_m3u8"]
-                        m3u8_base = sources.get("master_m3u8_url", "")
-                        best_variant = None
-                        best_bw = -1
-                        for line in m3u8_text.splitlines():
-                            line_s = line.strip()
-                            if line_s.startswith("#EXT-X-STREAM-INF"):
-                                bw = 0
-                                for part in line_s.split(","):
-                                    if "BANDWIDTH=" in part:
-                                        try:
-                                            bw = int(part.split("=")[1].strip())
-                                        except ValueError:
-                                            pass
-                            elif line_s and not line_s.startswith("#") and best_bw is not None:
-                                if bw > best_bw:
-                                    best_bw = bw
-                                    if line_s.startswith("http"):
-                                        best_variant = line_s
-                                    elif m3u8_base:
-                                        from urllib.parse import urljoin as _urljoin
-                                        best_variant = _urljoin(m3u8_base + "/", line_s)
-                                bw = 0
-                        if best_variant:
-                            stream_url = best_variant
-                            referer = "https://gogoanimehd.to/"
-                            stream_type = "hls"
-                            logger.info("GogoAnime download: resolved variant URL: %.200s", best_variant)
-                        elif m3u8_base:
-                            stream_url = m3u8_base
-                            referer = "https://gogoanimehd.to/"
-                            stream_type = "hls"
+                        stream_type = "hls"
+                        logger.info("GogoAnime download: will use rewritten M3U8 via proxy")
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
@@ -1497,7 +1467,7 @@ async def download_episode(
                 except Exception as e:
                     logger.warning("Anivexa download resolve failed: %s", e)
 
-        if not stream_url:
+        if not stream_url and not gogo_sources:
             raise HTTPException(status_code=404, detail="No streaming source available")
 
         stream_url = "".join(stream_url.split())
@@ -1534,7 +1504,41 @@ async def download_episode(
                 headers["Content-Length"] = content_length
             return StreamingResponse(_stream_mp4(), media_type="video/mp4", headers=headers)
 
-        # --- HLS path: pipe ffmpeg stdout directly, drain stderr concurrently ---
+        # --- HLS path: write M3U8 to temp file, run ffmpeg with proxy URLs ---
+        import asyncio as _aio
+        import tempfile as _tmpfile
+        import os as _os
+        import shutil as _shutil
+        from urllib.parse import urljoin as _urljoin
+
+        backend_base = str(request.base_url).rstrip("/")
+
+        # For GogoAnime: use rewritten M3U8 (has absolute proxy URLs for segments)
+        # For Anivexa/Animetsu: use the URL directly
+        if gogo_sources and gogo_sources.get("master_m3u8"):
+            m3u8_content = gogo_sources["master_m3u8"]
+            # Rewrite relative proxy URLs to absolute backend URLs
+            lines = m3u8_content.splitlines()
+            abs_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("/api/"):
+                    abs_lines.append(backend_base + stripped)
+                else:
+                    abs_lines.append(line)
+            m3u8_text = "\n".join(abs_lines)
+            tmp_dir = _tmpfile.mkdtemp()
+            m3u8_path = _os.path.join(tmp_dir, "playlist.m3u8")
+            mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
+            with open(m3u8_path, "w") as f:
+                f.write(m3u8_text)
+            input_url = m3u8_path
+            referer = "https://gogoanimehd.to/"
+        else:
+            tmp_dir = _tmpfile.mkdtemp()
+            mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
+            input_url = stream_url
+
         ua = _PROXY_HEADERS.get("User-Agent", "")
         ffmpeg_args = [
             "ffmpeg", "-y",
@@ -1542,49 +1546,50 @@ async def download_episode(
             "-user_agent", ua,
             "-headers", f"Referer: {referer or ''}\r\nUser-Agent: {ua}\r\n",
             "-allowed_extensions", "ALL",
-            "-i", stream_url,
+            "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
+            "-i", input_url,
             "-map", "0",
             "-c", "copy",
             "-f", "mp4",
-            "pipe:1",
+            mp4_path,
         ]
 
         await dl_client.aclose()
         proc = await _aio.create_subprocess_exec(
             *ffmpeg_args,
-            stdout=_aio.subprocess.PIPE,
+            stdout=_aio.subprocess.DEVNULL,
             stderr=_aio.subprocess.PIPE,
         )
 
-        async def _drain_stderr():
-            """Consume stderr to prevent buffer deadlock."""
-            while True:
-                chunk = await proc.stderr.read(4096)
-                if not chunk:
-                    break
-
-        async def _stream_hls():
-            stderr_task = _aio.create_task(_drain_stderr())
+        async def _run_ffmpeg_and_stream():
             try:
-                while True:
-                    chunk = await proc.stdout.read(262144)
-                    if not chunk:
-                        break
-                    yield chunk
-                await stderr_task
-                await proc.wait()
+                _, stderr_bytes = await _aio.wait_for(proc.communicate(), timeout=600)
                 if proc.returncode != 0:
-                    logger.error("ffmpeg HLS→MP4 failed with code %d", proc.returncode)
-            except _aio.CancelledError:
-                pass
+                    err_msg = stderr_bytes.decode(errors="replace")[-500:]
+                    logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
+                    return
+                with open(mp4_path, "rb") as f:
+                    while True:
+                        chunk = f.read(262144)
+                        if not chunk:
+                            break
+                        yield chunk
+            except _aio.TimeoutError:
+                logger.error("ffmpeg download timed out after 600s")
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
             except Exception as e:
-                logger.error("ffmpeg streaming error: %s", e)
+                logger.error("ffmpeg download error: %s", e)
             finally:
-                if not stderr_task.done():
-                    stderr_task.cancel()
+                try:
+                    _shutil.rmtree(tmp_dir, ignore_errors=True)
+                except Exception:
+                    pass
 
         return StreamingResponse(
-            _stream_hls(),
+            _run_ffmpeg_and_stream(),
             media_type="video/mp4",
             headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
         )
