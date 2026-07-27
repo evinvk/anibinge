@@ -316,6 +316,19 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     }
   }, [selectedSlug, currentEp, audio]);
 
+  function titleMatches(a: string, b: string): boolean {
+    if (!a || !b) return false;
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+    const na = norm(a);
+    const nb = norm(b);
+    return na === nb || na.includes(nb) || nb.includes(na);
+  }
+
+  function gogoMatchesTitle(item: any, expectedTitle: string): boolean {
+    const titles = [item.title, item.title_english, item.title_japanese].filter(Boolean);
+    return titles.some((t) => titleMatches(t, expectedTitle));
+  }
+
   async function searchAnime() {
     player.setLoadingStream(true);
     player.setError(null);
@@ -324,15 +337,16 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     const gogoResult = await api.gogoanimeSearch(animeTitle).catch(() => null);
     const gogoData = gogoResult?.data;
 
-    let gogoSlug: string | null = null;
-    if (gogoData && gogoData.length > 0) gogoSlug = gogoData[0].slug;
+    // Find the GogoAnime entry whose title actually matches the expected title
+    const match = gogoData?.find((r) => gogoMatchesTitle(r, animeTitle));
+    const gogoSlug = match?.slug ?? null;
 
     if (gogoData) {
       setResults(gogoData);
-      if (gogoData[0]) {
-        const ep = gogoData[0].episodes_count || gogoData[0].actual_episodes_count || gogoData[0].latest_episode || null;
+      if (match) {
+        const ep = match.episodes_count || match.actual_episodes_count || match.latest_episode || null;
         if (ep) setTotalEps(ep);
-        setSelectedSlug(gogoData[0].slug);
+        setSelectedSlug(match.slug);
       }
     }
 
