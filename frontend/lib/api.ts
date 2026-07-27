@@ -33,6 +33,46 @@ export interface GogoAnimeItem {
   status: string | null;
 }
 
+export interface DonghuaItem {
+  slug: string;
+  title: string;
+  poster: string | null;
+  episode: number | null;
+  sub_type: string;
+  type: string;
+  url: string;
+}
+
+export interface DonghuaDetail {
+  slug: string;
+  title: string;
+  title_alt: string | null;
+  poster: string | null;
+  score: number | null;
+  status: string;
+  genres: string[];
+  description: string;
+  episodes: number | null;
+  type: string;
+  country: string;
+  released: string | null;
+  duration: string | null;
+  episode_list: { number: number; title: string; url: string; slug: string }[];
+  url: string;
+}
+
+export interface DonghuaServer {
+  label: string;
+  stream_url: string;
+}
+
+export interface DonghuaStreamData {
+  stream_url: string;
+  label: string;
+  servers: DonghuaServer[];
+  title: string;
+}
+
 export interface RecentEpisode {
   title: string;
   episode: number;
@@ -111,7 +151,7 @@ async function authedRequest<T>(
 
 export interface WatchlistEntryData {
   anime_id: number;
-  source: "mal" | "jikan" | "anilist";
+  source: "mal" | "jikan" | "anilist" | "animexin";
   status: "planning" | "watching" | "completed" | "dropped" | "favorites";
   progress: number;
   rating: number | null;
@@ -301,6 +341,24 @@ export const api = {
   },
   donghuaResolve: (q: string) =>
     request<{ data: any[]; query: string }>(`/api/v1/streaming/donghua/resolve?q=${encodeURIComponent(q)}`, 300),
+
+  // AnimeXin donghua section
+  donghuaTrending: () =>
+    request<{ data: DonghuaItem[] }>(`/api/v1/donghua/trending`, 300),
+  donghuaLatest: (page = 1) =>
+    request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/latest?page=${page}`, 300),
+  donghuaSearch: (q: string) =>
+    request<{ data: DonghuaItem[]; query: string }>(`/api/v1/donghua/search?q=${encodeURIComponent(q)}`, 60),
+  donghuaDetail: (slug: string) =>
+    request<{ data: DonghuaDetail }>(`/api/v1/donghua/anime/${encodeURIComponent(slug)}`, 600),
+  donghuaStreamUrl: (slug: string, episode: number, server = 0) =>
+    `${API_BASE}/api/v1/donghua/stream?slug=${encodeURIComponent(slug)}&episode=${episode}&server=${server}`,
+  donghuaServers: (slug: string, episode: number) =>
+    request<{ data: { title: string; servers: DonghuaServer[]; prev_url: string | null; next_url: string | null } }>(
+      `/api/v1/donghua/anime/${encodeURIComponent(slug)}/episode/${episode}`, 60
+    ),
+  donghuaProxy: (url: string, referer: string = "") =>
+    `${API_BASE}/api/v1/donghua/proxy?url=${encodeURIComponent(url)}${referer ? `&referer=${encodeURIComponent(referer)}` : ""}`,
 
   // Wibu streaming (3rd fallback)
   wibuStream: (q: string, ep: number, server: string = "vidstream") =>

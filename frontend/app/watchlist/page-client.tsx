@@ -102,6 +102,12 @@ function WatchlistTab({ token, status }: { token: string; status: string }) {
     filtered.forEach((entry) => {
       const key = `${entry.source}:${entry.anime_id}`;
       if (key in animeById) return;
+
+      if (entry.source === "animexin") {
+        setAnimeById((prev) => ({ ...prev, [key]: { title: `Donghua #${entry.anime_id}`, title_english: null } }));
+        return;
+      }
+
       api
         .detail(entry.anime_id, entry.source)
         .then((res) => setAnimeById((prev) => ({ ...prev, [key]: res.data })))
@@ -141,7 +147,9 @@ function WatchlistTab({ token, status }: { token: string; status: string }) {
         const key = `${entry.source}:${entry.anime_id}`;
         const anime = animeById[key];
         const href =
-          entry.source === "anilist" ? `/anime/${entry.anime_id}?source=anilist` : `/anime/${entry.anime_id}`;
+          entry.source === "anilist" ? `/anime/${entry.anime_id}?source=anilist` :
+          entry.source === "animexin" ? `/donghua` :
+          `/anime/${entry.anime_id}`;
 
         return (
           <div key={key} className="group relative overflow-hidden rounded-xl bg-surface-hi">
