@@ -325,6 +325,58 @@ def _dub_slug(slug: str, audio: str) -> str:
     return slug
 
 
+def _parse_hls_variants_and_segments(m3u8_text: str, base_url: str) -> list[str]:
+    """Parse an HLS m3u8 playlist. If master playlist, pick best variant and parse that.
+    Returns list of segment URLs to download in order."""
+    from urllib.parse import urljoin
+    lines = m3u8_text.strip().splitlines()
+
+    if not lines or not lines[0].strip().startswith("#EXTM3U"):
+        return []
+
+    is_master = any("#EXT-X-STREAM-INF" in l for l in lines)
+
+    if is_master:
+        best_bw = -1
+        best_variant_url = None
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line.startswith("#EXT-X-STREAM-INF"):
+                bw = 0
+                for part in line.split(","):
+                    if "BANDWIDTH=" in part:
+                        try:
+                            bw = int(part.split("=")[1].strip())
+                        except ValueError:
+                            pass
+                i += 1
+                while i < len(lines) and (not lines[i].strip() or lines[i].strip().startswith("#")):
+                    i += 1
+                if i < len(lines) and bw > best_bw:
+                    best_bw = bw
+                    variant_line = lines[i].strip()
+                    best_variant_url = variant_line if variant_line.startswith("http") else urljoin(base_url + "/", variant_line)
+            i += 1
+        if not best_variant_url:
+            return []
+        # Fetch the variant playlist
+        import httpx
+        resp = httpx.get(best_variant_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        m3u8_text = resp.text
+        base_url = best_variant_url
+        lines = m3u8_text.strip().splitlines()
+
+    segment_urls = []
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            seg_url = line if line.startswith("http") else urljoin(base_url + "/", line)
+            segment_urls.append(seg_url)
+    return segment_urls
+
+
 @router.get("/gogoanime/health")
 @limiter.limit("10/minute")
 async def gogoanime_health(request: Request):
@@ -1427,7 +1479,7 @@ async def download_episode(
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
         # Path 2: Anivexa — resolve anilist_id from slug if needed
-        if not stream_url:
+        if not stream_url and not gogo_sources:
             if not anilist_id:
                 try:
                     from app.services import gogoanime_client as _gc
@@ -1470,12 +1522,13 @@ async def download_episode(
         if not stream_url and not gogo_sources:
             raise HTTPException(status_code=404, detail="No streaming source available")
 
-        stream_url = "".join(stream_url.split())
-        referer = "".join((referer or "").split())
+        if stream_url:
+            stream_url = "".join(stream_url.split())
+            referer = "".join((referer or "").split())
 
-        if not stream_url.startswith("http://") and not stream_url.startswith("https://"):
-            logger.warning("Download: invalid stream_url protocol: %.100s", stream_url)
-            raise HTTPException(status_code=404, detail="No streaming source available")
+            if not stream_url.startswith("http://") and not stream_url.startswith("https://"):
+                logger.warning("Download: invalid stream_url protocol: %.100s", stream_url)
+                raise HTTPException(status_code=404, detail="No streaming source available")
 
         safe_name = _re.sub(r'[^\w\-]', '_', filename)
 
@@ -1504,20 +1557,16 @@ async def download_episode(
                 headers["Content-Length"] = content_length
             return StreamingResponse(_stream_mp4(), media_type="video/mp4", headers=headers)
 
-        # --- HLS path: write M3U8 to temp file, run ffmpeg with proxy URLs ---
+        # --- HLS path: fetch m3u8, download segments manually, stream as TS ---
         import asyncio as _aio
-        import tempfile as _tmpfile
-        import os as _os
-        import shutil as _shutil
         from urllib.parse import urljoin as _urljoin
 
-        backend_base = str(request.base_url).rstrip("/")
-
-        # For GogoAnime: use rewritten M3U8 (has absolute proxy URLs for segments)
-        # For Anivexa/Animetsu: use the URL directly
+        # Resolve the actual m3u8 URL
         if gogo_sources and gogo_sources.get("master_m3u8"):
+            # For GogoAnime: use the proxy endpoint to get rewritten M3U8 with absolute URLs
+            backend_base = str(request.base_url).rstrip("/")
             m3u8_content = gogo_sources["master_m3u8"]
-            # Rewrite relative proxy URLs to absolute backend URLs
+            # Make proxy-relative URLs absolute
             lines = m3u8_content.splitlines()
             abs_lines = []
             for line in lines:
@@ -1527,73 +1576,51 @@ async def download_episode(
                 else:
                     abs_lines.append(line)
             m3u8_text = "\n".join(abs_lines)
-            tmp_dir = _tmpfile.mkdtemp()
-            m3u8_path = _os.path.join(tmp_dir, "playlist.m3u8")
-            mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
-            with open(m3u8_path, "w") as f:
-                f.write(m3u8_text)
-            input_url = m3u8_path
-            referer = "https://gogoanimehd.to/"
+            # This is a master playlist — parse for best variant
+            segment_urls = _parse_hls_variants_and_segments(m3u8_text, "")
+            if not segment_urls:
+                raise HTTPException(status_code=502, detail="Could not parse HLS playlist")
         else:
-            tmp_dir = _tmpfile.mkdtemp()
-            mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
-            input_url = stream_url
-
-        ua = _PROXY_HEADERS.get("User-Agent", "")
-        ffmpeg_args = [
-            "ffmpeg", "-y",
-            "-referer", referer or "",
-            "-user_agent", ua,
-            "-headers", f"Referer: {referer or ''}\r\nUser-Agent: {ua}\r\n",
-            "-allowed_extensions", "ALL",
-            "-protocol_whitelist", "file,http,https,tcp,tls,crypto",
-            "-i", input_url,
-            "-map", "0",
-            "-c", "copy",
-            "-f", "mp4",
-            mp4_path,
-        ]
+            # For Anivexa/Animetsu: fetch the m3u8 URL directly
+            m3u8_headers = {"Referer": referer} if referer else {}
+            m3u8_resp = await dl_client.get(stream_url, headers=m3u8_headers)
+            m3u8_resp.raise_for_status()
+            m3u8_text = m3u8_resp.text
+            segment_urls = _parse_hls_variants_and_segments(m3u8_text, stream_url)
+            if not segment_urls:
+                raise HTTPException(status_code=502, detail="Could not parse HLS playlist")
 
         await dl_client.aclose()
-        logger.info("Download ffmpeg: input=%.300s referer=%s type=%s", input_url, referer, stream_type)
-        proc = await _aio.create_subprocess_exec(
-            *ffmpeg_args,
-            stdout=_aio.subprocess.DEVNULL,
-            stderr=_aio.subprocess.PIPE,
-        )
+        logger.info("Download HLS: %d segments to fetch", len(segment_urls))
 
-        async def _run_ffmpeg_and_stream():
+        async def _stream_segments():
+            dl = _httpx.AsyncClient(
+                timeout=_httpx.Timeout(30.0, connect=10.0),
+                headers=_PROXY_HEADERS,
+                follow_redirects=True,
+                limits=_httpx.Limits(max_connections=8, max_keepalive_connections=4),
+            )
             try:
-                _, stderr_bytes = await _aio.wait_for(proc.communicate(), timeout=600)
-                stderr_text = stderr_bytes.decode(errors="replace")[-1000:]
-                if proc.returncode != 0:
-                    logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, stderr_text)
-                    return
-                logger.info("ffmpeg completed, mp4_path=%s size=%s", mp4_path, _os.path.getsize(mp4_path) if _os.path.exists(mp4_path) else "missing")
-                with open(mp4_path, "rb") as f:
-                    while True:
-                        chunk = f.read(262144)
-                        if not chunk:
+                for seg_url in segment_urls:
+                    for _attempt in range(3):
+                        try:
+                            async with dl.stream("GET", seg_url, headers={"Referer": referer} if referer else {}) as resp:
+                                resp.raise_for_status()
+                                async for chunk in resp.aiter_bytes(65536):
+                                    yield chunk
                             break
-                        yield chunk
-            except _aio.TimeoutError:
-                logger.error("ffmpeg download timed out after 600s")
-                try:
-                    proc.kill()
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.error("ffmpeg download error: %s", e, exc_info=True)
+                        except Exception as seg_err:
+                            if _attempt == 2:
+                                logger.warning("Download segment failed after 3 attempts: %.200s: %s", seg_url, seg_err)
+                            else:
+                                await _aio.sleep(1 * (_attempt + 1))
             finally:
-                try:
-                    _shutil.rmtree(tmp_dir, ignore_errors=True)
-                except Exception:
-                    pass
+                await dl.aclose()
 
         return StreamingResponse(
-            _run_ffmpeg_and_stream(),
-            media_type="video/mp4",
-            headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
+            _stream_segments(),
+            media_type="video/mp2t",
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.ts"'},
         )
 
     except HTTPException:
