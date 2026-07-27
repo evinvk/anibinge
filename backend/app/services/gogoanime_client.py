@@ -661,7 +661,7 @@ async def get_stream_sources(slug: str, episode_number: int, audio: str = "sub")
         qualities = [{"quality": "default", "url": _resolve_url(resolved_url, "")}]
 
     logger.info("GogoAnime stream %s ep-%d: %d quality options, embed=%s", slug, episode_number, len(qualities), bool(embed_url))
-    result = {"master_m3u8": rewritten_master, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
+    result = {"master_m3u8": rewritten_master, "master_m3u8_url": resolved_url, "qualities": qualities, "embed_url": embed_url, "server_id": embed_server_id}
     _stream_cache[cache_key] = (_time.time(), result)
     return result
 

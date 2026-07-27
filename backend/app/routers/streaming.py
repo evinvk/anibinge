@@ -1406,6 +1406,7 @@ async def download_episode(
         stream_url = None
         referer = ""
         stream_type = None
+        ffmpeg_headers = {}
 
         # Path 1: GogoAnime — try to get a downloadable stream
         if slug:
@@ -1417,20 +1418,20 @@ async def download_episode(
                     if direct:
                         stream_url = direct.get("stream_url")
                         referer = direct.get("referer", "")
-                        stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
+                        stream_type = "hls" if ".m3u8" in (stream_url or "") else "mp4"
+                    elif sources.get("master_m3u8_url"):
+                        stream_url = sources["master_m3u8_url"]
+                        referer = "https://gogoanimehd.to/"
+                        stream_type = "hls"
                     elif sources.get("master_m3u8"):
                         stream_url = sources["master_m3u8"]
                         stream_type = "hls"
-                    # Skip embed_url extraction for download — kwik.cx requires
-                    # JavaScript execution, server-side GET always gets 403.
-                    # Anivexa fallback below handles this case.
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
         # Path 2: Anivexa — resolve anilist_id from slug if needed
         if not stream_url:
             if not anilist_id:
-                # Try to get anilist_id from GogoAnime catalog by slug
                 try:
                     from app.services import gogoanime_client as _gc
                     info = _gc.get_info_by_slug(slug) if slug else None
@@ -1479,112 +1480,72 @@ async def download_episode(
             logger.warning("Download: invalid stream_url protocol: %.100s", stream_url)
             raise HTTPException(status_code=404, detail="No streaming source available")
 
-        # --- MP4 path: download directly and serve ---
-        if stream_type == "mp4":
-            dl_headers = {"Referer": referer} if referer else {}
-            resp = await dl_client.get(stream_url, headers=dl_headers)
-            resp.raise_for_status()
-            safe_name = _re.sub(r'[^\w\-]', '_', filename)
-            return Response(
-                content=resp.content,
-                media_type=resp.headers.get("content-type", "video/mp4"),
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(resp.content)),
-                },
-            )
-
-        # --- HLS path: fetch playlist, download segments, concatenate ---
-        resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
-        resp.raise_for_status()
-        content_type = resp.headers.get("content-type", "")
-        body = resp.text
-        is_hls = "mpegurl" in content_type or body.strip().startswith("#EXTM3U")
-
-        if not is_hls:
-            safe_name = _re.sub(r'[^\w\-]', '_', filename)
-            return Response(
-                content=resp.content,
-                media_type=content_type or "video/mp4",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(resp.content)),
-                },
-            )
+        safe_name = _re.sub(r'[^\w\-]', '_', filename)
 
         import asyncio as _aio
-        import tempfile as _tmpfile
-        import os as _os
-        import shutil as _shutil
 
-        # Parse master m3u8 to pick best variant — ffmpeg can't auto-select from multi-program masters
-        if "EXT-X-STREAM-INF" in body:
-            best_url = None
-            best_bw = -1
-            for line in body.splitlines():
-                line = line.strip()
-                if line.startswith("#EXT-X-STREAM-INF"):
-                    bw = 0
-                    for part in line.split(","):
-                        if "BANDWIDTH=" in part:
-                            try:
-                                bw = int(part.split("=")[1].strip())
-                            except ValueError:
-                                pass
-                elif line and not line.startswith("#") and best_bw is not None:
-                    if bw > best_bw:
-                        best_bw = bw
-                        from urllib.parse import urljoin as _urljoin
-                        best_url = _urljoin(stream_url, line)
-                    bw = 0
-            if best_url:
-                stream_url = best_url
-
-        safe_name = _re.sub(r'[^\w\-]', '_', filename)
-        tmp_dir = _tmpfile.mkdtemp()
-        mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
-        try:
-            cmd = [
-                "ffmpeg", "-y",
-                "-referer", referer or "",
-                "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
-                "-headers", f"Referer: {referer or ''}\r\n",
-                "-allowed_extensions", "ALL",
-                "-i", stream_url,
-                "-map", "0",
-                "-c", "copy",
-                "-movflags", "+faststart",
-                mp4_path,
-            ]
+        async def _stream_ffmpeg(args: list[str], safe_name: str):
+            """Run ffmpeg with output pipe and stream chunks to client."""
             proc = await _aio.create_subprocess_exec(
-                *cmd,
+                *args,
                 stdout=_aio.subprocess.PIPE,
                 stderr=_aio.subprocess.PIPE,
             )
-            stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=300)
+            try:
+                while True:
+                    chunk = await proc.stdout.read(262144)
+                    if not chunk:
+                        break
+                    yield chunk
+                await proc.wait()
+                if proc.returncode != 0:
+                    err = (await proc.stderr.read()).decode(errors="replace")[-500:]
+                    logger.error("ffmpeg download failed (code %d): %s", proc.returncode, err)
+            finally:
+                await proc.stdout.read()
+                await proc.stderr.read()
 
-            if proc.returncode != 0:
-                err_msg = stderr.decode(errors="replace")[-500:]
-                logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
-                raise RuntimeError(f"ffmpeg failed: {err_msg}")
+        # --- MP4 path: stream directly ---
+        if stream_type == "mp4":
+            dl_headers = {"Referer": referer} if referer else {}
+            resp = await dl_client.get(stream_url, headers=dl_headers, follow_redirects=True)
+            resp.raise_for_status()
+            content_length = resp.headers.get("content-length")
 
-            with open(mp4_path, "rb") as f:
-                mp4_content = f.read()
+            async def _stream_mp4():
+                async with dl_client.stream("GET", stream_url, headers=dl_headers, follow_redirects=True) as s:
+                    async for chunk in s.aiter_bytes(262144):
+                        yield chunk
 
             await dl_client.aclose()
-            return Response(
-                content=mp4_content,
-                media_type="video/mp4",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(mp4_content)),
-                },
-            )
-        finally:
-            try:
-                _shutil.rmtree(tmp_dir, ignore_errors=True)
-            except Exception:
-                pass
+            headers = {"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'}
+            if content_length:
+                headers["Content-Length"] = content_length
+            return StreamingResponse(_stream_mp4(), media_type="video/mp4", headers=headers)
+
+        # --- HLS path: download via ffmpeg and stream output ---
+        # Build ffmpeg args — handle master m3u8 with multiple programs
+        ua = _PROXY_HEADERS.get("User-Agent", "")
+        ffmpeg_args = [
+            "ffmpeg", "-y",
+            "-referer", referer or "",
+            "-user_agent", ua,
+            "-headers", f"Referer: {referer or ''}\r\nUser-Agent: {ua}\r\n",
+            "-allowed_extensions", "ALL",
+            "-i", stream_url,
+            "-map", "0",
+            "-c", "copy",
+            "-movflags", "+faststart",
+            "pipe:1",
+        ]
+
+        await dl_client.aclose()
+        return StreamingResponse(
+            _stream_ffmpeg(ffmpeg_args, safe_name),
+            media_type="video/mp4",
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'},
+        )
+
     except HTTPException:
         await dl_client.aclose()
         raise
