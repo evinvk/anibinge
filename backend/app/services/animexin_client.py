@@ -37,6 +37,8 @@ _DETAIL_CACHE: dict[str, tuple[float, dict | None]] = {}
 _DETAIL_TTL = 600  # 10 min
 _SERVERS_CACHE: dict[str, tuple[float, list[dict]]] = {}
 _SERVERS_TTL = 300
+_BROWSE_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_BROWSE_TTL = 300
 
 
 def _abs(url: str) -> str:
@@ -527,6 +529,30 @@ async def search(query: str) -> list[dict]:
         logger.error("Failed to search AnimeXin for '%s': %s", query, e)
         if cache_key in _SEARCH_CACHE:
             return _SEARCH_CACHE[cache_key][1]
+        return []
+
+
+async def get_browse(page: int = 1) -> list[dict]:
+    """Browse all donghua from AnimeXin listing pages."""
+    now = time.time()
+    cache_key = f"browse:{page}"
+    if cache_key in _BROWSE_CACHE:
+        cached_at, data = _BROWSE_CACHE[cache_key]
+        if now - cached_at < _BROWSE_TTL:
+            return data
+
+    try:
+        if page <= 1:
+            html = await _fetch_page("/anime/")
+        else:
+            html = await _fetch_page(f"/anime/page/{page}/")
+        items = _parse_search_results(html)
+        _BROWSE_CACHE[cache_key] = (now, items)
+        return items
+    except Exception as e:
+        logger.error("Failed to browse AnimeXin (page=%d): %s", page, e)
+        if cache_key in _BROWSE_CACHE:
+            return _BROWSE_CACHE[cache_key][1]
         return []
 
 

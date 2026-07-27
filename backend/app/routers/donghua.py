@@ -52,6 +52,17 @@ async def latest(page: int = Query(1, ge=1)):
         raise HTTPException(status_code=503, detail="Unable to fetch latest donghua")
 
 
+@router.get("/browse")
+async def browse(page: int = Query(1, ge=1)):
+    """Browse all donghua from AnimeXin listing pages."""
+    try:
+        items = await animexin_client.get_browse(page)
+        return {"data": items, "page": page}
+    except Exception as e:
+        logger.error("Donghua browse error: %s", e)
+        raise HTTPException(status_code=503, detail="Unable to browse donghua")
+
+
 @router.get("/search")
 async def search(q: str = Query(..., min_length=1)):
     """Search AnimeXin for donghua."""

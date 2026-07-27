@@ -349,6 +349,8 @@ export const api = {
     request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/latest?page=${page}`, 300),
   donghuaSearch: (q: string) =>
     request<{ data: DonghuaItem[]; query: string }>(`/api/v1/donghua/search?q=${encodeURIComponent(q)}`, 60),
+  donghuaBrowse: (page = 1) =>
+    request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/browse?page=${page}`, 300),
   donghuaDetail: (slug: string) =>
     request<{ data: DonghuaDetail }>(`/api/v1/donghua/anime/${encodeURIComponent(slug)}`, 600),
   donghuaStreamUrl: (slug: string, episode: number, server = 0) =>

@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Search, Loader2, Flame, Clock, ArrowRight } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Search, Loader2, Flame, Clock } from "lucide-react";
 import { api, type DonghuaItem } from "@/lib/api";
 import { DonghuaCard, DonghuaCardSkeleton } from "@/components/donghua-card";
-import Link from "next/link";
 
 export default function DonghuaPage() {
   const [trending, setTrending] = useState<DonghuaItem[]>([]);
@@ -15,10 +14,94 @@ export default function DonghuaPage() {
   const [loadingLatest, setLoadingLatest] = useState(true);
   const [searching, setSearching] = useState(false);
 
+  const [trendingPage, setTrendingPage] = useState(1);
+  const [latestPage, setLatestPage] = useState(2);
+  const [loadingMoreTrending, setLoadingMoreTrending] = useState(false);
+  const [loadingMoreLatest, setLoadingMoreLatest] = useState(false);
+  const [noMoreTrending, setNoMoreTrending] = useState(false);
+  const [noMoreLatest, setNoMoreLatest] = useState(false);
+
+  const seenSlugsRef = useRef(new Set<string>());
+  const trendingSentinelRef = useRef<HTMLDivElement>(null);
+  const latestSentinelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    api.donghuaTrending().then((r) => { setTrending(r.data || []); setLoadingTrending(false); }).catch(() => setLoadingTrending(false));
-    api.donghuaLatest(1).then((r) => { setLatest(r.data || []); setLoadingLatest(false); }).catch(() => setLoadingLatest(false));
+    api.donghuaTrending().then((r) => {
+      const items = r.data || [];
+      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      setTrending(items);
+      setLoadingTrending(false);
+    }).catch(() => setLoadingTrending(false));
+
+    api.donghuaLatest(1).then((r) => {
+      const items = r.data || [];
+      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      setLatest(items);
+      setLoadingLatest(false);
+    }).catch(() => setLoadingLatest(false));
   }, []);
+
+  const loadMoreTrending = useCallback(async () => {
+    if (loadingMoreTrending || noMoreTrending) return;
+    setLoadingMoreTrending(true);
+    try {
+      const r = await api.donghuaBrowse(trendingPage);
+      const items = (r.data || []).filter((i) => !seenSlugsRef.current.has(i.slug));
+      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      if (items.length === 0) {
+        setNoMoreTrending(true);
+      } else {
+        setTrending((prev) => [...prev, ...items]);
+        setTrendingPage((p) => p + 1);
+      }
+    } catch {
+      setNoMoreTrending(true);
+    }
+    setLoadingMoreTrending(false);
+  }, [trendingPage, loadingMoreTrending, noMoreTrending]);
+
+  const loadMoreLatest = useCallback(async () => {
+    if (loadingMoreLatest || noMoreLatest) return;
+    setLoadingMoreLatest(true);
+    try {
+      const r = await api.donghuaLatest(latestPage);
+      const items = (r.data || []).filter((i) => !seenSlugsRef.current.has(i.slug));
+      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      if (items.length === 0) {
+        setNoMoreLatest(true);
+      } else {
+        setLatest((prev) => [...prev, ...items]);
+        setLatestPage((p) => p + 1);
+      }
+    } catch {
+      setNoMoreLatest(true);
+    }
+    setLoadingMoreLatest(false);
+  }, [latestPage, loadingMoreLatest, noMoreLatest]);
+
+  useEffect(() => {
+    if (searchResults !== null) return;
+    const sentinel = trendingSentinelRef.current;
+    if (!sentinel) return;
+    const obs = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) loadMoreTrending(); },
+      { rootMargin: "200px" }
+    );
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [searchResults, loadMoreTrending, trending.length]);
+
+  useEffect(() => {
+    if (searchResults !== null) return;
+    const sentinel = latestSentinelRef.current;
+    if (!sentinel) return;
+    const obs = new IntersectionObserver(
+      (entries) => { if (entries[0].isIntersecting) loadMoreLatest(); },
+      { rootMargin: "200px" }
+    );
+    obs.observe(sentinel);
+    return () => obs.disconnect();
+  }, [searchResults, loadMoreLatest, latest.length]);
 
   const handleSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults(null); return; }
@@ -103,13 +186,19 @@ export default function DonghuaPage() {
               ) : trending.length === 0 ? (
                 <p className="text-mist">No trending donghua available.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {trending.map((item) => (
-                    <div key={item.slug} className="w-full">
-                      <DonghuaCard item={item} />
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                    {trending.map((item) => (
+                      <div key={item.slug} className="w-full">
+                        <DonghuaCard item={item} />
+                      </div>
+                    ))}
+                  </div>
+                  <div ref={trendingSentinelRef} className="mt-4 flex justify-center">
+                    {loadingMoreTrending && <Loader2 className="h-5 w-5 animate-spin text-mist" />}
+                    {noMoreTrending && <p className="text-xs text-mist/50">No more results</p>}
+                  </div>
+                </>
               )}
             </section>
 
@@ -132,13 +221,19 @@ export default function DonghuaPage() {
               ) : latest.length === 0 ? (
                 <p className="text-mist">No latest donghua available.</p>
               ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {latest.map((item) => (
-                    <div key={item.slug} className="w-full">
-                      <DonghuaCard item={item} />
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                    {latest.map((item) => (
+                      <div key={item.slug} className="w-full">
+                        <DonghuaCard item={item} />
+                      </div>
+                    ))}
+                  </div>
+                  <div ref={latestSentinelRef} className="mt-4 flex justify-center">
+                    {loadingMoreLatest && <Loader2 className="h-5 w-5 animate-spin text-mist" />}
+                    {noMoreLatest && <p className="text-xs text-mist/50">No more results</p>}
+                  </div>
+                </>
               )}
             </section>
           </>
