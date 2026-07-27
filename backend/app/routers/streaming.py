@@ -148,6 +148,9 @@ async def get_recent_episodes(
     """
     Get recently uploaded episodes across all anime.
 
+    """
+    Get recently uploaded episodes across all anime.
+
     Uses GogoAnime catalog sorted by latest_episode descending, enriched with
     AniList metadata (title, genres, anilist_id) where available.
     """
@@ -180,7 +183,6 @@ async def get_recent_episodes(
 
         # Try to enrich with AniList metadata (best effort)
         try:
-            # Fetch a few pages of AniList airing schedule to cross-reference
             anilist_map: dict[int, dict] = {}
             for pg in range(1, 4):
                 try:
@@ -195,7 +197,6 @@ async def get_recent_episodes(
                 except Exception:
                     break
 
-            # Build lookup: normalized title -> anilist media
             al_by_norm: dict[str, dict] = {}
             for mid, m in anilist_map.items():
                 title_obj = m.get("title", {})
@@ -206,7 +207,6 @@ async def get_recent_episodes(
                         if norm:
                             al_by_norm[norm] = m
 
-            # Enrich candidates
             for c in candidates:
                 c_norm = gogoanime_client._normalize(c["title"])
                 if c_norm and c_norm in al_by_norm:
@@ -217,16 +217,6 @@ async def get_recent_episodes(
                     enriched = al_title.get("english") or al_title.get("romaji") or ""
                     if enriched:
                         c["title"] = enriched
-
-                    # Compute aired_ago from nextAiringEpisode
-                    next_ep = al_media.get("nextAiringEpisode")
-                    if next_ep:
-                        air_at = next_ep.get("airingAt", 0) or 0
-                        time_until = next_ep.get("timeUntilAiring", 0) or 0
-                        if air_at > 0 and time_until > 0:
-                            aired_ago = 604800 - time_until
-                            if aired_ago > 0:
-                                c["aired_ago"] = aired_ago
         except Exception:
             pass
 
