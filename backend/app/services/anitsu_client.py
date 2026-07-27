@@ -39,14 +39,15 @@ def _get_referer_for_url(url: str) -> str:
 
 
 def _extract_original_url(proxied_url: str) -> str:
-    if "/api/proxy/" not in proxied_url:
-        return proxied_url
+    url = proxied_url.strip()
+    if "/api/proxy/" not in url:
+        return url
     from urllib.parse import urlparse, parse_qs
-    parsed = urlparse(proxied_url)
+    parsed = urlparse(url)
     qs = parse_qs(parsed.query)
     if "url" in qs:
-        return qs["url"][0]
-    return proxied_url
+        return qs["url"][0].strip()
+    return url
 
 
 async def get_stream(anilist_id: int, episode: int, audio: str = "sub") -> dict[str, Any]:
