@@ -55,12 +55,22 @@ def _parse_card(card_tag) -> dict | None:
             return None
 
         href = link.get("href", "")
-        title_el = link.find("div", class_="tt")
+
         title = ""
+        title_el = link.find("div", class_="tt")
         if title_el:
-            title_text = title_el.get_text(strip=True)
-            if title_text:
-                title = title_text
+            # Extract direct text nodes from .tt (clean title, not the h2)
+            for child in title_el.children:
+                if isinstance(child, str):
+                    t = child.strip()
+                    if t:
+                        title = t
+                        break
+            if not title:
+                h2 = title_el.find("h2")
+                if h2:
+                    # Strip trailing episode/sub info from h2
+                    title = h2.get_text(strip=True)
         if not title:
             title = link.get("title", "")
 
@@ -146,10 +156,159 @@ def _parse_search_results(html: str) -> list[dict]:
 def _parse_anime_detail(html: str, slug: str) -> dict | None:
     soup = BeautifulSoup(html, "lxml")
 
-    info_box = soup.find("div", class_="single-info")
-    if not info_box:
+    # Series page uses .bigcontent or .postbody, episode page uses .single-info
+    # Try series page structure first
+    bigcontent = soup.find("div", class_="bigcontent")
+    infox = soup.find("div", class_="infox")
+
+    if not bigcontent and not infox:
+        # Fallback: try episode-page structure
+        info_box = soup.find("div", class_="single-info")
+        if info_box:
+            return _parse_episode_as_detail(info_box, slug)
         return None
 
+    # Title
+    title = slug
+    if infox:
+        h1 = infox.find("h1")
+        if h1:
+            title = h1.get_text(strip=True)
+    if title == slug:
+        h1 = soup.find("h1")
+        if h1:
+            title = h1.get_text(strip=True)
+
+    # Poster
+    poster = None
+    thumb = soup.find("div", class_="thumb")
+    if thumb:
+        img = thumb.find("img")
+        if img:
+            poster = _abs(img.get("src", ""))
+    if not poster and bigcontent:
+        img = bigcontent.find("img")
+        if img:
+            poster = _abs(img.get("src", ""))
+
+    # Rating
+    score = None
+    rating_el = soup.find("div", class_="rating")
+    if rating_el:
+        strong = rating_el.find("strong")
+        if strong:
+            m = re.search(r"([\d.]+)", strong.get_text())
+            if m:
+                score = float(m.group(1))
+
+    # Metadata from .spe
+    metadata = {}
+    spe = soup.find("div", class_="spe")
+    if spe:
+        for span in spe.find_all("span"):
+            text = span.get_text(strip=True)
+            if ":" in text:
+                key, _, val = text.partition(":")
+                metadata[key.strip().lower()] = val.strip()
+
+    # Genres
+    genres = []
+    genxed = soup.find("div", class_="genxed")
+    if genxed:
+        for a in genxed.find_all("a"):
+            genres.append(a.get_text(strip=True))
+
+    # Description
+    description = ""
+    desc_el = soup.find("div", class_="desc")
+    if desc_el:
+        for colap in desc_el.find_all("span", class_="colap"):
+            colap.decompose()
+        for b_tag in desc_el.find_all("b"):
+            b_tag.decompose()
+        description = desc_el.get_text(strip=True)
+        # Clean up generic AnimeXin filler text
+        if description.startswith("Watch streaming"):
+            m = re.match(r"Watch streaming\s+.*?on AnimeXin\.\s*(.*)", description, re.IGNORECASE)
+            if m:
+                description = m.group(1).strip()
+            else:
+                description = ""
+    if not description and infox:
+        ninfo = infox.find("div", class_="ninfo")
+        if ninfo:
+            description = ninfo.get_text(strip=True)
+
+    # Episode count from metadata
+    episodes = None
+    if "episodes" in metadata:
+        m = re.search(r"(\d+)", metadata["episodes"])
+        if m:
+            episodes = int(m.group(1))
+
+    # Episode list from .eplister
+    episode_list = []
+    ep_list_div = soup.find("div", class_="eplister")
+    if not ep_list_div:
+        ep_list_div = soup.find("div", id="episodeLists")
+    if ep_list_div:
+        for ep_link in ep_list_div.find_all("a", href=True):
+            ep_href = ep_link.get("href", "")
+            ep_num = None
+
+            # Try <div class="epl-num"> first
+            epl_num_el = ep_link.find("div", class_="epl-num")
+            if epl_num_el:
+                m = re.search(r"(\d+)", epl_num_el.get_text())
+                if m:
+                    ep_num = int(m.group(1))
+
+            # Fallback: extract from URL
+            if ep_num is None:
+                m = re.search(r"episode-(\d+)", ep_href, re.IGNORECASE)
+                if m:
+                    ep_num = int(m.group(1))
+
+            if ep_num:
+                ep_title_el = ep_link.find("div", class_="epl-title")
+                ep_title = ep_title_el.get_text(strip=True) if ep_title_el else f"Episode {ep_num}"
+                ep_date_el = ep_link.find("div", class_="epl-date")
+                ep_date = ep_date_el.get_text(strip=True) if ep_date_el else None
+                episode_list.append({
+                    "number": ep_num,
+                    "title": ep_title,
+                    "url": ep_href,
+                    "slug": ep_href.rstrip("/").split("/")[-1] if ep_href else "",
+                    "date": ep_date,
+                })
+
+    # Episodes are listed newest-first on the page; reverse to chronological order
+    episode_list.sort(key=lambda x: x["number"])
+
+    status = metadata.get("status", "Ongoing")
+    episodes_total = episodes or len(episode_list) or None
+
+    return {
+        "slug": slug,
+        "title": title,
+        "title_alt": None,
+        "poster": poster,
+        "score": score,
+        "status": status,
+        "genres": genres,
+        "description": description,
+        "episodes": episodes_total,
+        "type": metadata.get("type", "ONA"),
+        "country": metadata.get("country", "China"),
+        "released": metadata.get("released", None),
+        "duration": metadata.get("duration", None),
+        "episode_list": episode_list,
+        "url": f"{_BASE_URL}/{slug}/",
+    }
+
+
+def _parse_episode_as_detail(info_box, slug):
+    """Parse episode page's single-info as anime detail (fallback)."""
     title_el = info_box.find("h2", itemprop="partOfSeries") or info_box.find("h2")
     title = title_el.get_text(strip=True) if title_el else slug
 
@@ -159,8 +318,8 @@ def _parse_anime_detail(html: str, slug: str) -> dict | None:
     img_el = info_box.find("img", class_="ts-post-image")
     poster = _abs(img_el.get("src", "")) if img_el else None
 
-    rating_el = info_box.find("div", class_="rating")
     score = None
+    rating_el = info_box.find("div", class_="rating")
     if rating_el:
         strong = rating_el.find("strong")
         if strong:
@@ -196,48 +355,21 @@ def _parse_anime_detail(html: str, slug: str) -> dict | None:
         if m:
             episodes = int(m.group(1))
 
-    episode_list = []
-    ep_list_div = soup.find("div", id="episodeLists") or soup.find("div", class_="episodelist")
-    if ep_list_div:
-        for ep_link in ep_list_div.find_all("a"):
-            ep_href = ep_link.get("href", "")
-            ep_text = ep_link.get_text(strip=True)
-            ep_num = None
-            m = re.search(r"episode-(\d+)", ep_href, re.IGNORECASE)
-            if m:
-                ep_num = int(m.group(1))
-            elif ep_text:
-                m2 = re.search(r"(\d+)", ep_text)
-                if m2:
-                    ep_num = int(m2.group(1))
-            if ep_num:
-                episode_list.append({
-                    "number": ep_num,
-                    "title": ep_text or f"Episode {ep_num}",
-                    "url": ep_href,
-                    "slug": ep_href.rstrip("/").split("/")[-1] if ep_href else "",
-                })
-
-    episode_list.sort(key=lambda x: x["number"])
-
-    status = metadata.get("status", "Ongoing")
-    episodes_total = episodes or len(episode_list) or None
-
     return {
         "slug": slug,
         "title": title,
         "title_alt": title_alt,
         "poster": poster,
         "score": score,
-        "status": status,
+        "status": metadata.get("status", "Ongoing"),
         "genres": genres,
         "description": description,
-        "episodes": episodes_total,
+        "episodes": episodes,
         "type": metadata.get("type", "ONA"),
         "country": metadata.get("country", "China"),
         "released": metadata.get("released", None),
         "duration": metadata.get("duration", None),
-        "episode_list": episode_list,
+        "episode_list": [],
         "url": f"{_BASE_URL}/{slug}/",
     }
 
