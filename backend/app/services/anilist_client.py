@@ -614,21 +614,20 @@ class AniListClient:
         """Get the most recently aired episodes across all anime.
 
         Two-step approach:
-        1. Fetch RELEASING anime IDs (paginated, sorted by popularity)
-        2. Query their past airing schedule sorted by TIME_DESC
+        1. Fetch popular RELEASING anime with nextAiringEpisode data
+        2. Query their actual past airing schedule for exact timestamps
 
         Returns a list of {mediaId, episode, airingAt, title, coverImage, genres}
         sorted by most recent air time first.
         """
-        # Step 1: Get a pool of RELEASING anime IDs (enough to get diverse recent eps)
-        media_ids = []
+        # Step 1: Get RELEASING anime with airing info (sorted by popularity for best coverage)
         media_info: dict[int, dict] = {}
         for pg in range(1, 6):
             try:
                 q = """
                 query($page:Int,$perPage:Int){
                   Page(page:$page,perPage:$perPage){
-                    media(type:ANIME,status:RELEASING,sort:ID_DESC){
+                    media(type:ANIME,status:RELEASING,sort:POPULARITY_DESC){
                       id
                       title{romaji english native}
                       coverImage{extraLarge large}
@@ -636,6 +635,11 @@ class AniListClient:
                       format
                       episodes
                       status
+                      nextAiringEpisode{
+                        airingAt
+                        timeUntilAiring
+                        episode
+                      }
                     }
                   }
                 }
@@ -647,26 +651,26 @@ class AniListClient:
                 for m in media_list:
                     mid = m.get("id")
                     if mid:
-                        media_ids.append(mid)
                         media_info[mid] = m
             except Exception:
                 break
 
-        if not media_ids:
+        if not media_info:
             return []
 
-        # Step 2: Get recently aired episodes using existing airingSchedule method
-        aired = await self.get_airing_schedule(media_ids, per_page=200)
+        media_ids = list(media_info.keys())
+
+        # Step 2: Get actual past airing times
+        aired = await self.get_airing_schedule(media_ids, per_page=per_page * 3)
 
         if not aired:
             return []
 
-        # Sort by airingAt desc (most recent first)
+        # Sort by most recent first
         aired.sort(key=lambda x: x.get("airingAt", 0), reverse=True)
 
-        # Take only what we need
         out = []
-        for a in aired[:per_page * 3]:  # fetch extra to account for missing gogoanime slugs
+        for a in aired[:per_page * 2]:
             mid = a.get("mediaId")
             info = media_info.get(mid, {})
             title_obj = info.get("title", {})
