@@ -71,12 +71,29 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   const resp = await fetchDirect(url);
   if (resp.ok) return resp.text();
 
-  // If blocked (403), try via proxy
-  if (resp.status === 403) {
-    const proxyResp = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
-      headers: { "User-Agent": UA },
-    });
-    if (proxyResp.ok) return proxyResp.text();
+  // Fallback proxies when direct fetch is blocked
+  const proxyAttempts = [
+    async () => {
+      const r = await fetch(`https://r.jina.ai/http://animexin.dev${new URL(url).pathname}${new URL(url).search}`, {
+        headers: { "User-Agent": UA, Accept: "text/html", "X-Return-Format": "text" },
+      });
+      if (!r.ok) throw new Error(`Jina ${r.status}`);
+      return r.text();
+    },
+    async () => {
+      const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
+        headers: { "User-Agent": UA },
+      });
+      if (!r.ok) throw new Error(`AllOrigins ${r.status}`);
+      return r.text();
+    },
+  ];
+
+  for (const attempt of proxyAttempts) {
+    try {
+      const html = await attempt();
+      if (html?.length > 100) return html;
+    } catch {}
   }
 
   throw new Error(`AnimeXin ${resp.status}`);
@@ -180,4 +197,33 @@ export function parseSearch(html: string): any[] {
     if (item.title) items.push(item);
   });
   return items;
+}
+
+export function parseEpisodeServers(html: string): {
+  servers: { label: string; stream_url: string }[];
+  prev_url: string | null;
+  next_url: string | null;
+} {
+  const $ = cheerio.load(html);
+  const servers: { label: string; stream_url: string }[] = [];
+  $("div.option, .server, .playex, .embed-responsive iframe").each((_: any, el: any) => {
+    const iframe = $(el).is("iframe") ? $(el) : $(el).find("iframe");
+    const src = iframe.attr("src") || iframe.attr("data-src") || "";
+    if (src) {
+      const label = $(el).find(".label, .server-title, span").first().text().trim() || "Server " + (servers.length + 1);
+      servers.push({ label, stream_url: src });
+    }
+  });
+  // Fallback: direct iframe in content
+  if (servers.length === 0) {
+    $("iframe").each((_: any, el: any) => {
+      const src = $(el).attr("src") || $(el).attr("data-src") || "";
+      if (src && !src.includes("google") && !src.includes("facebook")) {
+        servers.push({ label: "Server " + (servers.length + 1), stream_url: src });
+      }
+    });
+  }
+  const prevLink = $("a.prev, .prev_link, .navigation a:contains('Prev')").attr("href") || null;
+  const nextLink = $("a.next, .next_link, .navigation a:contains('Next')").attr("href") || null;
+  return { servers, prev_url: prevLink, next_url: nextLink };
 }
