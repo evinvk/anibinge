@@ -40,7 +40,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
   const { id } = await params;
   const { source } = await searchParams;
   const malId = Number(id);
-  const resolvedSource = source || "jikan";
+  const resolvedSource = source || "mal";
 
   let detail;
   try {
