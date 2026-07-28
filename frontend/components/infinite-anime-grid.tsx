@@ -14,19 +14,28 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnimeGridProps) {
   const [items, setItems] = useState<AnimeSummary[]>(initialItems);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [isVisible, setIsVisible] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const initialLoadDoneRef = useRef(false);
 
   useEffect(() => {
     setItems(initialItems);
-    setPage(1);
+    setPage(initialItems.length > 0 ? 1 : 0);
     setHasMore(true);
+    initialLoadDoneRef.current = false;
   }, [initialItems, query, filtersKey]);
+
+  useEffect(() => {
+    if (initialItems.length === 0 && !initialLoadDoneRef.current && !loading) {
+      initialLoadDoneRef.current = true;
+      loadMore();
+    }
+  }, [initialItems, loadMore, loading]);
 
   const loadMore = useCallback(async () => {
     setLoading(true);
