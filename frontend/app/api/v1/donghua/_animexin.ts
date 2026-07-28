@@ -39,25 +39,47 @@ export function parseCards(html: string): any[] {
   return items;
 }
 
-export async function fetchHtml(path: string, params?: Record<string, string>): Promise<string> {
-  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  const url = BASE + path + qs;
-  const resp = await fetch(url, {
+async function fetchDirect(url: string): Promise<Response> {
+  return fetch(url, {
     headers: {
       "User-Agent": UA,
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       "Accept-Language": "en-US,en;q=0.9",
-      "Accept-Encoding": "gzip, deflate, br",
       "Cache-Control": "no-cache",
-      Pragma: "no-cache",
       Referer: "https://animexin.dev/",
-      "Sec-Fetch-Dest": "document",
-      "Sec-Fetch-Mode": "navigate",
-      "Sec-Fetch-Site": "same-origin",
     },
   });
-  if (!resp.ok) throw new Error(`AnimeXin ${resp.status}`);
-  return resp.text();
+}
+
+async function fetchViaProxy(url: string): Promise<Response> {
+  const proxyUrl = `https://r.jina.ai/http://animexin.dev${new URL(url).pathname}${new URL(url).search}`;
+  return fetch(proxyUrl, {
+    headers: {
+      Authorization: "Bearer jina_abc123",
+      "User-Agent": UA,
+      Accept: "text/html",
+      "X-Return-Format": "text",
+    },
+  });
+}
+
+export async function fetchHtml(path: string, params?: Record<string, string>): Promise<string> {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const url = BASE + path + qs;
+
+  // Try direct fetch first
+  const resp = await fetchDirect(url);
+  if (resp.ok) return resp.text();
+
+  // If blocked (403), try via proxy
+  if (resp.status === 403) {
+    const proxyResp = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
+      headers: { "User-Agent": UA },
+    });
+    if (proxyResp.ok) return proxyResp.text();
+  }
+
+  throw new Error(`AnimeXin ${resp.status}`);
 }
 
 export function parseHomepage(html: string) {
