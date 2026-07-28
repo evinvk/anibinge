@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Star, Users, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
+import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
@@ -44,12 +44,7 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
   }, [id, source, malId]);
 
   if (loading) {
-    return (
-      <div className="mx-auto flex min-h-[60vh] max-w-lg flex-col items-center justify-center px-4 text-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
-        <p className="mt-4 text-sm text-mist">Loading anime details...</p>
-      </div>
-    );
+    return <AnimeDetailSkeleton />;
   }
 
   if (error || !detail) {
@@ -173,6 +168,93 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
             </AnimeGrid>
           </section>
         )}
+      </div>
+    </div>
+  );
+}
+
+function AnimeDetailSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="relative h-72 w-full overflow-hidden sm:h-96 bg-white/5" />
+
+      <div className="mx-auto -mt-32 max-w-7xl px-4 sm:px-6">
+        <div className="flex flex-col gap-6 sm:flex-row">
+          <div className="relative -mt-4 w-40 shrink-0 overflow-hidden rounded-xl2 sm:w-56">
+            <div className="aspect-[2/3] w-full rounded-xl2 bg-white/10" />
+          </div>
+
+          <div className="flex-1 pt-4 space-y-4">
+            <div className="h-8 w-3/4 rounded bg-white/10" />
+            <div className="h-5 w-1/3 rounded bg-white/10" />
+
+            <div className="flex flex-wrap gap-4">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="h-4 w-4 rounded-full bg-white/10" />
+                  <div className="h-4 w-16 rounded bg-white/10" />
+                  <div className="h-4 w-10 rounded bg-white/10" />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-6 w-16 rounded-full bg-white/10" />
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <div className="h-9 w-28 rounded-lg bg-white/10" />
+              <div className="h-9 w-28 rounded-lg bg-white/10" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="h-4 w-full rounded bg-white/10" />
+              <div className="h-4 w-5/6 rounded bg-white/10" />
+              <div className="h-4 w-4/6 rounded bg-white/10" />
+            </div>
+
+            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i}>
+                  <div className="h-3 w-12 rounded bg-white/10 mb-1" />
+                  <div className="h-4 w-20 rounded bg-white/10" />
+                </div>
+              ))}
+            </dl>
+          </div>
+        </div>
+
+        <section className="mt-12">
+          <div className="h-6 w-56 rounded bg-white/10 mb-4" />
+          <div className="flex gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="w-32 shrink-0 p-2 text-center">
+                <div className="mx-auto h-20 w-20 rounded-full bg-white/10" />
+                <div className="mt-2 h-3 w-16 mx-auto rounded bg-white/10" />
+                <div className="mt-1 h-2 w-12 mx-auto rounded bg-white/10" />
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-12">
+          <div className="aspect-video w-full rounded-xl bg-white/5" />
+        </section>
+
+        <section className="mt-12 pb-12">
+          <div className="h-6 w-48 rounded bg-white/10 mb-4" />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i}>
+                <div className="aspect-[3/4.25] w-full rounded-xl bg-white/10" />
+                <div className="mt-2 h-4 w-3/4 rounded bg-white/10" />
+                <div className="mt-1 h-3 w-1/2 rounded bg-white/10" />
+              </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
