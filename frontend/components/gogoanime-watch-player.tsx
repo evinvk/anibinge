@@ -25,7 +25,7 @@ interface Props {
   onEpisodeChange?: (ep: number) => void;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 function proxySubUrl(file: string, referer: string) {
   return `/api/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;

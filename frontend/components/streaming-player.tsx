@@ -23,7 +23,7 @@ interface StreamingPlayerProps {
   totalEpisodes?: number | null;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   networkError: "Streaming source is temporarily unavailable",
@@ -73,11 +73,11 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
 
       if (aid) {
         // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
-        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const apiBase = "";
         const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}`;
         res = await fetch(url).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
       } else {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const apiBase = "";
         res = await fetch(
           `${apiBase}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${epAudio}`
         ).then(r => {
@@ -307,7 +307,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
     if (resolvedAnilistRef.current) {
       setStatusText("");
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const apiBase = "";
         const res = await fetch(
           `${apiBase}/api/v1/streaming/donghua/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${audio}&anilist_id=${resolvedAnilistRef.current}`
         ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });

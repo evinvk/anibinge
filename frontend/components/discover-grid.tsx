@@ -8,7 +8,7 @@ interface DiscoverGridProps {
   initialItems: AnimeSummary[];
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function DiscoverGrid({ initialItems }: DiscoverGridProps) {
   const [items, setItems] = useState<AnimeSummary[]>(initialItems);
