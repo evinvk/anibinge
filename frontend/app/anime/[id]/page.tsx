@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
@@ -19,10 +20,14 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
   const { source } = await searchParams;
   try {
     const { data } = await api.detail(Number(id), source || "jikan");
+    const title = data.title_english || data.title || "Anime";
+    const year = data.year ? ` (${data.year})` : "";
     return {
-      title: data.title_english || data.title,
-      description: data.synopsis?.slice(0, 160),
+      title: `Watch ${title}${year} Online — Episodes & Info`,
+      description: data.synopsis?.slice(0, 160) || `Watch ${title} online free. Stream sub & dub episodes, read reviews, and track your progress.`,
       openGraph: {
+        title: `Watch ${title} Online Free — Stream Sub & Dub`,
+        description: data.synopsis?.slice(0, 160),
         images: [data.images?.jpg?.large_image_url],
       },
     };
@@ -119,9 +124,13 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
 
             <div className="mt-4 flex flex-wrap gap-2">
               {detail.genres?.map((g: any) => (
-                <span key={g.mal_id ?? g.name} className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400">
+                <Link
+                  key={g.mal_id ?? g.name}
+                  href={`/browse?genres=${encodeURIComponent(g.name)}`}
+                  className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400 transition-colors hover:bg-primary-600/30"
+                >
                   {g.name}
-                </span>
+                </Link>
               ))}
             </div>
 

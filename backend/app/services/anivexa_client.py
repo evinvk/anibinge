@@ -63,7 +63,7 @@ async def get_stream_with_fallback(anilist_id: int, episode: int, audio: str = "
     # 1. Try Animetsu first (anipm, animeyubi — best quality, subtitles, skip markers)
     if not skip_anitsu:
         try:
-            result = await anitsu_client.get_stream(anilist_id, episode)
+            result = await anitsu_client.get_stream(anilist_id, episode, audio=audio)
             if result and result.get("stream_url"):
                 logger.info("Animetsu stream found: %s via %s", result.get("stream_type"), result.get("provider"))
                 return result
@@ -112,8 +112,10 @@ def _extract_stream_info(data: dict, audio: str) -> tuple[str | None, list[dict]
     stream_type = "hls"
     streams = ssub.get("streams", [])
     for s in streams:
-        url = s.get("url", "")
-        stype = s.get("type", "")
+        url = "".join((s.get("url") or "").split())
+        if url.startswith("//"):
+            url = "https:" + url
+        stype = "".join((s.get("type") or "").split())
         if stype == "mp4" and url and not m3u8_url:
             m3u8_url = url
             m3u8_referer = s.get("referer")

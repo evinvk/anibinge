@@ -26,9 +26,12 @@ export function Footer() {
           </ul>
         </div>
         <div>
-          <h4 className="font-display text-sm font-semibold text-paper">About</h4>
+          <h4 className="font-display text-sm font-semibold text-paper">Anibinge</h4>
           <p className="mt-3 text-sm text-mist">
-            Anime data via MyAnimeList (Jikan) &amp; AniList. Not affiliated with either.
+            Watch anime online free in HD. Stream sub &amp; dub episodes, track your watchlist, and never miss a new release.
+          </p>
+          <p className="mt-2 text-xs text-mist/60">
+            Data via MyAnimeList (Jikan) &amp; AniList.
           </p>
         </div>
       </div>

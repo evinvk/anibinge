@@ -62,82 +62,15 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [autoPlay, setAutoPlay] = useState(true);
   const [nextEpCountdown, setNextEpCountdown] = useState(0);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const preloadedStreamRef = useRef<{ ep: number; data: any } | null>(null);
+  const preloadingRef = useRef(false);
 
   const subs = useSubtitles(videoRef);
 
-  const tryWibu = useCallback(async (ep: number): Promise<boolean> => {
+  const tryGogoanime = useCallback(async (ep: number, epAudio: string = audio): Promise<boolean> => {
     setStatusText("");
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/streaming/wibu/stream?q=${encodeURIComponent(title)}&ep=${ep}&server=vidstream`
-      ).then(r => {
-        if (!r.ok) throw new Error("not ok");
-        return r.json();
-      });
-      if (res && res.stream_url) {
-        subs.setSubs((res.subtitles || []).map((s: any) => ({
-          ...s,
-          file: proxySubUrl(s.file, s.referer),
-        })));
-        player.sourceRef.current = "wibu";
-
-        if (res.stream_type === "mp4") {
-          const mp4Url = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
-          player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
-          player.setLoadingStream(false);
-          setStatusText("");
-          await new Promise(r => setTimeout(r, 100));
-          if (videoRef.current) {
-            videoRef.current.src = mp4Url;
-            videoRef.current.play().catch(() => {});
-          }
-          return true;
-        }
-
-        const hlsUrl = `/api/proxy?url=${encodeURIComponent(res.stream_url)}&referer=${encodeURIComponent(res.referer || "")}`;
-        let qualities = [{ quality: "Auto", url: hlsUrl }];
-        try {
-          const m3u8Resp = await fetch(hlsUrl);
-          if (m3u8Resp.ok) {
-            const m3u8Text = await m3u8Resp.text();
-            const parsed: { quality: string; url: string }[] = [];
-            const lines = m3u8Text.split("\n");
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
-              if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                const bwMatch = line.match(/BANDWIDTH=(\d+)/);
-                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
-                const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
-                if (bwMatch && nextLine && !nextLine.startsWith("#")) {
-                  const bw = parseInt(bwMatch[1]);
-                  let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
-                  if (resMatch) label += ` (${resMatch[1]})`;
-                  const variantUrl = nextLine.startsWith("http")
-                    ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
-                    : nextLine.startsWith("/") ? nextLine : hlsUrl;
-                  parsed.push({ quality: label, url: variantUrl });
-                }
-              }
-            }
-            if (parsed.length > 1) qualities = parsed;
-          }
-        } catch { /* keep auto */ }
-
-        player.setMasterUrl(hlsUrl);
-        player.setStreamData({ qualities });
-        player.setLoadingStream(false);
-        setStatusText("");
-        return true;
-      }
-    } catch { /* failed */ }
-    setStatusText("");
-    return false;
-  }, [title]);
-
-  const tryGogoanime = useCallback(async (ep: number): Promise<boolean> => {
-    setStatusText("");
-    try {
-      const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
+      const streamRes = await api.gogoanimeStream(slug, ep, epAudio).catch(() => null);
       const data = streamRes?.data;
 
       if (data?.direct_stream?.stream_url) {
@@ -148,59 +81,46 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         player.setMasterUrl(proxiedUrl);
         player.setLoadingStream(false);
         setStatusText("");
-        // Background fetch subtitles from fallback providers
-        const fetchEp = currentEpRef.current;
-        api.fetchSubtitles(title, fetchEp, resolvedAnilistRef.current || undefined)
-          .then((subRes) => {
-            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
-              subs.setSubs(subRes.subtitles.map((s: any) => ({
-                ...s,
-                file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
-              })));
-              // Kick off VTT parsing immediately
-              subs.loadSubtitles();
-            }
-          })
-          .catch(() => {});
+        fetchSubtitlesInBackground(ep);
         return true;
       }
       if (data?.qualities) {
         subs.setSubs([]);
         player.sourceRef.current = "gogoanime";
         player.setStreamData({ qualities: data.qualities });
-        player.setMasterUrl(api.gogoanimeMaster(slug, ep, audio));
+        player.setMasterUrl(api.gogoanimeMaster(slug, ep, epAudio));
         player.setLoadingStream(false);
         setStatusText("");
-        // Background fetch subtitles from fallback providers
-        const fetchEp2 = currentEpRef.current;
-        api.fetchSubtitles(title, fetchEp2, resolvedAnilistRef.current || undefined)
-          .then((subRes) => {
-            if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp2 === currentEpRef.current) {
-              subs.setSubs(subRes.subtitles.map((s: any) => ({
-                ...s,
-                file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
-              })));
-              // Kick off VTT parsing immediately
-              subs.loadSubtitles();
-            }
-          })
-          .catch(() => {});
+        fetchSubtitlesInBackground(ep);
         return true;
       }
-    } catch { /* failed */ }
+    } catch { }
     setStatusText("");
     return false;
   }, [slug, audio]);
 
-  const tryAnitsu = useCallback(async (ep: number): Promise<boolean> => {
+  const tryAnitsu = useCallback(async (ep: number, epAudio: string = audio): Promise<boolean> => {
     setStatusText("");
     try {
-      const res = await fetch(
-        `${API_BASE}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(title)}&ep=${ep}`
-      ).then(r => {
-        if (!r.ok) throw new Error("not ok");
-        return r.json();
-      });
+      const aid = resolvedAnilistRef.current;
+      let res: any;
+
+      if (aid) {
+        // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
+        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}&source=anitsu`;
+        res = await fetch(url).then(r => {
+          if (!r.ok) throw new Error("not ok");
+          return r.json();
+        });
+      } else {
+        res = await fetch(
+          `${API_BASE}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(title)}&ep=${ep}&audio=${epAudio}`
+        ).then(r => {
+          if (!r.ok) throw new Error("not ok");
+          return r.json();
+        });
+      }
+
       if (res && res.stream_url) {
         subs.setSubs((res.subtitles || []).map((s: any) => ({
           ...s,
@@ -248,7 +168,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             }
             if (parsed.length > 1) qualities = parsed;
           }
-        } catch { /* keep auto */ }
+        } catch { }
 
         player.setMasterUrl(hlsUrl);
         player.setStreamData({ qualities });
@@ -256,16 +176,29 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         setStatusText("");
         return true;
       }
-    } catch { /* failed */ }
+    } catch { }
     setStatusText("");
     return false;
   }, [title]);
 
+  const fetchSubtitlesInBackground = useCallback((ep: number) => {
+    const fetchEp = currentEpRef.current;
+    api.fetchSubtitles(title, fetchEp, resolvedAnilistRef.current || undefined)
+      .then((subRes) => {
+        if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
+          subs.setSubs(subRes.subtitles.map((s: any) => ({
+            ...s,
+            file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
+          })));
+          subs.loadSubtitles();
+        }
+      })
+      .catch(() => {});
+  }, [title, subs]);
+
   const fallbackAttemptedRef = useRef(false);
 
   const onFatalError = useCallback(async (errorType: string) => {
-    console.error("[onFatalError]", { errorType, source: player.sourceRef.current, fallbackAttempted: fallbackAttemptedRef.current });
-
     if (fallbackAttemptedRef.current) {
       player.setError(friendlyError("Playback error: " + errorType));
       player.setLoadingStream(false);
@@ -280,41 +213,24 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.setError(null);
 
     const currentSource = player.sourceRef.current;
-    if (currentSource === "wibu") {
+    if (currentSource === "gogoanime") {
+      const ok = await tryAnitsu(currentEpRef.current);
+      if (!ok) {
+        player.setError(friendlyError("Playback error: " + errorType));
+        player.setLoadingStream(false);
+        setStatusText("");
+      }
+    } else {
+      // Fallback from any other source: try gogoanime
       const ok = await tryGogoanime(currentEpRef.current);
       if (!ok) {
         player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
         setStatusText("");
       }
-    } else if (currentSource === "anitsu") {
-      const ok = await tryWibu(currentEpRef.current);
-      if (!ok) {
-        const ok2 = await tryGogoanime(currentEpRef.current);
-        if (!ok2) {
-          player.setError(friendlyError("Playback error: " + errorType));
-          player.setLoadingStream(false);
-          setStatusText("");
-        }
-      }
-    } else if (currentSource === "gogoanime") {
-      const ok = await tryAnitsu(currentEpRef.current);
-      if (!ok) {
-        const ok2 = await tryWibu(currentEpRef.current);
-        if (!ok2) {
-          player.setError(friendlyError("Playback error: " + errorType));
-          player.setLoadingStream(false);
-          setStatusText("");
-        }
-      }
-    } else {
-      player.setError(friendlyError("Playback error: " + errorType));
-      player.setLoadingStream(false);
-      setStatusText("");
     }
-  }, [tryWibu, tryAnitsu, tryGogoanime]);
+  }, [tryGogoanime, tryAnitsu]);
 
-  // Handle auto-play when media ends
   const onMediaEnded = useCallback(() => {
     if (!autoPlay) return;
     const next = currentEpRef.current + 1;
@@ -328,7 +244,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           countdownTimerRef.current = null;
           const newEp = currentEpRef.current + 1;
           setCurrentEp(newEp);
-          onEpisodeChangeRef.current?.(newEp);
+          if (onEpisodeChangeRef.current) onEpisodeChangeRef.current(newEp);
           return 0;
         }
         return prev - 1;
@@ -336,7 +252,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     }, 1000);
   }, [autoPlay, totalEps]);
 
-  const player = useHlsPlayer(videoRef, subs.loadSubtitles, onFatalError, onMediaEnded);
+  const onAfterLoad = useCallback(() => {
+    if (subs.subtitles.length > 0) {
+      subs.loadSubtitles();
+    }
+  }, [subs]);
+
+  const player = useHlsPlayer(videoRef, onAfterLoad, onFatalError, onMediaEnded);
 
   useEffect(() => {
     currentEpRef.current = currentEp;
@@ -356,9 +278,20 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   useEffect(() => {
     if (currentEp) {
+      preloadedStreamRef.current = null;
       loadStream(slug, currentEp);
     }
   }, [slug, currentEp, audio]);
+
+  // Preload next episode in background
+  useEffect(() => {
+    if (!currentEp || !totalEps || currentEp >= totalEps || preloadingRef.current) return;
+    const nextEp = currentEp + 1;
+    preloadingRef.current = true;
+    api.gogoanimeStream(slug, nextEp, audio).then((res) => {
+      if (res?.data) preloadedStreamRef.current = { ep: nextEp, data: res.data };
+    }).catch(() => {}).finally(() => { preloadingRef.current = false; });
+  }, [currentEp, slug, audio, totalEps]);
 
   useEffect(() => {
     if (!resolvedAnilistRef.current && title) {
@@ -378,16 +311,9 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     return () => player.destroyHls();
   }, [player.masterUrl]);
 
-  useEffect(() => {
-    if (subs.subtitles.length > 0 && videoRef.current) {
-      subs.loadSubtitles();
-    }
-  }, [subs.subtitles]);
-
   const onEpisodeChangeRef = useRef(onEpisodeChange);
   onEpisodeChangeRef.current = onEpisodeChange;
 
-  // Clean up countdown timer on unmount
   useEffect(() => {
     return () => {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
@@ -402,25 +328,77 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.setStreamData(null);
     player.setMasterUrl(null);
     fallbackAttemptedRef.current = false;
+    player.fallbackAttemptedRef.current = false;
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
-    setStatusText("");
-    const gogoOk = await tryGogoanime(ep);
-    if (gogoOk) return;
+    // Check if this episode was preloaded
+    const preloaded = preloadedStreamRef.current;
+    if (preloaded?.ep === ep && preloaded.data) {
+      preloadedStreamRef.current = null;
+      const data = preloaded.data;
+      if (data.direct_stream?.stream_url) {
+        player.sourceRef.current = "gogoanime";
+        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
+        player.setMasterUrl(proxiedUrl);
+        player.setLoadingStream(false);
+        fetchSubtitlesInBackground(ep);
+        return;
+      }
+      if (data.qualities) {
+        player.sourceRef.current = "gogoanime";
+        player.setStreamData({ qualities: data.qualities });
+        player.setMasterUrl(api.gogoanimeMaster(s, ep, audio));
+        player.setLoadingStream(false);
+        fetchSubtitlesInBackground(ep);
+        return;
+      }
+    }
 
-    setStatusText("");
-    const anitsuOk = await tryAnitsu(ep);
-    if (anitsuOk) return;
+    setStatusText("Loading stream...");
+    const result = await Promise.race([
+      tryGogoanime(ep).then((ok) => ok && "gogoanime"),
+      tryAnitsu(ep).then((ok) => ok && "anitsu"),
+    ]);
+    if (!result) {
+      // Try donghua endpoint as additional fallback (for Chinese anime not on GogoAnime)
+      try {
+        const aid = resolvedAnilistRef.current;
+        if (aid) {
+          const res = await fetch(
+            `${API_BASE}/api/v1/streaming/donghua/stream?q=${encodeURIComponent(title)}&ep=${ep}&audio=${audio}&anilist_id=${aid}`
+          ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+          if (res?.data?.stream_url) {
+            const s = res.data;
+            player.sourceRef.current = "anitsu";
+            if (s.stream_type === "mp4") {
+              const mp4Url = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
+              player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+              player.setLoadingStream(false);
+              setStatusText("");
+              await new Promise(r => setTimeout(r, 100));
+              if (videoRef.current) {
+                videoRef.current.src = mp4Url;
+                videoRef.current.play().catch(() => {});
+              }
+              return;
+            }
+            const hlsUrl = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
+            player.setMasterUrl(hlsUrl);
+            player.setStreamData({ qualities: [{ quality: "Auto", url: hlsUrl }] });
+            player.setLoadingStream(false);
+            setStatusText("");
+            return;
+          }
+        }
+      } catch {}
 
-    setStatusText("");
-    const wibuOk = await tryWibu(ep);
-    if (!wibuOk) {
       player.setLoadingStream(false);
       setStatusText("");
       player.setError("Streaming is temporarily unavailable. Try again later.");
     }
-  }, [tryWibu, tryAnitsu, tryGogoanime]);
+  }, [tryGogoanime, tryAnitsu, fetchSubtitlesInBackground, audio]);
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
@@ -442,19 +420,27 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         )}
       >
         {player.loadingStream ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-            <div className="h-2 w-2 rounded-full bg-primary-400 animate-pulse" />
-            {statusText && (
-              <span className="text-[10px] text-mist">{statusText}</span>
-            )}
+          <div className="absolute inset-0 animate-pulse bg-void">
+            <div className="h-full w-full bg-gradient-to-r from-void via-surface-hi/30 to-void" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+              <div className="h-8 w-8 rounded-full border-2 border-primary-400/30 border-t-primary-400 animate-spin" />
+              {statusText && (
+                <span className="text-[11px] font-medium text-mist">{statusText}</span>
+              )}
+            </div>
           </div>
-        )          : player.streamData ? (
+        ) : player.streamData ? (
           <>
-            <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" />
+            <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" crossOrigin="anonymous" />
             {player.playerStatus === "buffering" && !player.error && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="rounded-full bg-black/50 p-3">
-                  <Loader2 className="h-6 w-6 animate-spin text-white" />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/20 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex gap-1.5">
+                    <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-primary-400" style={{ animationDelay: "0ms" }} />
+                    <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-primary-400" style={{ animationDelay: "150ms" }} />
+                    <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-primary-400" style={{ animationDelay: "300ms" }} />
+                  </div>
+                  <span className="text-[10px] font-medium text-white/60">Buffering</span>
                 </div>
               </div>
             )}
@@ -470,7 +456,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 ))}
               </div>
             )}
-            {/* Theater mode close button (only visible in theater mode) */}
             {isTheater && (
               <button
                 onClick={() => setIsTheater(false)}
@@ -509,7 +494,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                   setNextEpCountdown(0);
                   const next = currentEpRef.current + 1;
                   setCurrentEp(next);
-                  onEpisodeChangeRef.current?.(next);
+                  if (onEpisodeChangeRef.current) onEpisodeChangeRef.current(next);
                 }}
                 className="flex items-center gap-1.5 rounded-md bg-primary-600 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary-500"
               >
@@ -548,7 +533,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         )}
       </div>
 
-      {/* Theater mode controls bar (shown inside theater overlay) */}
       {isTheater && (
         <div className="shrink-0 bg-black/90 px-4 py-2 flex items-center gap-3 border-t border-white/10 overflow-x-auto">
           <button
@@ -574,7 +558,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           {(["sub", "dub"] as const).map((opt) => (
             <button
               key={opt}
-              onClick={() => { if (opt !== audio) { setAudio(opt); player.setError(null); } }}
+              onClick={() => { if (opt !== audio) { setAudio(opt); } }}
               className={clsx(
                 "rounded-md px-3 py-1.5 text-xs font-medium transition shrink-0",
                 audio === opt ? "bg-primary-600 text-white" : "bg-white/10 text-white/70 hover:bg-white/20"
@@ -598,13 +582,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           {totalEps && totalEps > 1 && (
             <div className="flex items-center gap-1.5 shrink-0">
               <button
-                onClick={() => { const prev = Math.max(1, currentEp - 1); setCurrentEp(prev); onEpisodeChangeRef.current?.(prev); }}
+                onClick={() => { const prev = Math.max(1, currentEp - 1); setCurrentEp(prev); if (onEpisodeChangeRef.current) onEpisodeChangeRef.current(prev); }}
                 disabled={currentEp <= 1}
                 className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white hover:bg-white/20 transition disabled:opacity-30"
               >Prev</button>
               <span className="text-xs font-mono text-white/70">Ep {currentEp}{totalEps ? ` / ${totalEps}` : ""}</span>
               <button
-                onClick={() => { const next = currentEp + 1; setCurrentEp(next); onEpisodeChangeRef.current?.(next); }}
+                onClick={() => { const next = currentEp + 1; setCurrentEp(next); if (onEpisodeChangeRef.current) onEpisodeChangeRef.current(next); }}
                 disabled={!!(totalEps && currentEp >= totalEps)}
                 className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs text-white hover:bg-white/20 transition disabled:opacity-30"
               >Next</button>
@@ -719,7 +703,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             onClick={() => {
               if (opt !== audio) {
                 setAudio(opt);
-                player.setError(null);
               }
             }}
             className={clsx(
@@ -771,7 +754,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                       key={ep}
                       onClick={() => {
                         setCurrentEp(ep);
-                        onEpisodeChange?.(ep);
+                        if (onEpisodeChange) onEpisodeChange(ep);
                         setShowEpisodes(false);
                       }}
                       className={clsx(
@@ -793,7 +776,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 onClick={() => {
                   const prev = Math.max(1, currentEp - 1);
                   setCurrentEp(prev);
-                  onEpisodeChange?.(prev);
+                  if (onEpisodeChange) onEpisodeChange(prev);
                 }}
                 disabled={currentEp <= 1}
                 className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10 disabled:opacity-30"
@@ -805,7 +788,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 onClick={() => {
                   const next = currentEp + 1;
                   setCurrentEp(next);
-                  onEpisodeChange?.(next);
+                  if (onEpisodeChange) onEpisodeChange(next);
                 }}
                 className="flex items-center gap-1 rounded-lg bg-white/5 px-3 py-1.5 text-sm font-medium text-mist transition hover:bg-white/10"
               >

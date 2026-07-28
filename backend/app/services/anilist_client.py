@@ -610,6 +610,94 @@ class AniListClient:
         """
         return await self._query(query, {"id": anime_id})
 
+    async def get_recently_aired(self, per_page: int = 50) -> list[dict]:
+        """Get the most recently aired episodes across all anime.
+
+        Uses a single AniList query for RELEASING anime with nextAiringEpisode
+        data to compute what recently aired. The most recently aired episode
+        for each show is nextAiringEpisode.episode - 1, aired roughly one
+        weekly cycle before the next episode.
+
+        Returns a list sorted by most recent air time first.
+        """
+        import time as _time
+        now = _time.time()
+        ONE_WEEK = 604800
+
+        try:
+            q = """
+            query($perPage:Int){
+              Page(page:1,perPage:$perPage){
+                media(type:ANIME,status:RELEASING,sort:ID_DESC){
+                  id
+                  title{romaji english native}
+                  coverImage{extraLarge large}
+                  genres
+                  format
+                  episodes
+                  status
+                  nextAiringEpisode{
+                    airingAt
+                    timeUntilAiring
+                    episode
+                  }
+                }
+              }
+            }
+            """
+            result = await self._query(q, {"perPage": per_page})
+            all_media = result.get("Page", {}).get("media", [])
+        except Exception:
+            return []
+
+        if not all_media:
+            return []
+
+        results = []
+        for m in all_media:
+            next_ep = m.get("nextAiringEpisode")
+            if not next_ep or not next_ep.get("airingAt"):
+                continue
+
+            ep_num = next_ep.get("episode")
+            air_at = next_ep["airingAt"]
+            time_until = next_ep.get("timeUntilAiring", 0) or 0
+
+            if not ep_num or ep_num < 2:
+                continue
+
+            # Most recently aired = ep_num - 1
+            # It aired (airingAt - time_until - ONE_WEEK + time_until) ago
+            # More precisely: the last episode aired at air_at - time_until - ONE_WEEK + time_until
+            # = air_at - ONE_WEEK
+            recent_ep = ep_num - 1
+            recent_air_at = air_at - time_until - ONE_WEEK + time_until
+            # Actually: last ep aired at air_at - ONE_WEEK (for weekly)
+            recent_air_at = air_at - ONE_WEEK
+            aired_ago = int(now - recent_air_at)
+
+            # Only episodes that aired within the last 14 days
+            if aired_ago < 0 or aired_ago > 1209600:
+                continue
+
+            title_obj = m.get("title", {})
+            cover = (m.get("coverImage") or {})
+            results.append({
+                "mediaId": m.get("id"),
+                "episode": recent_ep,
+                "aired_ago": aired_ago,
+                "title": title_obj.get("english") or title_obj.get("romaji") or "",
+                "title_jp": title_obj.get("romaji") or "",
+                "coverImage": cover.get("large") or cover.get("extraLarge"),
+                "genres": m.get("genres") or [],
+                "totalEpisodes": m.get("episodes"),
+                "format": m.get("format"),
+                "status": m.get("status"),
+            })
+
+        results.sort(key=lambda x: x.get("aired_ago", 999999))
+        return results
+
     async def close(self):
         """Close the HTTP client."""
         await self.client.aclose()
@@ -646,3 +734,6 @@ async def get_anime_characters(anime_id: int) -> dict:
 
 async def get_airing_schedule(media_ids: list[int], per_page: int = 50) -> list[dict]:
     return await anilist_client.get_airing_schedule(media_ids, per_page=per_page)
+
+async def get_recently_aired(per_page: int = 50) -> list[dict]:
+    return await anilist_client.get_recently_aired(per_page=per_page)

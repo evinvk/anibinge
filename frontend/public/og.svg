@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0B12"/>
+      <stop offset="50%" stop-color="#0F0F1A"/>
+      <stop offset="100%" stop-color="#0A0A0F"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7C3AED" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#A78BFA" stop-opacity="0.1"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <!-- Glow orb -->
+  <circle cx="600" cy="315" r="280" fill="url(#glow)"/>
+  <!-- Decorative grid lines -->
+  <g stroke="rgba(167,139,250,0.06)" stroke-width="1">
+    <line x1="0" y1="105" x2="1200" y2="105"/>
+    <line x1="0" y1="210" x2="1200" y2="210"/>
+    <line x1="0" y1="315" x2="1200" y2="315"/>
+    <line x1="0" y1="420" x2="1200" y2="420"/>
+    <line x1="0" y1="525" x2="1200" y2="525"/>
+    <line x1="200" y1="0" x2="200" y2="630"/>
+    <line x1="400" y1="0" x2="400" y2="630"/>
+    <line x1="600" y1="0" x2="600" y2="630"/>
+    <line x1="800" y1="0" x2="800" y2="630"/>
+    <line x1="1000" y1="0" x2="1000" y2="630"/>
+  </g>
+  <!-- Star logo -->
+  <g transform="translate(230, 195)">
+    <circle cx="80" cy="80" r="75" fill="#0B0B12" stroke="url(#accent)" stroke-width="6"/>
+    <path d="M80 15 L93 55 L133 60 L100 88 L110 130 L80 108 L50 130 L60 88 L27 60 L67 55 Z" fill="url(#accent)"/>
+  </g>
+  <!-- Text -->
+  <text x="330" y="250" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="700" fill="#FFFFFF" letter-spacing="-1">Anibinge</text>
+  <text x="330" y="310" font-family="system-ui, -apple-system, sans-serif" font-size="28" fill="rgba(255,255,255,0.6)" letter-spacing="0.5">Watch Anime Online Free in HD</text>
+  <text x="330" y="355" font-family="system-ui, -apple-system, sans-serif" font-size="20" fill="rgba(167,139,250,0.8)">Stream Sub &amp; Dub — Track Your Watchlist</text>
+  <!-- Bottom bar -->
+  <rect x="0" y="580" width="1200" height="50" fill="url(#accent)" opacity="0.15"/>
+  <text x="600" y="612" font-family="system-ui, -apple-system, sans-serif" font-size="16" fill="rgba(255,255,255,0.4)" text-anchor="middle">anibinge.fun</text>
+</svg>

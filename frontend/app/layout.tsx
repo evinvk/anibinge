@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Sora, Inter, JetBrains_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/lib/auth-context";
@@ -18,32 +19,48 @@ const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "Anibinge — Discover, Track & Never Miss an Episode",
+    default: "Watch Anime Online Free — Stream & Track Episodes",
     template: "%s | Anibinge",
   },
   description:
-    "Anibinge is a modern anime discovery platform: track what's airing, browse by studio or genre, and build your watchlist across thousands of series.",
-  keywords: ["anime", "anime tracker", "seasonal anime", "anime schedule", "watchlist", "anime database"],
+    "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and discover new series across thousands of titles.",
+  keywords: [
+    "watch anime online free",
+    "anime streaming",
+    "watch anime",
+    "anime tracker",
+    "free anime website",
+    "anime online free",
+    "anime episodes online",
+    "sub and dub anime",
+    "seasonal anime",
+    "anime schedule",
+    "anime watchlist",
+    "stream anime free",
+    "anime database",
+    "anime website",
+    "watch sub anime"
+  ],
   openGraph: {
     type: "website",
     siteName: "Anibinge",
     url: SITE_URL,
-    title: "Anibinge — Discover, Track & Never Miss an Episode",
-    description: "Track what's airing, browse by studio or genre, and build your watchlist.",
+    title: "Watch Anime Online Free — Stream & Track Episodes",
+    description: "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and discover new series.",
     images: [
       {
-        url: "/og.png",
+        url: "/og.svg",
         width: 1200,
         height: 630,
-        alt: "Anibinge — Anime Discovery & Tracker",
+        alt: "Anibinge — Watch Anime Online Free in HD",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Anibinge",
-    description: "Discover, track, and never miss an episode.",
-    images: ["/og.png"],
+    title: "Anibinge — Watch Anime Online Free",
+    description: "Watch anime online free in HD. Stream sub & dub, track your progress, discover new series.",
+    images: ["/og.svg"],
   },
   manifest: "/manifest.json",
   icons: {
@@ -53,6 +70,9 @@ export const metadata: Metadata = {
     ],
     apple: [
       { url: "/apple-touch-icon.png?v=3", sizes: "180x180", type: "image/png" },
+    ],
+    other: [
+      { rel: "icon", url: "/icons/icon-192.png" },
     ],
   },
   robots: { index: true, follow: true },
@@ -64,10 +84,17 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${sora.variable} ${inter.variable} ${jetbrains.variable}`}>
+        <link rel="preconnect" href={API_BASE} />
+        <link rel="dns-prefetch" href={API_BASE} />
+        <link rel="preconnect" href="https://gogocdn.net" />
+        <link rel="dns-prefetch" href="https://gogocdn.net" />
+        <link rel="preconnect" href="https://graphql.anilist.co" />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
             <NotificationsProvider>
@@ -80,6 +107,28 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </NotificationsProvider>
           </AuthProvider>
         </ThemeProvider>
+        <Script
+          id="schema-org"
+          strategy="beforeInteractive"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              "name": "Anibinge",
+              "url": "https://anibinge.fun",
+              "description": "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and never miss new releases.",
+              "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                  "@type": "EntryPoint",
+                  "urlTemplate": "https://anibinge.fun/search?q={search_term_string}"
+                },
+                "query-input": "required name=search_term_string"
+              }
+            }),
+          }}
+        />
       </body>
     </html>
   );

@@ -17,6 +17,8 @@ from app.core.http import get_shared_client
 from app.services import streaming_provider
 from app.services import gogoanime_client
 from app.services import anivexa_client
+from app.services import wibu_client
+from app.services import anitsu_client as anitsu_client_mod
 
 logger = logging.getLogger("anibinge.streaming")
 
@@ -46,7 +48,7 @@ async def get_episodes(
         raise
     except Exception as e:
         logger.error("Failed to fetch episodes for anime %d: %s", anime_id, e)
-        raise HTTPException(status_code=503, detail="Streaming data temporarily unavailable")
+        raise HTTPException(status_code=503, detail="Episodes temporarily unavailable")
 
 
 @router.get("/anime/{anime_id}/episode/{episode_number}")
@@ -55,6 +57,7 @@ async def get_episode_detail(
     request: Request,
     anime_id: int,
     episode_number: int,
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get detailed information about a specific episode.
@@ -62,7 +65,7 @@ async def get_episode_detail(
     Returns episode metadata, all available streaming servers, subtitles, and quality options.
     """
     try:
-        data = await streaming_provider.get_episode_detail(anime_id, episode_number)
+        data = await streaming_provider.get_episode_detail(anime_id, episode_number, audio=audio)
         if "error" in data:
             raise HTTPException(status_code=404, detail="Episode not found")
         return data
@@ -80,6 +83,7 @@ async def get_episode_sources(
     anime_id: int,
     episode_number: int,
     server: str | None = Query(None, description="Optional: specific server (vidstream, streamtape, etc)"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get streaming sources for an episode.
@@ -87,7 +91,7 @@ async def get_episode_sources(
     Returns list of available servers with direct streaming links and quality options.
     """
     try:
-        data = await streaming_provider.get_episode_sources(anime_id, episode_number, server=server)
+        data = await streaming_provider.get_episode_sources(anime_id, episode_number, server=server, audio=audio)
         if "error" in data and not data.get("sources"):
             raise HTTPException(status_code=404, detail="No streaming sources found")
         return data
@@ -104,6 +108,7 @@ async def get_episode_subtitles(
     request: Request,
     anime_id: int,
     episode_number: int,
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get available subtitle tracks for an episode.
@@ -111,7 +116,7 @@ async def get_episode_subtitles(
     Returns subtitle options in various languages with download/embed URLs.
     """
     try:
-        data = await streaming_provider.get_episode_sources(anime_id, episode_number)
+        data = await streaming_provider.get_episode_sources(anime_id, episode_number, audio=audio)
         return {"subtitles": data.get("subtitles", []), "languages": []}
     except Exception as e:
         return {"subtitles": [], "languages": []}
@@ -141,108 +146,80 @@ async def get_recent_episodes(
     limit: int = Query(20, ge=1, le=50, description="Results per page"),
 ):
     """
-    Get recently uploaded episodes across all anime.
+    Get recently aired episodes across all anime.
 
-    Uses AniList nextAiringEpisode to compute when each anime's latest episode
-    aired (~7 days before next air time). Matched against GogoAnime catalog
-    for slugs/posters. Sorted by most recently aired first.
+    Uses AniList RELEASING anime with nextAiringEpisode timestamps to compute
+    what recently aired, then cross-references with GogoAnime catalog for
+    streaming slugs. Results sorted by most recently aired first.
     """
     try:
         from app.services import gogoanime_client, anilist_client
-        import time as _time
 
-        now = int(_time.time())
-        WEEK = 604800
+        # Fetch recently aired from AniList (single query, sorted by aired_ago)
+        aired = await anilist_client.get_recently_aired(per_page=100)
 
+        if not aired:
+            return {"data": [], "page": page, "has_next": False}
+
+        # Dedupe by (mediaId, episode) — keep first (most recent)
+        seen = set()
+        unique = []
+        for a in aired:
+            key = (a.get("mediaId"), a.get("episode"))
+            if key in seen:
+                continue
+            seen.add(key)
+            unique.append(a)
+
+        # Build GogoAnime catalog lookup: normalized_title -> item
         gogo_catalog = gogoanime_client.get_catalog()
-        gogo_by_title: dict[str, dict] = {}
+        gogo_by_norm: dict[str, dict] = {}
         for item in gogo_catalog:
-            if (item.get("latest_episode") or 0) < 1:
+            slug = item.get("slug", "")
+            if not slug:
                 continue
-            for t in [item.get("title", ""), item.get("title_english", ""), item.get("title_japanese", "")]:
-                norm = gogoanime_client._normalize(t)
-                if norm and norm not in gogo_by_title:
-                    gogo_by_title[norm] = item
+            for title_field in ["title", "title_english", "title_japanese"]:
+                t = item.get(title_field, "")
+                if t:
+                    norm = gogoanime_client._normalize(t)
+                    if norm:
+                        gogo_by_norm[norm] = item
 
-        schedule_map: dict[int, dict] = {}
-        title_to_id: dict[str, int] = {}
-        for pg in range(1, 4):
-            try:
-                schedule = await anilist_client.get_schedule(page=pg, per_page=50)
-                media_list = schedule.get("Page", {}).get("media", [])
-                if not media_list:
-                    break
-                for m in media_list:
-                    mid = m.get("id")
-                    if not mid or mid in schedule_map:
-                        continue
-                    schedule_map[mid] = m
-                    title_obj = m.get("title", {})
-                    for key in ["english", "romaji", "native"]:
-                        t = title_obj.get(key, "")
-                        if t:
-                            title_to_id[gogoanime_client._normalize(t)] = mid
-            except Exception:
-                break
+        # Build results
+        results = []
+        for a in unique:
+            title = a.get("title") or ""
+            episode = a.get("episode")
+            aired_ago = a.get("aired_ago", 0)
 
-        candidates: list[dict] = []
-        for media_id, m in schedule_map.items():
-            next_ep = m.get("nextAiringEpisode")
-            if not next_ep or not next_ep.get("episode"):
-                continue
-
-            ep_num = next_ep["episode"] - 1
-            if ep_num < 1:
-                continue
-
-            air_at = next_ep.get("airingAt", 0) or 0
-            time_until = next_ep.get("timeUntilAiring", 0) or 0
-
-            if air_at > 0 and time_until > 0:
-                aired_ago = WEEK - time_until
-            else:
-                continue
-
-            if aired_ago < 0:
-                continue
-
-            title_obj = m.get("title", {})
-            title = title_obj.get("english") or title_obj.get("romaji") or ""
-            title_jp = title_obj.get("romaji", "")
-
-            gogo = None
-            for try_title in [title, title_jp]:
-                t_norm = gogoanime_client._normalize(try_title)
-                if t_norm and t_norm in gogo_by_title:
-                    gogo = gogo_by_title[t_norm]
+            # Try to find GogoAnime slug
+            slug = None
+            poster = a.get("coverImage")
+            for try_title in [title, a.get("title_jp", "")]:
+                norm = gogoanime_client._normalize(try_title)
+                if norm and norm in gogo_by_norm:
+                    gogo_item = gogo_by_norm[norm]
+                    slug = gogo_item.get("slug")
+                    if not poster:
+                        poster = gogo_item.get("poster") or gogo_item.get("image")
                     break
 
-            if not gogo:
-                continue
-
-            poster = gogo.get("poster") or gogo.get("image")
-            slug = gogo.get("slug")
-            genres = m.get("genres", [])
-
-            candidates.append({
+            results.append({
                 "title": title,
-                "episode": ep_num,
+                "episode": episode,
                 "poster": poster,
                 "slug": slug,
                 "aired_ago": aired_ago,
-                "genres": genres,
-                "anilist_id": m.get("id"),
+                "genres": a.get("genres") or [],
+                "anilist_id": a.get("mediaId"),
             })
 
-        candidates.sort(key=lambda e: e["aired_ago"])
-
         start = (page - 1) * limit
-        end = start + limit + 1
-        page_eps = candidates[start:end]
+        page_eps = results[start:start + limit]
+        has_next = len(results) > start + limit
 
-        has_next = len(page_eps) > limit
         return {
-            "data": page_eps[:limit],
+            "data": page_eps,
             "page": page,
             "has_next": has_next,
         }
@@ -292,6 +269,7 @@ async def get_play_url(
     anime_id: int,
     episode_number: int,
     server: str = Query("gogoanime_hls", description="Streaming server to use"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """
     Get a direct play URL for an episode (for embedding in player).
@@ -307,6 +285,32 @@ async def get_play_url(
         raise HTTPException(status_code=503, detail="Stream URL unavailable")
 
 
+def _pick_best_anilist_media(media_list: list[dict], query: str) -> dict | None:
+    """Score AniList search results by title match quality and format preference.
+    Prefers exact matches and TV/ONA formats to avoid streaming the wrong anime."""
+    q = query.lower().strip()
+    scored = []
+    for m in media_list:
+        t = (m.get("title") or {}) or {}
+        titles = [str(t.get("english","") or ""), str(t.get("romaji","") or ""), str(t.get("native","") or "")]
+        score = 0
+        for t2 in titles:
+            tl = t2.lower().strip()
+            if tl == q:
+                score += 100
+            elif tl.startswith(q):
+                score += 60
+            elif q in tl:
+                score += 30
+        fmt = (m.get("format") or "").upper()
+        if fmt in ("TV", "ONA"):
+            score += 10
+        if score > 0:
+            scored.append((score, m))
+    scored.sort(key=lambda x: -x[0])
+    return scored[0][1] if scored else None
+
+
 # ── GogoAnime endpoints ─────────────────────────────────────────────
 
 
@@ -319,6 +323,62 @@ def _dub_slug(slug: str, audio: str) -> str:
         if slug.endswith("-dub"):
             return slug[:-4]
     return slug
+
+
+def _parse_hls_variants_and_segments(m3u8_text: str, base_url: str) -> list[str]:
+    """Parse an HLS m3u8 playlist. If master playlist, pick best variant and parse that.
+    Returns list of segment URLs to download in order."""
+    from urllib.parse import urljoin, urlparse
+    lines = m3u8_text.strip().splitlines()
+
+    if not lines or not lines[0].strip().startswith("#EXTM3U"):
+        return []
+
+    is_master = any("#EXT-X-STREAM-INF" in l for l in lines)
+
+    if is_master:
+        best_bw = -1
+        best_variant_url = None
+        i = 0
+        while i < len(lines):
+            line = lines[i].strip()
+            if line.startswith("#EXT-X-STREAM-INF"):
+                bw = 0
+                for part in line.split(","):
+                    if "BANDWIDTH=" in part:
+                        try:
+                            bw = int(part.split("=")[1].strip())
+                        except ValueError:
+                            pass
+                i += 1
+                while i < len(lines) and (not lines[i].strip() or lines[i].strip().startswith("#")):
+                    i += 1
+                if i < len(lines) and bw > best_bw:
+                    best_bw = bw
+                    variant_line = lines[i].strip()
+                    # Resolve variant URL: strip filename from base, keep directory
+                    dir_base = base_url.rsplit("/", 1)[0] + "/" if "/" in base_url else base_url
+                    best_variant_url = variant_line if variant_line.startswith("http") else urljoin(dir_base, variant_line)
+            i += 1
+        if not best_variant_url:
+            return []
+        import httpx
+        parsed = urlparse(best_variant_url)
+        referer = "https://megaplay.buzz/" if "megap" in parsed.hostname else "https://ani.pm/" if "ani.pm" in parsed.hostname else ""
+        resp = httpx.get(best_variant_url, timeout=15, headers={"User-Agent": "Mozilla/5.0", "Referer": referer} if referer else {"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        m3u8_text = resp.text
+        base_url = best_variant_url
+        lines = m3u8_text.strip().splitlines()
+
+    segment_urls = []
+    dir_base = base_url.rsplit("/", 1)[0] + "/" if "/" in base_url else base_url
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("#"):
+            seg_url = line if line.startswith("http") else urljoin(dir_base, line)
+            segment_urls.append(seg_url)
+    return segment_urls
 
 
 @router.get("/gogoanime/health")
@@ -637,7 +697,7 @@ async def gogoanime_proxy(
 
     try:
         client = get_shared_client(timeout=_PROXY_TIMEOUT, headers=_PROXY_HEADERS, follow_redirects=True)
-        resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/"})
+        resp = await client.get(decoded_url, headers={"Referer": "https://gogoanimehd.to/", "Origin": "https://gogoanimehd.to"})
         resp.raise_for_status()
 
         content_type = resp.headers.get("content-type", "")
@@ -656,16 +716,25 @@ async def gogoanime_proxy(
                 headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
 
-        # Binary content (.ts segments, etc.)
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
+        # Binary content (.ts segments) — stream directly to avoid buffering delays
+        content_length = resp.headers.get("content-length")
+        headers = {
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=86400",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
+        async def _stream_ts():
+            try:
+                async with client.stream("GET", decoded_url, headers={"Referer": "https://gogoanimehd.to/", "Origin": "https://gogoanimehd.to"}) as s:
+                    s.raise_for_status()
+                    async for chunk in s.aiter_bytes(65536):
+                        yield chunk
+            except Exception:
+                pass
+
+        return StreamingResponse(_stream_ts(), media_type=content_type or "video/mp2t", headers=headers)
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
@@ -710,7 +779,7 @@ async def gogoanime_embed_proxy(
             parsed = urlparse(decoded_url)
             base_url = f"{parsed.scheme}://{parsed.netloc}"
 
-            # Rewrite segment/variant URLs to go through our embed-proxy
+            # Rewrite segment/variant URLs — CORS CDNs serve directly, others go through proxy
             proxy_base = "/api/v1/streaming/gogoanime/embed-proxy"
             lines = body.split("\n")
             rewritten = []
@@ -731,8 +800,12 @@ async def gogoanime_embed_proxy(
                         i += 1
                         continue
 
-                    encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
-                    rewritten.append(f"{proxy_base}?url={encoded}&referer={_b64.urlsafe_b64encode(upstream_referer.encode()).decode()}")
+                    # CORS CDNs can be fetched directly by the browser — skip proxy
+                    if not gogoanime_client._should_proxy(resolved):
+                        rewritten.append(resolved)
+                    else:
+                        encoded = _b64.urlsafe_b64encode(resolved.encode()).decode()
+                        rewritten.append(f"{proxy_base}?url={encoded}&referer={_b64.urlsafe_b64encode(upstream_referer.encode()).decode()}")
                 elif stripped.startswith("#EXTINF") and i + 1 < len(lines):
                     rewritten.append(line)
                     next_line = lines[i + 1].strip()
@@ -760,16 +833,25 @@ async def gogoanime_embed_proxy(
                 headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
 
-        # Binary content (.ts segments, etc.)
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
+        # Binary content (.ts segments) — stream directly to avoid buffering delays
+        content_length = resp.headers.get("content-length")
+        headers = {
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=86400",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
+        async def _stream_ts():
+            try:
+                async with client.stream("GET", decoded_url, headers=fetch_headers) as s:
+                    s.raise_for_status()
+                    async for chunk in s.aiter_bytes(65536):
+                        yield chunk
+            except Exception:
+                pass
+
+        return StreamingResponse(_stream_ts(), media_type=content_type or "video/mp2t", headers=headers)
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
@@ -871,8 +953,7 @@ async def anivexa_stream(
                 "embed_url": embed_url,
             }
         if source == "anitsu":
-            from app.services import anitsu_client
-            result = await anitsu_client.get_stream(anilist_id, ep)
+            result = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
             if not result or (not result.get("stream_url") and not result.get("embed_url")):
                 raise HTTPException(status_code=404, detail="Stream not available on Animetsu")
             return result
@@ -898,39 +979,31 @@ async def fetch_subtitles(
     q: str = Query(..., min_length=2, description="Anime title"),
     ep: int = Query(..., ge=1, description="Episode number"),
     anilist_id: int | None = Query(None, description="Optional AniList ID"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Fetch subtitles for an episode from fallback providers (Anitsu → Wibu).
     Returns only subtitle data, no stream URL. Used by the frontend to get
-    subtitles even when the primary stream comes from GogoAnime."""
-    # Try Anitsu first
+    subtitles even when the primary stream comes from GogoAnime.
+    Now accepts audio parameter for dub/sub subtitle matching."""
     if anilist_id:
         try:
-            from app.services import anitsu_client
-            result = await anitsu_client.get_stream(anilist_id, ep)
+            result = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
             if result and result.get("subtitles"):
                 return {"subtitles": result["subtitles"], "provider": "anitsu"}
         except Exception:
             pass
     else:
         try:
-            from app.services import anilist_client, anitsu_client
+            from app.services import anilist_client
             result = await anilist_client.search_anime(q, per_page=5)
             media = result.get("Page", {}).get("media", [])
             if media:
                 anilist_id = media[0]["id"]
-                stream_data = await anitsu_client.get_stream(anilist_id, ep)
+                stream_data = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
                 if stream_data and stream_data.get("subtitles"):
                     return {"subtitles": stream_data["subtitles"], "provider": "anitsu"}
         except Exception:
             pass
-
-    # Fallback to Wibu
-    try:
-        result = await wibu_client.search_and_get_stream(q, ep)
-        if result and result.get("subtitles"):
-            return {"subtitles": result["subtitles"], "provider": "wibu"}
-    except Exception:
-        pass
 
     return {"subtitles": [], "provider": None}
 
@@ -941,18 +1014,23 @@ async def anitsu_stream(
     request: Request,
     q: str = Query(..., min_length=2, description="Anime title to search"),
     ep: int = Query(..., ge=1, description="Episode number"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
 ):
     """Search by title, resolve to AniList ID, and get stream from Animetsu (AnimeXin).
-    Used as second fallback after GogoAnime."""
+    Used as second fallback after GogoAnime. Supports sub/dub audio selection.
+    Uses title matching to avoid playing the wrong anime when search returns similar names."""
     try:
-        from app.services import anilist_client, anitsu_client
-        result = await anilist_client.search_anime(q, per_page=5)
+        from app.services import anilist_client
+        result = await anilist_client.search_anime(q, per_page=10)
         media = result.get("Page", {}).get("media", [])
         if not media:
             raise HTTPException(status_code=404, detail="Anime not found on AniList")
-        anilist_id = media[0]["id"]
 
-        stream_data = await anitsu_client.get_stream(anilist_id, ep)
+        best = _pick_best_anilist_media(media, q)
+        if not best:
+            raise HTTPException(status_code=404, detail="Anime not found on AniList")
+
+        stream_data = await anitsu_client_mod.get_stream(best["id"], ep, audio=audio)
         if not stream_data or (not stream_data.get("stream_url") and not stream_data.get("embed_url")):
             raise HTTPException(status_code=404, detail="Stream not available on AnimeXin")
         return stream_data
@@ -1149,16 +1227,25 @@ async def anivexa_proxy(
                 headers={**_CORS_HEADERS, "Cache-Control": "public, max-age=10"},
             )
 
-        # Binary content (.ts segments, etc.)
-        return Response(
-            content=resp.content,
-            media_type=content_type or "video/mp2t",
-            headers={
-                **_CORS_HEADERS,
-                "Cache-Control": "public, max-age=86400",
-                "Content-Length": str(len(resp.content)),
-            },
-        )
+        # Binary content (.ts segments) — stream directly to avoid buffering delays
+        content_length = resp.headers.get("content-length")
+        headers = {
+            **_CORS_HEADERS,
+            "Cache-Control": "public, max-age=86400",
+        }
+        if content_length:
+            headers["Content-Length"] = content_length
+
+        async def _stream_ts():
+            try:
+                async with client.stream("GET", decoded_url, headers=fetch_headers) as s:
+                    s.raise_for_status()
+                    async for chunk in s.aiter_bytes(65536):
+                        yield chunk
+            except Exception:
+                pass
+
+        return StreamingResponse(_stream_ts(), media_type=content_type or "video/mp2t", headers=headers)
     except _httpx.HTTPStatusError as e:
         raise HTTPException(status_code=e.response.status_code, detail="Upstream error")
     except HTTPException:
@@ -1292,6 +1379,93 @@ async def fallback_stream(
     raise HTTPException(status_code=404, detail="No streaming sources available from any provider")
 
 
+@router.get("/donghua/stream")
+@limiter.limit("30/minute")
+async def donghua_stream(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Donghua title to search"),
+    ep: int = Query(1, ge=1, description="Episode number"),
+    audio: str = Query("sub", description="Audio type: sub or dub"),
+    anilist_id: int | None = Query(None, description="Optional AniList ID for direct lookup"),
+):
+    """Donghua-specific streaming endpoint.
+    Tries Anitsu/Animetsu first (which supports donghua better than GogoAnime),
+    then falls back to Anivexa providers.
+    Donghua titles often have different metadata on AniList."""
+    if anilist_id:
+        try:
+            result = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
+            if result and (result.get("stream_url") or result.get("embed_url")):
+                return {"source": "donghua", "data": result}
+        except Exception:
+            pass
+
+        try:
+            result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+            if result and (result.get("stream_url") or result.get("embed_url")):
+                return {"source": "donghua", "data": result}
+        except Exception:
+            pass
+
+    try:
+        from app.services import anilist_client as _al
+        search_result = await _al.search_anime(q, per_page=10)
+        media_list = search_result.get("Page", {}).get("media", [])
+
+        # Sort by title match quality — best matches tried first
+        scored_media = [(m, (m.get("title") or {}).get("english") or (m.get("title") or {}).get("romaji") or "") for m in media_list]
+        best = _pick_best_anilist_media(media_list, q)
+        if best:
+            scored_media.sort(key=lambda x: 0 if x[0].get("id") == best.get("id") else 1)
+
+        for media, _ in scored_media:
+            mid = media.get("id")
+            if not mid:
+                continue
+            try:
+                result = await anitsu_client_mod.get_stream(mid, ep, audio=audio)
+                if result and (result.get("stream_url") or result.get("embed_url")):
+                    return {"source": "donghua", "anilist_id": mid, "data": result}
+            except Exception:
+                continue
+            try:
+                result = await anivexa_client.get_stream_with_fallback(mid, ep, audio)
+                if result and (result.get("stream_url") or result.get("embed_url")):
+                    return {"source": "donghua", "anilist_id": mid, "data": result}
+            except Exception:
+                continue
+    except Exception as e:
+        logger.warning("Donghua search failed: %s", e)
+
+    raise HTTPException(status_code=404, detail="Donghua stream not available from any provider")
+
+
+@router.get("/donghua/resolve")
+@limiter.limit("30/minute")
+async def donghua_resolve(
+    request: Request,
+    q: str = Query(..., min_length=1, description="Donghua title"),
+):
+    """Resolve a donghua title to AniList ID and metadata."""
+    try:
+        from app.services import anilist_client as _al
+        result = await _al.search_anime(q, per_page=10)
+        media_list = result.get("Page", {}).get("media", [])
+        results = []
+        for m in media_list:
+            results.append({
+                "anilist_id": m.get("id"),
+                "title": m.get("title", {}),
+                "episodes": m.get("episodes"),
+                "format": m.get("format"),
+                "status": m.get("status"),
+                "genres": m.get("genres", []),
+            })
+        return {"data": results, "query": q}
+    except Exception as e:
+        raise HTTPException(status_code=503, detail="Donghua resolve failed")
+
+
 @router.get("/download")
 @limiter.limit("10/minute")
 async def download_episode(
@@ -1319,161 +1493,171 @@ async def download_episode(
         stream_url = None
         referer = ""
         stream_type = None
+        gogo_sources = None
 
-        # Path 1: GogoAnime — reuse the proven get_stream_sources()
+        # Path 1: GogoAnime — try to get a downloadable stream
         if slug:
             effective = _dub_slug(slug, audio)
             try:
                 sources = await gogoanime_client.get_stream_sources(effective, ep, audio)
                 if sources:
+                    gogo_sources = sources
                     direct = sources.get("direct_stream")
                     if direct:
                         stream_url = direct.get("stream_url")
                         referer = direct.get("referer", "")
-                        stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
-                    elif sources.get("embed_url"):
-                        extracted = await gogoanime_client.extract_embed_stream(sources["embed_url"])
-                        if extracted:
-                            stream_url = extracted.get("stream_url")
-                            referer = extracted.get("referer", "")
-                            stream_type = "hls" if (stream_url or "").endswith(".m3u8") or ".m3u8" in (stream_url or "") else "mp4"
+                        stream_type = "hls" if ".m3u8" in (stream_url or "") else "mp4"
                     elif sources.get("master_m3u8"):
-                        stream_url = sources["master_m3u8"]
                         stream_type = "hls"
+                        logger.info("GogoAnime download: will use rewritten M3U8 via proxy")
             except Exception as e:
                 logger.warning("GogoAnime download resolve failed for %s ep-%d: %s", slug, ep, e)
 
-        # Path 2: Try Anivexa — resolve anilist_id from title if needed
-        if not stream_url and not anilist_id:
-            try:
-                from app.services import anilist_client as _al_client
-                title_from_filename = filename.rsplit("_E", 1)[0].replace("_", " ")
-                result = await _al_client.search_anime(title_from_filename, per_page=1)
-                media = result.get("Page", {}).get("media", [])
-                if media:
-                    anilist_id = media[0]["id"]
-            except Exception:
-                pass
+        # Path 2: Anivexa — resolve anilist_id from slug if needed
+        if not stream_url and not gogo_sources:
+            if not anilist_id:
+                try:
+                    from app.services import gogoanime_client as _gc
+                    info = _gc.get_info_by_slug(slug) if slug else None
+                    if info:
+                        title = info.get("title") or info.get("title_english") or ""
+                        if title:
+                            from app.services import anilist_client as _al_client
+                            result = await _al_client.search_anime(title, per_page=1)
+                            media = result.get("Page", {}).get("media", [])
+                            if media:
+                                anilist_id = media[0]["id"]
+                except Exception:
+                    pass
 
-        if not stream_url and anilist_id:
-            try:
-                result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
-                if result:
-                    stream_url = result.get("stream_url")
-                    referer = result.get("referer", "")
-                    stream_type = result.get("stream_type", "mp4")
-            except Exception as e:
-                logger.warning("Anivexa download resolve failed: %s", e)
+            if not anilist_id and filename:
+                try:
+                    from app.services import anilist_client as _al_client
+                    title_from_filename = filename.rsplit("_E", 1)[0].replace("_", " ")
+                    result = await _al_client.search_anime(title_from_filename, per_page=1)
+                    media = result.get("Page", {}).get("media", [])
+                    if media:
+                        anilist_id = media[0]["id"]
+                except Exception:
+                    pass
 
-        if not stream_url:
+            logger.info("Download fallback: slug=%s anilist_id=%s ep=%d audio=%s", slug, anilist_id, ep, audio)
+
+            if anilist_id:
+                try:
+                    result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio)
+                    if result:
+                        stream_url = result.get("stream_url")
+                        referer = result.get("referer", "")
+                        stream_type = result.get("stream_type", "mp4")
+                        logger.info("Download anivexa result: url=%.200s type=%s provider=%s", stream_url, stream_type, result.get("provider"))
+                except Exception as e:
+                    logger.warning("Anivexa download resolve failed: %s", e)
+
+        if not stream_url and not gogo_sources:
             raise HTTPException(status_code=404, detail="No streaming source available")
 
-        # --- MP4 path: download directly and serve ---
-        if stream_type == "mp4":
-            dl_headers = {"Referer": referer} if referer else {}
-            resp = await dl_client.get(stream_url, headers=dl_headers)
-            resp.raise_for_status()
-            safe_name = _re.sub(r'[^\w\-]', '_', filename)
-            return Response(
-                content=resp.content,
-                media_type=resp.headers.get("content-type", "video/mp4"),
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(resp.content)),
-                },
-            )
+        if stream_url:
+            stream_url = "".join(stream_url.split())
+            referer = "".join((referer or "").split())
 
-        # --- HLS path: fetch playlist, download segments, concatenate ---
-        resp = await dl_client.get(stream_url, headers={"Referer": referer} if referer else {})
-        resp.raise_for_status()
-        content_type = resp.headers.get("content-type", "")
-        body = resp.text
-        is_hls = "mpegurl" in content_type or body.strip().startswith("#EXTM3U")
-
-        if not is_hls:
-            safe_name = _re.sub(r'[^\w\-]', '_', filename)
-            return Response(
-                content=resp.content,
-                media_type=content_type or "video/mp4",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(resp.content)),
-                },
-            )
-
-        import asyncio as _aio
-        import tempfile as _tmpfile
-        import os as _os
-        import shutil as _shutil
-
-        # Parse master m3u8 to pick best variant — ffmpeg can't auto-select from multi-program masters
-        if "EXT-X-STREAM-INF" in body:
-            best_url = None
-            best_bw = -1
-            for line in body.splitlines():
-                line = line.strip()
-                if line.startswith("#EXT-X-STREAM-INF"):
-                    bw = 0
-                    for part in line.split(","):
-                        if "BANDWIDTH=" in part:
-                            try:
-                                bw = int(part.split("=")[1].strip())
-                            except ValueError:
-                                pass
-                elif line and not line.startswith("#") and best_bw is not None:
-                    if bw > best_bw:
-                        best_bw = bw
-                        from urllib.parse import urljoin as _urljoin
-                        best_url = _urljoin(stream_url, line)
-                    bw = 0
-            if best_url:
-                stream_url = best_url
+            if not stream_url.startswith("http://") and not stream_url.startswith("https://"):
+                logger.warning("Download: invalid stream_url protocol: %.100s", stream_url)
+                raise HTTPException(status_code=404, detail="No streaming source available")
 
         safe_name = _re.sub(r'[^\w\-]', '_', filename)
-        tmp_dir = _tmpfile.mkdtemp()
-        mp4_path = _os.path.join(tmp_dir, f"{safe_name}.mp4")
-        try:
-            cmd = [
-                "ffmpeg", "-y",
-                "-referer", referer or "",
-                "-user_agent", _PROXY_HEADERS.get("User-Agent", ""),
-                "-headers", f"Referer: {referer or ''}\r\n",
-                "-allowed_extensions", "ALL",
-                "-i", stream_url,
-                "-map", "0",
-                "-c", "copy",
-                "-movflags", "+faststart",
-                mp4_path,
-            ]
-            proc = await _aio.create_subprocess_exec(
-                *cmd,
-                stdout=_aio.subprocess.PIPE,
-                stderr=_aio.subprocess.PIPE,
-            )
-            stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=300)
 
-            if proc.returncode != 0:
-                err_msg = stderr.decode(errors="replace")[-500:]
-                logger.error("ffmpeg HLS→MP4 failed (code %d): %s", proc.returncode, err_msg)
-                raise RuntimeError(f"ffmpeg failed: {err_msg}")
+        import asyncio as _aio
 
-            with open(mp4_path, "rb") as f:
-                mp4_content = f.read()
-
-            await dl_client.aclose()
-            return Response(
-                content=mp4_content,
-                media_type="video/mp4",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_name}.mp4"',
-                    "Content-Length": str(len(mp4_content)),
-                },
-            )
-        finally:
+        # --- MP4 path: stream directly ---
+        if stream_type == "mp4":
+            dl_headers = {"Referer": referer} if referer else {}
+            content_length = None
             try:
-                _shutil.rmtree(tmp_dir, ignore_errors=True)
+                head = await dl_client.head(stream_url, headers=dl_headers, follow_redirects=True)
+                content_length = head.headers.get("content-length")
             except Exception:
                 pass
+
+            async def _stream_mp4():
+                try:
+                    async with dl_client.stream("GET", stream_url, headers=dl_headers, follow_redirects=True) as s:
+                        async for chunk in s.aiter_bytes(262144):
+                            yield chunk
+                finally:
+                    await dl_client.aclose()
+
+            headers = {"Content-Disposition": f'attachment; filename="{safe_name}.mp4"'}
+            if content_length:
+                headers["Content-Length"] = content_length
+            return StreamingResponse(_stream_mp4(), media_type="video/mp4", headers=headers)
+
+        # --- HLS path: fetch m3u8, download segments manually, stream as TS ---
+        import asyncio as _aio
+        from urllib.parse import urljoin as _urljoin
+
+        # Resolve the actual m3u8 URL
+        if gogo_sources and gogo_sources.get("master_m3u8"):
+            # For GogoAnime: use the proxy endpoint to get rewritten M3U8 with absolute URLs
+            backend_base = str(request.base_url).rstrip("/")
+            m3u8_content = gogo_sources["master_m3u8"]
+            # Make proxy-relative URLs absolute
+            lines = m3u8_content.splitlines()
+            abs_lines = []
+            for line in lines:
+                stripped = line.strip()
+                if stripped.startswith("/api/"):
+                    abs_lines.append(backend_base + stripped)
+                else:
+                    abs_lines.append(line)
+            m3u8_text = "\n".join(abs_lines)
+            # This is a master playlist — parse for best variant
+            segment_urls = _parse_hls_variants_and_segments(m3u8_text, "")
+            if not segment_urls:
+                raise HTTPException(status_code=502, detail="Could not parse HLS playlist")
+        else:
+            # For Anivexa/Animetsu: fetch the m3u8 URL directly
+            m3u8_headers = {"Referer": referer} if referer else {}
+            m3u8_resp = await dl_client.get(stream_url, headers=m3u8_headers)
+            m3u8_resp.raise_for_status()
+            m3u8_text = m3u8_resp.text
+            segment_urls = _parse_hls_variants_and_segments(m3u8_text, stream_url)
+            if not segment_urls:
+                raise HTTPException(status_code=502, detail="Could not parse HLS playlist")
+
+        await dl_client.aclose()
+        logger.info("Download HLS: %d segments to fetch", len(segment_urls))
+
+        async def _stream_segments():
+            dl = _httpx.AsyncClient(
+                timeout=_httpx.Timeout(30.0, connect=10.0),
+                headers=_PROXY_HEADERS,
+                follow_redirects=True,
+                limits=_httpx.Limits(max_connections=8, max_keepalive_connections=4),
+            )
+            try:
+                for seg_url in segment_urls:
+                    for _attempt in range(3):
+                        try:
+                            async with dl.stream("GET", seg_url, headers={"Referer": referer} if referer else {}) as resp:
+                                resp.raise_for_status()
+                                async for chunk in resp.aiter_bytes(65536):
+                                    yield chunk
+                            break
+                        except Exception as seg_err:
+                            if _attempt == 2:
+                                logger.warning("Download segment failed after 3 attempts: %.200s: %s", seg_url, seg_err)
+                            else:
+                                await _aio.sleep(1 * (_attempt + 1))
+            finally:
+                await dl.aclose()
+
+        return StreamingResponse(
+            _stream_segments(),
+            media_type="video/mp2t",
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.ts"'},
+        )
+
     except HTTPException:
         await dl_client.aclose()
         raise
@@ -1533,7 +1717,7 @@ async def diagnose_streaming(
     if aid:
         try:
             t0 = time.monotonic()
-            anitsu_result = await anitsu_client.get_stream(aid, ep)
+            anitsu_result = await anitsu_client_mod.get_stream(aid, ep)
             elapsed = time.monotonic() - t0
             report["sources"]["animetsu"] = {
                 "available": bool(anitsu_result.get("stream_url")),

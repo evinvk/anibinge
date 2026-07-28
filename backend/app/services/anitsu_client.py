@@ -1,8 +1,3 @@
-"""
-Client for the Animetsu Scraper API — multi-provider anime streaming aggregator.
-Uses anipm (Ani.pm), animeyubi (AnimePahe mirror), and other providers.
-Returns HLS/MP4 streams with subtitles and skip markers.
-"""
 import logging
 from typing import Any
 
@@ -18,17 +13,33 @@ _client = get_shared_client(timeout=25.0, headers={
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
 })
 
-# Provider configs: (provider, server, type)
-# anipm with onyx-hls: Real HLS from megap.kotocdn.site + ani.pm (best quality, subtitles, skip markers)
-# anipm with megaplay: MegaPlay HLS embed
-# animeyubi with kwik-mp4: AnimePahe kwik.cx MP4/iframes (Cloudflare-protected, less reliable)
 _PROVIDER_CHAIN = [
+    # Primary: anipm (sub & dub, multiple servers)
     ("anipm", "onyx-hls", "sub"),
     ("anipm", "megaplay", "sub"),
+    ("anipm", "vega-mp4", "sub"),
+    # Animekhor — donghua specialist (Chinese anime)
+    ("animekhor", "default", "sub"),
+    # Anikuro — 11 upstream providers
+    ("anikuro", "animeverse", "sub"),
+    ("anikuro", "kite", "sub"),
+    # Miruro — 7 streaming providers
+    ("miruro", "bonk", "sub"),
+    ("miruro", "kite", "sub"),
+    # Animetsu primary
+    ("animetsu", "kite", "sub"),
+    # Anilight — MegaPlay streams
+    ("anilight", "megaplay", "sub"),
+    # Animeyubi — AnimePahe mirror
     ("animeyubi", "kwik-mp4", "sub"),
+    # Dub variants
+    ("anipm", "onyx-hls", "dub"),
+    ("anipm", "megaplay", "dub"),
+    ("anikuro", "animeverse", "dub"),
+    ("anikuro", "kite", "dub"),
+    ("miruro", "bonk", "dub"),
 ]
 
-# Referer map for different CDN hosts
 _REFERER_MAP = {
     "ani.pm": "https://ani.pm/",
     "cdn.ani.pm": "https://ani.pm/",
@@ -40,7 +51,6 @@ _REFERER_MAP = {
 
 
 def _get_referer_for_url(url: str) -> str:
-    """Determine the correct Referer header for a given URL."""
     for host, referer in _REFERER_MAP.items():
         if host in url:
             return referer
@@ -48,38 +58,24 @@ def _get_referer_for_url(url: str) -> str:
 
 
 def _extract_original_url(proxied_url: str) -> str:
-    """Extract the original upstream URL from an Animetsu proxy URL.
-    
-    Animetsu proxy format: /api/proxy/m3u8?url={encoded_url}&referer={encoded_referer}
-    We want the raw upstream URL so we can proxy it ourselves.
-    """
-    if "/api/proxy/" not in proxied_url:
-        return proxied_url
-
+    url = proxied_url.strip()
+    if "/api/proxy/" not in url:
+        return url
     from urllib.parse import urlparse, parse_qs
-    parsed = urlparse(proxied_url)
+    parsed = urlparse(url)
     qs = parse_qs(parsed.query)
     if "url" in qs:
-        return qs["url"][0]
-    return proxied_url
+        return "".join(qs["url"][0].split())
+    return url
 
 
-async def get_stream(anilist_id: int, episode: int) -> dict[str, Any]:
+async def get_stream(anilist_id: int, episode: int, audio: str = "sub") -> dict[str, Any]:
     """Try Animetsu providers to get streaming data for an episode.
-    
-    Returns a normalized dict matching the anivexa_client format:
-    {
-        "source": "anitsu",
-        "provider": "anipm",
-        "stream_url": "https://...",
-        "stream_type": "hls" | "mp4",
-        "referer": "https://...",
-        "embed_url": null | "https://...",
-        "subtitles": [...],
-        "skip_markers": {...},
-    }
+    Now supports audio parameter for sub/dub switching.
     """
     for provider, server, source_type in _PROVIDER_CHAIN:
+        if source_type != audio and source_type in ("sub", "dub"):
+            continue
         try:
             result = await _try_provider(anilist_id, episode, provider, server, source_type)
             if result:
@@ -95,7 +91,6 @@ async def get_stream(anilist_id: int, episode: int) -> dict[str, Any]:
 async def _try_provider(
     anilist_id: int, episode: int, provider: str, server: str, source_type: str
 ) -> dict[str, Any] | None:
-    """Try a specific Animetsu provider and return normalized stream data."""
     url = f"{ANITSU_BASE}/api/scrape/sources"
     params = {
         "id": f"al:{anilist_id}",
@@ -120,8 +115,6 @@ async def _try_provider(
     if not sources:
         return None
 
-    # Pick the best source: prefer master HLS > hls > mp4
-    # Frontend proxy filters ad segments from M3U8 playlists, so megap.kotocdn.site works
     best_source = None
     best_priority = 999
     for src in sources:
@@ -141,32 +134,27 @@ async def _try_provider(
             best_priority = priority
             best_source = src
 
-    # If only iframe sources exist, skip this provider entirely
-    if best_source and best_source.get("type") == "iframe":
-        logger.info("Animetsu %s/%s: only iframe sources for al:%d ep%d, skipping", provider, server, anilist_id, episode)
-        return None
-
     if not best_source:
         return None
 
-    # Extract original upstream URL
     raw_url = best_source.get("originalUrl") or best_source.get("url", "")
     stream_url = _extract_original_url(raw_url)
+    if stream_url:
+        stream_url = "".join(stream_url.split())
+        if stream_url.startswith("//"):
+            stream_url = "https:" + stream_url
     stream_type = "mp4" if best_source.get("type") == "mp4" else "hls"
     referer = best_source.get("upstreamReferer") or _get_referer_for_url(stream_url)
 
-    # Sanity check: stream_url must look like a playable URL
     if not stream_url or (not stream_url.startswith("http") and not stream_url.startswith("/")):
         return None
 
-    # Extract subtitles — use original upstream URLs, not proxied ones
     subtitles = []
     raw_subs = data.get("subtitles", [])
     for sub in raw_subs:
         sub_url = sub.get("url", "")
         if not sub_url:
             continue
-        # Extract original URL from proxy if needed
         original_sub_url = _extract_original_url(sub_url)
         sub_referer = _get_referer_for_url(original_sub_url)
         subtitles.append({
@@ -179,7 +167,6 @@ async def _try_provider(
             "referer": sub_referer,
         })
 
-    # Extract skip markers
     skip_markers = {}
     skips = data.get("skips", {})
     if skips.get("intro"):
@@ -187,16 +174,13 @@ async def _try_provider(
     if skips.get("outro"):
         skip_markers["outro"] = skips["outro"]
 
-    # Find an iframe source to use as embed_url fallback
-    # (useful when the primary M3U8 has ad segments or fails)
     embed_url = None
-    if stream_type != "iframe":
-        for src in sources:
-            if src.get("type") == "iframe":
-                raw_embed = src.get("originalUrl") or src.get("url", "")
-                if raw_embed:
-                    embed_url = _extract_original_url(raw_embed)
-                break
+    for src in sources:
+        if src.get("type") == "iframe":
+            raw_embed = src.get("originalUrl") or src.get("url", "")
+            if raw_embed:
+                embed_url = _extract_original_url(raw_embed)
+            break
 
     return {
         "source": "anitsu",
@@ -211,7 +195,6 @@ async def _try_provider(
 
 
 async def health_check() -> bool:
-    """Check if the Animetsu API is reachable."""
     try:
         resp = await _client.get(f"{ANITSU_BASE}/api/scrape/providers", timeout=5.0)
         return resp.status_code == 200
@@ -220,5 +203,4 @@ async def health_check() -> bool:
 
 
 async def close():
-    """Detach from the shared HTTP client (actual close handled by core/http.py)."""
     pass

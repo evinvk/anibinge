@@ -11,7 +11,7 @@ from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
 from app.core.circuit_breaker import all_breakers
-from app.routers import admin, anime, auth, comments, news, notifications, schedule, search, seasonal, streaming, watchlist
+from app.routers import admin, anime, auth, comments, donghua, news, notifications, schedule, search, seasonal, streaming, watchlist
 
 logging.basicConfig(
     level=logging.INFO,
@@ -73,7 +73,7 @@ async def cache_headers(request: Request, call_next):
         response.headers["Cache-Control"] = "no-store"
     elif any(p in path for p in ["/api/v1/auth/", "/api/v1/watchlist", "/api/v1/admin/", "/api/v1/notifications/", "/api/v1/comments/"]):
         response.headers["Cache-Control"] = "private, no-cache"
-    elif any(p in path for p in ["/api/v1/anime/trending", "/api/v1/schedule/", "/api/v1/anime/upcoming", "/api/v1/streaming/gogoanime/latest"]):
+    elif any(p in path for p in ["/api/v1/anime/trending", "/api/v1/schedule/", "/api/v1/anime/upcoming", "/api/v1/streaming/gogoanime/latest", "/api/v1/donghua/trending", "/api/v1/donghua/latest"]):
         response.headers["Cache-Control"] = "public, max-age=300, stale-while-revalidate=60"
     elif any(p in path for p in ["/api/v1/anime/", "/api/v1/seasonal/"]) and "/characters" not in path and "/staff" not in path and "/episodes" not in path and "/recommendations" not in path:
         response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=300"
@@ -140,6 +140,7 @@ app.include_router(streaming.router)
 app.include_router(comments.router)
 app.include_router(admin.router)
 app.include_router(notifications.router)
+app.include_router(donghua.router)
 
 
 @app.get("/api/health")
