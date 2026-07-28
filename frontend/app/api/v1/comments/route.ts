@@ -1,50 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getComments, createComment } from "@/lib/comments-store";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "https://anibinge-backend-k6td.onrender.com";
-
-async function proxy(request: NextRequest, path: string) {
-  const url = new URL(request.url);
-  url.searchParams.delete("_t");
-  const qs = url.searchParams.toString();
-  const target = `${BACKEND_URL}/api/v1/comments${path}${qs ? `?${qs}` : ""}`;
-
-  const headers: Record<string, string> = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-  };
-  const auth = request.headers.get("authorization");
-  if (auth) headers["Authorization"] = auth;
-  const ct = request.headers.get("content-type");
-  if (ct) headers["Content-Type"] = ct;
-
+function decodeToken(token: string): { sub?: string; username?: string; exp?: number } {
   try {
-    const resp = await fetch(target, {
-      method: request.method,
-      headers,
-      body: request.method !== "GET" && request.method !== "HEAD" ? await request.text() : undefined,
-      signal: AbortSignal.timeout(15000),
-    });
-
-    const body = await resp.text();
-    return new NextResponse(body, {
-      status: resp.status,
-      headers: {
-        "Content-Type": resp.headers.get("Content-Type") || "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Cache-Control": "private, no-cache",
-      },
-    });
-  } catch (e: any) {
-    return NextResponse.json(
-      { detail: `Comments backend unavailable: ${e.message}` },
-      { status: 502 },
-    );
+    const payload = token.split(".")[1];
+    const parsed = JSON.parse(Buffer.from(payload, "base64").toString("utf-8"));
+    return parsed;
+  } catch {
+    return {};
   }
 }
 
-export async function GET(request: NextRequest) {
-  return proxy(request, "");
+function getUserId(req: NextRequest): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  const payload = decodeToken(token);
+  return payload?.sub || null;
 }
 
-export async function POST(request: NextRequest) {
-  return proxy(request, "");
+function getUserName(req: NextRequest): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  const payload = decodeToken(token);
+  return payload?.username || null;
+}
+
+export async function GET(req: NextRequest) {
+  const slug = req.nextUrl.searchParams.get("slug") || "";
+  const episodeNumber = parseInt(req.nextUrl.searchParams.get("episode_number") || "1");
+  const sort = req.nextUrl.searchParams.get("sort") || "newest";
+
+  if (!slug) return NextResponse.json({ comments: [], total: 0 });
+
+  try {
+    const result = getComments(slug, episodeNumber, sort);
+
+    // Attach replies to each top-level comment
+    for (const comment of result.comments) {
+      const { getReplies } = await import("@/lib/comments-store");
+      comment.replies = getReplies(slug, episodeNumber, comment.id);
+    }
+
+    return NextResponse.json(result, {
+      headers: { "Cache-Control": "private, no-cache", "Access-Control-Allow-Origin": "*" },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
+export async function POST(req: NextRequest) {
+  const userId = getUserId(req);
+  if (!userId) return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ detail: "Invalid JSON" }, { status: 400 });
+  }
+
+  if (!body.slug || !body.episode_number || !body.body) {
+    return NextResponse.json({ detail: "Missing required fields: slug, episode_number, body" }, { status: 400 });
+  }
+
+  try {
+    const username = getUserName(req) || "User-" + userId.slice(0, 6);
+    const comment = createComment(userId, username, body);
+    return NextResponse.json(comment, { status: 201 });
+  } catch (e: any) {
+    return NextResponse.json({ detail: e.message }, { status: 400 });
+  }
 }

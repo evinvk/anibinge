@@ -32,7 +32,7 @@ function parseCard(el: any) {
 export function parseCards(html: string): any[] {
   const $ = cheerio.load(html);
   const items: any[] = [];
-  $("article.bs").each((_: any, el: any) => {
+  $(".bs").each((_: any, el: any) => {
     const item = parseCard(cheerio.load(el).html() || "");
     if (item.title) items.push(item);
   });
@@ -67,22 +67,19 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
   const url = BASE + path + qs;
 
+  const errors: string[] = [];
+
   // Try direct fetch first
   const resp = await fetchDirect(url);
   if (resp.ok) return resp.text();
+  errors.push(`Direct ${resp.status}`);
 
   // Fallback proxies when direct fetch is blocked
   const proxyAttempts = [
     async () => {
-      const r = await fetch(`https://r.jina.ai/http://animexin.dev${new URL(url).pathname}${new URL(url).search}`, {
-        headers: { "User-Agent": UA, Accept: "text/html", "X-Return-Format": "text" },
-      });
-      if (!r.ok) throw new Error(`Jina ${r.status}`);
-      return r.text();
-    },
-    async () => {
       const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
         headers: { "User-Agent": UA },
+        signal: AbortSignal.timeout(15000),
       });
       if (!r.ok) throw new Error(`AllOrigins ${r.status}`);
       return r.text();
@@ -93,21 +90,23 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
     try {
       const html = await attempt();
       if (html?.length > 100) return html;
-    } catch {}
+    } catch (e: any) {
+      errors.push(e.message || "Proxy failed");
+    }
   }
 
-  throw new Error(`AnimeXin ${resp.status}`);
+  throw new Error(`AnimeXin fetch failed: ${errors.join(", ")}`);
 }
 
 export function parseHomepage(html: string) {
   const $ = cheerio.load(html);
   const popular: any[] = [];
   const latest: any[] = [];
-  $(".popularslider article.bs").each((_: any, el: any) => {
+  $(".popularslider .bs").each((_: any, el: any) => {
     const item = parseCard(cheerio.load(el).html() || "");
     if (item.title) popular.push(item);
   });
-  $(".listupd article.bs").each((_: any, el: any) => {
+  $(".listupd .bs").each((_: any, el: any) => {
     const item = parseCard(cheerio.load(el).html() || "");
     if (item.title) latest.push(item);
   });
@@ -192,7 +191,7 @@ export function parseSearch(html: string): any[] {
   const $ = cheerio.load(html);
   const items: any[] = [];
   const container = $(".listupd").length ? $(".listupd") : $("body");
-  container.find("article.bs").each((_: any, el: any) => {
+  container.find(".bs").each((_: any, el: any) => {
     const item = parseCard(cheerio.load(el).html() || "");
     if (item.title) items.push(item);
   });
