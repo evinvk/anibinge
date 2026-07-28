@@ -710,7 +710,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
         </div>
       )}
 
-      {selectedSlug || resolvedAnilistRef.current && (
+      {(selectedSlug || resolvedAnilistRef.current) && (
         <EpisodeComments slug={selectedSlug || String(resolvedAnilistRef.current)} episodeNumber={currentEp} />
       )}
     </section>
