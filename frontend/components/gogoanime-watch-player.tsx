@@ -56,6 +56,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [isTheater, setIsTheater] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [audio, setAudio] = useState<"sub" | "dub">("sub");
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
 
   const [statusText, setStatusText] = useState<string>("");
   const [downloading, setDownloading] = useState(false);
@@ -99,22 +101,22 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     return false;
   }, [slug, audio]);
 
-  const tryAnitsu = useCallback(async (ep: number, epAudio: string = audio): Promise<boolean> => {
+  const tryAnitsu = useCallback(async (ep: number, epAudio?: string): Promise<boolean> => {
     setStatusText("");
     try {
       const aid = resolvedAnilistRef.current;
+      const useAudio = epAudio || audioRef.current;
       let res: any;
 
       if (aid) {
-        // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
-        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}`;
+        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${useAudio}`;
         res = await fetch(url).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
         });
       } else {
         res = await fetch(
-          `${API_BASE}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(title)}&ep=${ep}&audio=${epAudio}`
+          `${API_BASE}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(title)}&ep=${ep}&audio=${useAudio}`
         ).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
@@ -357,10 +359,20 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     }
 
     setStatusText("Loading stream...");
-    const result = await Promise.race([
-      tryGogoanime(ep).then((ok) => ok && "gogoanime"),
-      tryAnitsu(ep).then((ok) => ok && "anitsu"),
-    ]);
+
+    // Ensure we have an AniList ID before trying Anivexa
+    if (!resolvedAnilistRef.current && title) {
+      try {
+        const res = await fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`);
+        const data = await res.json();
+        if (data.anilist_id) resolvedAnilistRef.current = data.anilist_id;
+      } catch {}
+    }
+
+    // Try Anivexa first (works from Vercel), then GogoAnime (Vercel-blocked)
+    const result =
+      (await tryAnitsu(ep).then((ok) => ok && "anitsu")) ||
+      (await tryGogoanime(ep).then((ok) => ok && "gogoanime"));
     if (!result) {
       // Try donghua endpoint as additional fallback (for Chinese anime not on GogoAnime)
       try {

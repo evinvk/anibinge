@@ -14,7 +14,6 @@ export async function GET(req: Request) {
   if (isNaN(anilistId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
   try {
-    // Try Anivexa providers first, skip Anitsu (which is down)
     const providers = ["anidbapp", "anikoto", "animegg", "anizone"];
     let lastError: string | null = null;
 
@@ -22,18 +21,22 @@ export async function GET(req: Request) {
       try {
         const resp = await fetch(
           `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
-          { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(10000) }
+          { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }
         );
         if (!resp.ok) continue;
         const data = await resp.json();
-        if (data?.sources?.length || data?.stream_url) {
-          const streamUrl = data.stream_url || data.sources?.[0]?.url;
+
+        const streams = data?.streams || [];
+        const hlsStream = streams.find((s: any) => s.type === "hls");
+        const embedStream = streams.find((s: any) => s.type === "embed");
+        const streamUrl = hlsStream?.url || streams[0]?.url || null;
+
+        if (streamUrl) {
           const subtitles = (data.subtitles || []).map((s: any) => ({
             file: s.url || s.file,
             label: s.label || s.language || "English",
             language: s.language || "en",
             kind: "captions",
-            default: s.default || false,
             source: provider,
             referer: `https://${provider}.app/`,
           }));
@@ -43,7 +46,7 @@ export async function GET(req: Request) {
             stream_url: streamUrl,
             stream_type: streamUrl?.endsWith(".mp4") ? "mp4" : "hls",
             referer: `https://${provider}.app/`,
-            embed_url: data.embed_url || null,
+            embed_url: embedStream?.url || data.embed_url || null,
             subtitles,
           });
         }

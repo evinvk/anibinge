@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Play, ChevronDown, Loader2, AlertTriangle, Monitor, RotateCcw, Download, Maximize2, Minimize2 } from "lucide-react";
-import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
 import { EpisodeComments } from "@/components/episode-comments";
@@ -65,21 +64,24 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const tryAnitsuFallback = useCallback(async (ep: number, epAudio: string = audio): Promise<boolean> => {
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
+  const tryAnitsuFallback = useCallback(async (ep: number, epAudio?: string): Promise<boolean> => {
     setStatusText("");
     try {
       const aid = resolvedAnilistRef.current;
+      const useAudio = epAudio || audioRef.current;
       let res: any;
 
       if (aid) {
-        // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
         const apiBase = "";
-        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}`;
+        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${useAudio}`;
         res = await fetch(url).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
       } else {
         const apiBase = "";
         res = await fetch(
-          `${apiBase}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${epAudio}`
+          `${apiBase}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${useAudio}`
         ).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
@@ -373,46 +375,10 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
     }
   }, [selectedSlug, currentEp, audio]);
 
-  function titleMatches(a: string, b: string): boolean {
-    if (!a || !b) return false;
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
-    const na = norm(a);
-    const nb = norm(b);
-    return na === nb || na.includes(nb) || nb.includes(na);
-  }
-
-  function gogoMatchesTitle(item: any, expectedTitle: string): boolean {
-    const titles = [item.title, item.title_english, item.title_japanese].filter(Boolean);
-    return titles.some((t) => titleMatches(t, expectedTitle));
-  }
-
   async function searchAnime() {
     player.setLoadingStream(true);
     player.setError(null);
     setStatusText("");
-
-    const gogoResult = await api.gogoanimeSearch(animeTitle).catch(() => null);
-    const gogoData = gogoResult?.data;
-
-    // Find the GogoAnime entry whose title actually matches the expected title
-    const match = gogoData?.find((r) => gogoMatchesTitle(r, animeTitle));
-    const gogoSlug = match?.slug ?? null;
-
-    if (gogoData) {
-      setResults(gogoData);
-      if (match) {
-        const ep = match.episodes_count || match.actual_episodes_count || match.latest_episode || null;
-        if (ep) setTotalEps(ep);
-        setSelectedSlug(match.slug);
-      }
-    }
-
-    setStatusText("");
-
-    if (gogoSlug) {
-      loadStream(gogoSlug, 1);
-      return;
-    }
 
     if (resolvedAnilistRef.current) {
       loadStream(null, 1);

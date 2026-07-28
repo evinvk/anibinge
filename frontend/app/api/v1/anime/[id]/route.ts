@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const GRAPHQL = "https://graphql.anilist.co";
 
-const DETAIL_QUERY = `query($id:Int){Media(id:$id,type:ANIME){
+const DETAIL_BY_ID = `query($id:Int){Media(id:$id,type:ANIME){
   id idMal title{english romaji native}
   coverImage{large extraLarge} bannerImage
   averageScore popularity favourites
@@ -12,8 +12,15 @@ const DETAIL_QUERY = `query($id:Int){Media(id:$id,type:ANIME){
   trailer{id site}
   studios{edges{isMain node{name}}}
 }}`;
-
-const RESOLVE_QUERY = `query($ids:[Int]){Page(page:1,perPage:1){media(idMal_in:$ids,type:ANIME){idMal id}}}`;
+const DETAIL_BY_MAL = `query($idMal:Int){Media(idMal:$idMal,type:ANIME){
+  id idMal title{english romaji native}
+  coverImage{large extraLarge} bannerImage
+  averageScore popularity favourites
+  genres status episodes description
+  startDate{year month day} season format
+  trailer{id site}
+  studios{edges{isMain node{name}}}
+}}`;
 
 async function fetchGraphQL(query: string, variables: Record<string, any>) {
   const resp = await fetch(GRAPHQL, {
@@ -53,9 +60,11 @@ function denormalizeAnilist(m: any) {
   };
 }
 
-async function fromAnilist(id: number): Promise<any | null> {
+async function fromAnilist(id: number, byMal = false): Promise<any | null> {
   try {
-    const data = await fetchGraphQL(DETAIL_QUERY, { id });
+    const q = byMal ? DETAIL_BY_MAL : DETAIL_BY_ID;
+    const vars = byMal ? { idMal: id } : { id };
+    const data = await fetchGraphQL(q, vars);
     const m = data?.data?.Media;
     if (!m) return null;
     return denormalizeAnilist(m);
@@ -97,15 +106,6 @@ async function fromJikan(id: number): Promise<any | null> {
   } catch { return null; }
 }
 
-async function resolveMalToAnilist(malId: number): Promise<number | null> {
-  try {
-    const data = await fetchGraphQL(RESOLVE_QUERY, { ids: [malId] });
-    const media = data?.data?.Page?.media;
-    if (media?.length) return media[0].id;
-  } catch {}
-  return null;
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const segments = url.pathname.split("/").filter(Boolean);
@@ -114,35 +114,21 @@ export async function GET(req: Request) {
 
   if (isNaN(id)) return NextResponse.json({ error: "Invalid id" }, { status: 400 });
 
-  try {
-    let result: any = null;
-
-    // Try AniList first (for all source types)
-    let anilistId = source === "anilist" ? id : await resolveMalToAnilist(id);
-    if (anilistId) result = await fromAnilist(anilistId);
-
-    // Fallback to Jikan
-    if (!result) result = await fromJikan(id);
-
-    // Last resort: try raw AniList lookup
-    if (!result) {
-      if (!anilistId) anilistId = await resolveMalToAnilist(id);
-      if (!anilistId) anilistId = id;
-      result = await fromAnilist(anilistId);
-    }
-
-    if (!result) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-
-    // Fill in anilist_id if missing
-    if (!result.anilist_id && result.mal_id) {
-      const resolved = await resolveMalToAnilist(result.mal_id);
-      if (resolved) result.anilist_id = resolved;
-    }
-
-    return NextResponse.json({ data: result });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+  let result: any;
+  if (source === "anilist") {
+    // Use as AniList ID directly
+    result = await fromAnilist(id, false);
+    if (!result) result = await fromAnilist(id, true);
+  } else {
+    // Try as MAL ID first
+    result = await fromAnilist(id, true);
+    if (!result) result = await fromAnilist(id, false);
   }
+
+  // Fallback to Jikan
+  if (!result) result = await fromJikan(id);
+
+  if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  return NextResponse.json({ data: result });
 }
