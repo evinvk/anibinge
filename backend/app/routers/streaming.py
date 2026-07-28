@@ -992,6 +992,12 @@ async def fetch_subtitles(
                 return {"subtitles": result["subtitles"], "provider": "anitsu"}
         except Exception:
             pass
+        try:
+            result = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio, skip_anitsu=True)
+            if result and result.get("subtitles"):
+                return {"subtitles": result["subtitles"], "provider": result.get("provider", "anivexa")}
+        except Exception:
+            pass
     else:
         try:
             from app.services import anilist_client
@@ -1002,6 +1008,9 @@ async def fetch_subtitles(
                 stream_data = await anitsu_client_mod.get_stream(anilist_id, ep, audio=audio)
                 if stream_data and stream_data.get("subtitles"):
                     return {"subtitles": stream_data["subtitles"], "provider": "anitsu"}
+                stream_data = await anivexa_client.get_stream_with_fallback(anilist_id, ep, audio, skip_anitsu=True)
+                if stream_data and stream_data.get("subtitles"):
+                    return {"subtitles": stream_data["subtitles"], "provider": stream_data.get("provider", "anivexa")}
         except Exception:
             pass
 

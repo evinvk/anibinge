@@ -73,7 +73,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       if (aid) {
         // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
         const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}&source=anitsu`;
+        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}`;
         res = await fetch(url).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
       } else {
         const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -309,6 +309,13 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         if (res?.data?.stream_url) {
           const s = res.data;
           player.sourceRef.current = "anitsu";
+          if (s.subtitles?.length > 0) {
+            subs.setSubs(s.subtitles.map((sub: any) => ({
+              ...sub,
+              file: `/api/proxy?url=${encodeURIComponent(sub.file)}&referer=${encodeURIComponent(sub.referer || "")}`,
+            })));
+            subs.loadSubtitles();
+          }
           if (s.stream_type === "mp4") {
             const mp4Url = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
             player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
@@ -340,7 +347,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     const fetchEp = currentEpRef.current;
     api.fetchSubtitles(animeTitle, fetchEp, resolvedAnilistRef.current || undefined)
       .then((subRes) => {
-        if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
+        if (subRes.subtitles?.length > 0 && fetchEp === currentEpRef.current) {
           subs.setSubs(subRes.subtitles.map((s: any) => ({
             ...s,
             file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,

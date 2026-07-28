@@ -107,7 +107,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
       if (aid) {
         // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
-        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}&source=anitsu`;
+        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}`;
         res = await fetch(url).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
@@ -185,7 +185,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     const fetchEp = currentEpRef.current;
     api.fetchSubtitles(title, fetchEp, resolvedAnilistRef.current || undefined)
       .then((subRes) => {
-        if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
+        if (subRes.subtitles?.length > 0 && fetchEp === currentEpRef.current) {
           subs.setSubs(subRes.subtitles.map((s: any) => ({
             ...s,
             file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
