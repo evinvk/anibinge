@@ -16,7 +16,7 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
   const [items, setItems] = useState<AnimeSummary[]>(initialItems);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(initialItems.length > 0);
+  const [hasMore, setHasMore] = useState(true);
   const [isVisible, setIsVisible] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -25,7 +25,7 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
   useEffect(() => {
     setItems(initialItems);
     setPage(1);
-    setHasMore(initialItems.length > 0);
+    setHasMore(true);
   }, [initialItems, query, filtersKey]);
 
   const loadMore = useCallback(async () => {
