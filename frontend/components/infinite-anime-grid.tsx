@@ -30,13 +30,6 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
     initialLoadDoneRef.current = false;
   }, [initialItems, query, filtersKey]);
 
-  useEffect(() => {
-    if (initialItems.length === 0 && !initialLoadDoneRef.current && !loading) {
-      initialLoadDoneRef.current = true;
-      loadMore();
-    }
-  }, [initialItems, loadMore, loading]);
-
   const loadMore = useCallback(async () => {
     setLoading(true);
     try {
@@ -59,6 +52,16 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
       setLoading(false);
     }
   }, [page, query, filters]);
+
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+
+  useEffect(() => {
+    if (initialItems.length === 0 && !initialLoadDoneRef.current && !loading) {
+      initialLoadDoneRef.current = true;
+      loadMoreRef.current();
+    }
+  }, [initialItems, loading]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
