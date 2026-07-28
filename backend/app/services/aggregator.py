@@ -498,59 +498,149 @@ def _denormalize_jikan_detail(m: dict) -> dict:
 
 
 @cached("agg:detail:v3", ttl=settings.CACHE_TTL_MEDIUM)
+async def _resolve_mal_to_anilist(mal_id: int) -> int | None:
+    """Resolve a MAL ID to an AniList ID via GraphQL."""
+    try:
+        query = """
+        query($ids:[Int]){
+          Page(page:1,perPage:1){
+            media(idMal_in:$ids,type:ANIME){
+              idMal
+              id
+            }
+          }
+        }
+        """
+        client = _get_anilist_client()
+        resp = await client.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"ids": [mal_id]}},
+        )
+        media = resp.json().get("data", {}).get("Page", {}).get("media", [])
+        if media:
+            return media[0].get("id")
+    except Exception:
+        pass
+    return None
+
+
+async def _resolve_anilist_to_mal(anilist_id: int) -> int | None:
+    """Resolve an AniList ID to a MAL ID via GraphQL."""
+    try:
+        query = """
+        query($id:Int){
+          Media(id:$id,type:ANIME){
+            id
+            idMal
+          }
+        }
+        """
+        client = _get_anilist_client()
+        resp = await client.post(
+            "https://graphql.anilist.co",
+            json={"query": query, "variables": {"id": anilist_id}},
+        )
+        media = resp.json().get("data", {}).get("Media")
+        if media:
+            return media.get("idMal")
+    except Exception:
+        pass
+    return None
+
+
 async def get_detail(id_: int, source: str = "mal") -> dict:
     """
     Get anime detail with comprehensive fallback chain.
     Tries the preferred source first, then all others.
     Skips Jikan when MAL explicitly 404s (Jikan wraps MAL, same IDs).
+
+    ID resolution:
+    - When source != anilist, id_ is treated as a MAL ID.
+    - When source == anilist, id_ is treated as a MAL ID first and
+      resolved to an AniList ID; if resolution fails, id_ is used
+      as a raw AniList ID.
     """
     tried = set()
     mal_404 = False
+    _resolved_anilist_id = None  # cached lazy resolution
+    _resolved_mal_id = id_ if source != "anilist" else None
 
     async def _try_anilist():
+        nonlocal _resolved_anilist_id
         if "anilist" in tried:
             return None
         tried.add("anilist")
+        # Lazily resolve the AniList ID
+        if _resolved_anilist_id is None:
+            if source == "anilist":
+                # Treat id_ as a MAL ID and resolve to AniList ID
+                _resolved_anilist_id = await _resolve_mal_to_anilist(id_)
+                if _resolved_anilist_id is None:
+                    # Couldn't resolve — treat id_ as raw AniList ID
+                    _resolved_anilist_id = id_
+                    logger.info("Using raw AniList ID %s for detail lookup", id_)
+                else:
+                    logger.info("Resolved MAL ID %s to AniList ID %s", id_, _resolved_anilist_id)
+            else:
+                # id_ is a MAL ID; resolve AniList ID for fallback
+                _resolved_anilist_id = await _resolve_mal_to_anilist(id_)
+                if _resolved_anilist_id is None:
+                    logger.warning("Could not resolve MAL ID %s to AniList ID", id_)
+                    return None
         try:
-            media = await anilist_client.get_anime_detail(id_)
+            media = await anilist_client.get_anime_detail(_resolved_anilist_id)
             m = media.get("Media")
             if m:
-                logger.info("Anime detail %s from AniList", id_)
+                logger.info("Anime detail %s from AniList", _resolved_anilist_id)
                 return _denormalize_anilist_detail(m)
         except Exception as e:
-            logger.warning("AniList detail failed for %s: %s", id_, e)
+            logger.warning("AniList detail failed for %s: %s", _resolved_anilist_id, e)
         return None
 
     async def _try_mal():
+        nonlocal _resolved_mal_id
         nonlocal mal_404
         if "mal" in tried:
             return None
         tried.add("mal")
+        # Lazily resolve the MAL ID when source=anilist
+        if _resolved_mal_id is None:
+            if source == "anilist":
+                _resolved_mal_id = await _resolve_anilist_to_mal(_resolved_anilist_id or id_)
+            if _resolved_mal_id is None:
+                return None
         try:
-            data = await mal_client.get_anime_details(id_)
-            logger.info("Anime detail %s from MAL", id_)
+            data = await mal_client.get_anime_details(_resolved_mal_id)
+            logger.info("Anime detail %s from MAL", _resolved_mal_id)
             return _denormalize_mal_detail(data)
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 404:
                 mal_404 = True
-            logger.warning("MAL detail failed for %s: %s", id_, e)
+            logger.warning("MAL detail failed for %s: %s", _resolved_mal_id, e)
         except Exception as e:
-            logger.warning("MAL detail failed for %s: %s", id_, e)
+            logger.warning("MAL detail failed for %s: %s", _resolved_mal_id, e)
         return None
 
     async def _try_jikan():
-        # Jikan wraps MAL — same IDs. If MAL 404'd, Jikan will too.
+        nonlocal _resolved_mal_id
+        nonlocal mal_404
         if mal_404:
             return None
         if "jikan" in tried:
             return None
         tried.add("jikan")
+        # Lazily resolve the MAL ID when source=anilist
+        if _resolved_mal_id is None:
+            if source == "anilist":
+                _resolved_mal_id = await _resolve_anilist_to_mal(_resolved_anilist_id or id_)
+            if _resolved_mal_id is None:
+                return None
         try:
-            data = await jikan_client.get_anime_full(id_)
-            logger.info("Anime detail %s from Jikan", id_)
+            data = await jikan_client.get_anime_full(_resolved_mal_id)
+            logger.info("Anime detail %s from Jikan", _resolved_mal_id)
             return data.get("data", data)
         except Exception as e:
-            logger.warning("Jikan detail failed for %s: %s", id_, e)
+            logger.warning("Jikan detail failed for %s: %s", _resolved_mal_id, e)
         return None
 
     # Build priority order based on requested source
@@ -565,30 +655,13 @@ async def get_detail(id_: int, source: str = "mal") -> dict:
         result = await fn()
         if result:
             # Ensure anilist_id is populated for streaming player
-            if not result.get("anilist_id"):
-                mal_id = result.get("mal_id")
-                if mal_id:
-                    try:
-                        query = """
-                        query($ids:[Int]){
-                          Page(page:1,perPage:1){
-                            media(idMal_in:$ids,type:ANIME){
-                              idMal
-                              id
-                            }
-                          }
-                        }
-                        """
-                        client = _get_anilist_client()
-                        resp = await client.post(
-                            "https://graphql.anilist.co",
-                            json={"query": query, "variables": {"ids": [mal_id]}},
-                        )
-                        media = resp.json().get("data", {}).get("Page", {}).get("media", [])
-                        if media:
-                            result["anilist_id"] = media[0].get("id")
-                    except Exception:
-                        pass
+            if not result.get("anilist_id") and result.get("mal_id"):
+                try:
+                    resolved = await _resolve_mal_to_anilist(result["mal_id"])
+                    if resolved:
+                        result["anilist_id"] = resolved
+                except Exception:
+                    pass
             return result
 
     logger.error("All detail sources failed for %s (tried: %s)", id_, tried)
