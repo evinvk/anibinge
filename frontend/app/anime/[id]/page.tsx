@@ -184,6 +184,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         <LazyStreamingPlayer
           animeTitle={detail.title_english || detail.title}
           anilistId={detail.anilist_id}
+          totalEpisodes={detail.episodes}
         />
 
         {/* Recommendations */}

@@ -20,6 +20,7 @@ interface SearchResult {
 interface StreamingPlayerProps {
   animeTitle: string;
   anilistId?: number;
+  totalEpisodes?: number | null;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -41,7 +42,7 @@ function friendlyError(raw: string): string {
   return raw;
 }
 
-export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps) {
+export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: StreamingPlayerProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
@@ -217,9 +218,13 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       const match = results.find((r) => r.slug === selectedSlug);
       if (match?.episodes_count) {
         setTotalEps(match.episodes_count);
+      } else if (totalEpisodes) {
+        setTotalEps(totalEpisodes);
       }
+    } else if (totalEpisodes) {
+      setTotalEps(totalEpisodes);
     }
-  }, [selectedSlug]);
+  }, [selectedSlug, totalEpisodes]);
 
   useEffect(() => {
     if (player.masterUrl && videoRef.current) {
@@ -359,7 +364,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle, subs]);
 
   useEffect(() => {
-    if (selectedSlug && currentEp) {
+    if (currentEp) {
       if (initialLoadDoneRef.current) {
         loadStream(selectedSlug, currentEp);
       } else {
@@ -705,8 +710,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
-      {selectedSlug && (
-        <EpisodeComments slug={selectedSlug} episodeNumber={currentEp} />
+      {selectedSlug || resolvedAnilistRef.current && (
+        <EpisodeComments slug={selectedSlug || String(resolvedAnilistRef.current)} episodeNumber={currentEp} />
       )}
     </section>
   );
