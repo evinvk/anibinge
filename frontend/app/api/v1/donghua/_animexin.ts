@@ -43,7 +43,18 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
   const url = BASE + path + qs;
   const resp = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "text/html", "Accept-Language": "en-US,en;q=0.9" },
+    headers: {
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+      "Accept-Encoding": "gzip, deflate, br",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+      Referer: "https://animexin.dev/",
+      "Sec-Fetch-Dest": "document",
+      "Sec-Fetch-Mode": "navigate",
+      "Sec-Fetch-Site": "same-origin",
+    },
   });
   if (!resp.ok) throw new Error(`AnimeXin ${resp.status}`);
   return resp.text();
