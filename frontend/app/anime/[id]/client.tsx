@@ -22,15 +22,13 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
   useEffect(() => {
     setLoading(true);
     setError(false);
-    api.detail(malId, source)
-      .then((res) => {
-        setDetail(res.data);
-        return Promise.all([
-          api.characters(malId).catch(() => ({ data: [] })),
-          api.recommendations(malId).catch(() => ({ data: [] })),
-        ]);
-      })
-      .then(([charsRes, recsRes]) => {
+    Promise.all([
+      api.detail(malId, source),
+      api.characters(malId).catch(() => ({ data: [] })),
+      api.recommendations(malId).catch(() => ({ data: [] })),
+    ])
+      .then(([detailRes, charsRes, recsRes]) => {
+        setDetail(detailRes.data);
         setCharacters(charsRes.data || []);
         setRecommendations(recsRes.data || []);
         setLoading(false);
