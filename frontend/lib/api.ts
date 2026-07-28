@@ -232,9 +232,9 @@ export const api = {
   newsRankings: (ranking_type = "top-anime") => 
     request<any>(`/api/v1/news/rankings/${ranking_type}`, 3600),
 
-  // Authentication
+  // Authentication (local routes — backend on Render is suspended)
   register: (email: string, username: string, password: string) =>
-    fetch(`${API_BASE}/api/v1/auth/register`, {
+    fetch(`/api/v1/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, username, password }),
@@ -245,7 +245,7 @@ export const api = {
     }),
 
   login: (email: string, password: string) =>
-    fetch(`${API_BASE}/api/v1/auth/login`, {
+    fetch(`/api/v1/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -256,7 +256,13 @@ export const api = {
     }),
 
   getMe: (token: string) =>
-    authedRequest<UserProfile>("/api/v1/auth/me", token),
+    fetch(`/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    }).then(async (res) => {
+      if (!res.ok) throw new ApiError(res.status, "Auth failed");
+      return res.json() as Promise<UserProfile>;
+    }),
 
   // Watchlist
   getWatchlist: (token: string) =>
