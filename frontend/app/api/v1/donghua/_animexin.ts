@@ -51,16 +51,136 @@ async function fetchDirect(url: string): Promise<Response> {
   });
 }
 
-async function fetchViaProxy(url: string): Promise<Response> {
-  const proxyUrl = `https://r.jina.ai/http://animexin.dev${new URL(url).pathname}${new URL(url).search}`;
-  return fetch(proxyUrl, {
+// Extract donghua items from markdown link lines (Jina AI output)
+// Expected format:
+//   [TYPE Ep N SUBTITLE ![ALT](IMG_URL) TITLE ## ...](PAGE_URL "...")
+// or:
+//   [Sub TITLE TYPE Episode N ![ALT](IMG_URL) ## ...](PAGE_URL "...")
+function parseMarkdownLine(line: string): any | null {
+  // Match markdown link: [text](url "title")
+  const linkMatch = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
+  if (!linkMatch) return null;
+  const fullText = linkMatch[1];
+  const url = linkMatch[2].replace(/".*$/, "").trim();
+  if (!url || url === "#" || url.startsWith("http://animexin.dev/#")) return null;
+
+  // Extract image URL from markdown image syntax
+  const imgMatch = fullText.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  const poster = imgMatch ? imgMatch[1] : "";
+
+  // Extract episode number
+  const epMatch = fullText.match(/Ep(?:isode)?\s*(\d+)/i);
+  const episode = epMatch ? parseInt(epMatch[1]) : null;
+
+  // Extract subtitle type
+  const subMatch = fullText.match(/^(Sub|Dub)\b/i);
+  const subType = subMatch ? subMatch[1] : "Sub";
+
+  // Extract media type (ONA, Movie, etc.)
+  const typeMatch = fullText.match(/\b(ONA|Movie|OVA|Special|TV)\b/i);
+  const mediaType = typeMatch ? typeMatch[1] : "ONA";
+
+  // Extract title - text between image and ##, or after ##
+  let title = "";
+  const afterImg = fullText.replace(/!\[[^\]]*\]\([^)]+\)\s*/, "");
+  const hashSplit = afterImg.split("##");
+  if (hashSplit.length > 1) {
+    title = hashSplit[0]
+      .replace(/^(Sub|Dub)\s+/i, "")
+      .replace(/\s+(ONA|Movie|OVA|Special|TV)\b.*$/i, "")
+      .replace(/\s+Ep(?:isode)?\s*\d+.*$/i, "")
+      .trim();
+    if (!title) title = hashSplit[1].trim();
+  } else {
+    title = afterImg.trim();
+  }
+  title = title.replace(/\[[^\]]*\]$/, "").trim();
+
+  // Some titles have " ## " in them
+  if (!title) {
+    const textParts = fullText.split("##");
+    if (textParts.length > 1) {
+      title = textParts[textParts.length - 1].trim();
+    }
+  }
+
+  // Clean up the title
+  title = title.replace(/^\d+\s+/, "").replace(/\s*\[.*$/, "").trim();
+  if (!title) {
+    // Try getting title from URL
+    const urlParts = url.replace(/\/$/, "").split("/");
+    title = decodeURIComponent(urlParts[urlParts.length - 1] || "")
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c: string) => c.toUpperCase());
+  }
+
+  // Extract slug from URL
+  let slug = url.replace(/\/$/, "").split("/").pop() || "";
+  slug = slug.replace(/-episode-\d+.*$/, "").replace(/-(?:indonesia|english|subtitle).*$/i, "");
+
+  return { slug, title, poster, episode, sub_type: subType, type: mediaType, url: abs(url) };
+}
+
+// Parse markdown homepage output from Jina AI
+export function parseHomepageFromMarkdown(text: string) {
+  const popular: any[] = [];
+  const latest: any[] = [];
+  const lines = text.split("\n");
+  let section: string | null = null;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("## ") || trimmed.startsWith("### ")) {
+      const header = trimmed.replace(/^#+\s*/, "").toLowerCase();
+      if (header.includes("popular")) section = "popular";
+      else if (header.includes("latest") || header.includes("release")) section = "latest";
+      else if (header.includes("recommendation") || header.includes("blog")) section = null;
+      else section = null;
+      continue;
+    }
+    if (!section || !trimmed.startsWith("[")) continue;
+
+    const item = parseMarkdownLine(trimmed);
+    if (item && item.title) {
+      if (section === "popular") popular.push(item);
+      else if (section === "latest") latest.push(item);
+    }
+  }
+
+  return { popular, latest };
+}
+
+// Parse markdown list/cards output from Jina AI (for paginated pages)
+export function parseCardsFromMarkdown(text: string): any[] {
+  const items: any[] = [];
+  const lines = text.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("[")) continue;
+    // Skip navigation links
+    if (/^\[(Next|Prev|View All|1|2|3)\]/.test(trimmed)) continue;
+    const item = parseMarkdownLine(trimmed);
+    if (item && item.title) items.push(item);
+  }
+  return items;
+}
+
+async function fetchViaJina(path: string, params?: Record<string, string>): Promise<string> {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const targetUrl = BASE + path + qs;
+  const proxyUrl = `https://r.jina.ai/http://${targetUrl.replace(/^https?:\/\//, "")}`;
+  const resp = await fetch(proxyUrl, {
     headers: {
-      Authorization: "Bearer jina_abc123",
       "User-Agent": UA,
-      Accept: "text/html",
-      "X-Return-Format": "text",
+      Accept: "text/plain",
     },
+    signal: AbortSignal.timeout(20000),
   });
+  if (!resp.ok) throw new Error(`Jina AI ${resp.status}`);
+  const text = await resp.text();
+  // Jina AI wraps the content in markdown, extract from Markdown Content: section
+  const mdMatch = text.match(/Markdown Content:\s*\n([\s\S]*)/);
+  return mdMatch ? mdMatch[1].trim() : text;
 }
 
 export async function fetchHtml(path: string, params?: Record<string, string>): Promise<string> {
@@ -74,25 +194,27 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   if (resp.ok) return resp.text();
   errors.push(`Direct ${resp.status}`);
 
-  // Fallback proxies when direct fetch is blocked
-  const proxyAttempts = [
-    async () => {
-      const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
-        headers: { "User-Agent": UA },
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!r.ok) throw new Error(`AllOrigins ${r.status}`);
-      return r.text();
-    },
-  ];
+  // Fallback: try Jina AI (returns markdown)
+  try {
+    const md = await fetchViaJina(path, params);
+    if (md?.length > 50) return md;
+  } catch (e: any) {
+    errors.push(e.message || "Jina AI failed");
+  }
 
-  for (const attempt of proxyAttempts) {
-    try {
-      const html = await attempt();
-      if (html?.length > 100) return html;
-    } catch (e: any) {
-      errors.push(e.message || "Proxy failed");
+  // Fallback: AllOrigins proxy
+  try {
+    const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (r.ok) {
+      const text = await r.text();
+      if (text?.length > 100) return text;
     }
+    errors.push(`AllOrigins ${r.status}`);
+  } catch (e: any) {
+    errors.push(e.message || "AllOrigins failed");
   }
 
   throw new Error(`AnimeXin fetch failed: ${errors.join(", ")}`);
@@ -198,6 +320,28 @@ export function parseSearch(html: string): any[] {
   return items;
 }
 
+// Auto-detect content format and parse accordingly
+export function parseCardsAuto(content: string): any[] {
+  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
+    return parseCards(content);
+  }
+  return parseCardsFromMarkdown(content);
+}
+
+export function parseHomepageAuto(content: string) {
+  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
+    return parseHomepage(content);
+  }
+  return parseHomepageFromMarkdown(content);
+}
+
+export function parseSearchAuto(content: string): any[] {
+  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
+    return parseSearch(content);
+  }
+  return parseCardsFromMarkdown(content);
+}
+
 export function parseEpisodeServers(html: string): {
   servers: { label: string; stream_url: string }[];
   prev_url: string | null;
@@ -213,7 +357,6 @@ export function parseEpisodeServers(html: string): {
       servers.push({ label, stream_url: src });
     }
   });
-  // Fallback: direct iframe in content
   if (servers.length === 0) {
     $("iframe").each((_: any, el: any) => {
       const src = $(el).attr("src") || $(el).attr("data-src") || "";
