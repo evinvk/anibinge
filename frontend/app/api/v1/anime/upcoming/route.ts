@@ -9,7 +9,7 @@ query($page:Int,$perPage:Int){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status
-      genres description(format:PLAIN)
+      genres description
       startDate{year month day} season format
     }
   }
