@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-const GOGO_API = "https://gogoanimehd.to";
+import { fetchGogoApi, GOGO_BASE } from "../../_gogoanime";
 
 function dubSlug(slug: string, audio: string): string {
   return audio === "dub" ? (slug.endsWith("-dub") ? slug : `${slug}-dub`) : slug.replace(/-dub$/, "");
@@ -19,19 +17,13 @@ export async function GET(req: Request) {
   if (!slug) return NextResponse.json({ data: null });
 
   try {
-    const resp = await fetch(
-      `${GOGO_API}/api/episode/${slug}/ep-${ep}`,
-      { headers: { "User-Agent": UA, Referer: `${GOGO_API}/` }, signal: AbortSignal.timeout(15000) }
-    );
-    if (!resp.ok) return NextResponse.json({ data: null });
-    const data = await resp.json();
-
+    const data = await fetchGogoApi(`/api/episode/${slug}/ep-${ep}`, 15000);
     if (!data) return NextResponse.json({ data: null });
 
     const result: any = {};
 
     if (data.defaultStreamingUrl) {
-      result.direct_stream = { stream_url: data.defaultStreamingUrl, referer: `${GOGO_API}/` };
+      result.direct_stream = { stream_url: data.defaultStreamingUrl, referer: `${GOGO_BASE}/` };
     } else if (data.sources?.length) {
       result.qualities = data.sources.map((s: any) => ({
         quality: s.label || s.quality || "Auto",

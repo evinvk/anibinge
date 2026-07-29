@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-const GOGO_API = "https://gogoanimehd.to";
+import { fetchGogoApi } from "../../_gogoanime";
 
 export async function GET(req: Request) {
   const segments = new URL(req.url).pathname.split("/").filter(Boolean);
@@ -11,13 +9,9 @@ export async function GET(req: Request) {
   if (!slug) return NextResponse.json({ error: "Missing slug" }, { status: 400 });
 
   try {
-    const resp = await fetch(
-      `${GOGO_API}/api/episode/${slug}/ep-1`,
-      { headers: { "User-Agent": UA, Referer: `${GOGO_API}/` }, signal: AbortSignal.timeout(10000) }
-    );
-    if (!resp.ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const data = await fetchGogoApi(`/api/episode/${slug}/ep-1`);
+    if (!data) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-    const data = await resp.json();
     const info = data.animeInfo || {};
 
     return NextResponse.json({
@@ -40,7 +34,7 @@ export async function GET(req: Request) {
         next_episode: data.nextEpisode?.title || null,
       },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 502 });
+  } catch {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 }

@@ -1,4 +1,5 @@
 import * as cheerio from "cheerio";
+import { fetchViaCfProxy } from "@/lib/cf-proxy";
 
 const BASE = "https://animexin.dev";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
@@ -49,18 +50,6 @@ async function fetchDirect(url: string): Promise<Response> {
       Referer: "https://animexin.dev/",
     },
   });
-}
-
-const CF_PROXY = process.env.CF_PROXY_URL || "";
-
-async function fetchViaCfProxy(url: string): Promise<string> {
-  if (!CF_PROXY) throw new Error("CF_PROXY_URL not configured");
-  const proxyUrl = `${CF_PROXY}?url=${encodeURIComponent(url)}`;
-  const resp = await fetch(proxyUrl, {
-    signal: AbortSignal.timeout(5000),
-  });
-  if (!resp.ok) throw new Error(`CF Proxy ${resp.status}`);
-  return resp.text();
 }
 
 // Extract donghua items from markdown link lines (Jina AI output)

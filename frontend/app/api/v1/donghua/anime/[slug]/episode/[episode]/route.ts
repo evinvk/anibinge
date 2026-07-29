@@ -14,17 +14,25 @@ export async function GET(
     const detail = parseDetailAuto(detailRes, slug);
     const title = detail.title || slug;
 
-    const epUrl = `/${slug}/episode-${epNum}/`;
+    const epEntry = detail.episode_list?.find((e: any) => e.number === epNum);
+    const epUrl = epEntry?.url || `/${slug}/episode-${epNum}/`;
     const html = await fetchHtml(epUrl);
     const { servers, prev_url, next_url } = parseEpisodeServersAuto(html);
+
+    // Find prev/next episode URLs
+    const prevEntry = epNum > 1 ? detail.episode_list?.find((e: any) => e.number === epNum - 1) : null;
+    const nextEntry = detail.episode_list?.find((e: any) => e.number === epNum + 1) || null;
 
     return NextResponse.json({
       data: {
         title,
         servers,
-        prev_url: epNum > 1 ? `/donghua/watch/${slug}?ep=${epNum - 1}` : null,
-        next_url: detail.episodes && epNum < detail.episodes
-          ? `/donghua/watch/${slug}?ep=${epNum + 1}` : null,
+        prev_url: prevEntry?.url
+          ? `/donghua/watch/${slug}?ep=${epNum - 1}`
+          : epNum > 1 ? `/donghua/watch/${slug}?ep=${epNum - 1}` : null,
+        next_url: nextEntry?.url
+          ? `/donghua/watch/${slug}?ep=${epNum + 1}`
+          : null,
       },
     });
   } catch (e: any) {

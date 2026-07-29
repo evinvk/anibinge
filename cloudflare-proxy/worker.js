@@ -3,7 +3,7 @@
 // 2. Paste this code, deploy
 // 3. Set env var CF_PROXY_URL in your Vercel project to the worker URL
 
-const ALLOWED_HOSTS = ["animexin.dev", "animexin.xyz", "animexin.vip", "gogoanime.cl", "gogoanime.bid", "gogocdn.net"];
+const ALLOWED_HOSTS = ["animexin.dev", "animexin.xyz", "animexin.vip", "gogoanimehd.to", "gogoanime.cl", "gogoanime.bid", "gogocdn.net"];
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 

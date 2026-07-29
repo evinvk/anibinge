@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-const GOGO_API = "https://gogoanimehd.to";
+import { fetchGogoApi, GOGO_BASE, UA } from "../../_gogoanime";
 
 function dubSlug(slug: string, audio: string): string {
   return audio === "dub" ? (slug.endsWith("-dub") ? slug : `${slug}-dub`) : slug.replace(/-dub$/, "");
@@ -19,17 +17,12 @@ export async function GET(req: Request) {
   if (!slug) return NextResponse.json({ error: "Missing slug" }, { status: 400 });
 
   try {
-    const resp = await fetch(
-      `${GOGO_API}/api/episode/${slug}/ep-${ep}`,
-      { headers: { "User-Agent": UA, Referer: `${GOGO_API}/` }, signal: AbortSignal.timeout(15000) }
-    );
-    if (!resp.ok) return NextResponse.json({ error: "Episode not found" }, { status: 404 });
-    const data = await resp.json();
-    const proxyUrl = data?.defaultStreamingUrl;
-    if (!proxyUrl) return NextResponse.json({ error: "No stream URL" }, { status: 404 });
+    const data = await fetchGogoApi(`/api/episode/${slug}/ep-${ep}`, 15000);
+    const streamingUrl = data?.defaultStreamingUrl;
+    if (!streamingUrl) return NextResponse.json({ error: "No stream URL" }, { status: 404 });
 
-    const m3u8Resp = await fetch(proxyUrl, {
-      headers: { "User-Agent": UA, Referer: `${GOGO_API}/` },
+    const m3u8Resp = await fetch(streamingUrl, {
+      headers: { "User-Agent": UA, Referer: `${GOGO_BASE}/` },
       signal: AbortSignal.timeout(15000),
     });
     if (!m3u8Resp.ok) return NextResponse.json({ error: "M3U8 fetch failed" }, { status: 502 });
