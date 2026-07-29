@@ -51,6 +51,18 @@ async function fetchDirect(url: string): Promise<Response> {
   });
 }
 
+const CF_PROXY = process.env.CF_PROXY_URL || "";
+
+async function fetchViaCfProxy(url: string): Promise<string> {
+  if (!CF_PROXY) throw new Error("CF_PROXY_URL not configured");
+  const proxyUrl = `${CF_PROXY}?url=${encodeURIComponent(url)}`;
+  const resp = await fetch(proxyUrl, {
+    signal: AbortSignal.timeout(15000),
+  });
+  if (!resp.ok) throw new Error(`CF Proxy ${resp.status}`);
+  return resp.text();
+}
+
 // Extract donghua items from markdown link lines (Jina AI output)
 // Expected format:
 //   [TYPE Ep N SUBTITLE ![ALT](IMG_URL) TITLE ## ...](PAGE_URL "...")
@@ -193,6 +205,14 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   const resp = await fetchDirect(url);
   if (resp.ok) return resp.text();
   errors.push(`Direct ${resp.status}`);
+
+  // Fallback: Cloudflare Worker proxy (not blocked by animexin.dev's Cloudflare)
+  try {
+    const html = await fetchViaCfProxy(url);
+    if (html?.length > 100) return html;
+  } catch (e: any) {
+    errors.push(e.message || "CF Proxy failed");
+  }
 
   // Fallback: try Jina AI (returns markdown)
   try {
