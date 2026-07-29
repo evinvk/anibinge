@@ -3,8 +3,6 @@ import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import DonghuaWatchPlayer from "@/components/donghua-watch-player";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ ep?: string }>;
@@ -12,7 +10,7 @@ interface PageProps {
 
 async function fetchDonghuaDetail(slug: string): Promise<{ title: string; description: string; poster: string | null; genres: string[] }> {
   try {
-    const res = await fetch(`${API_BASE}/api/v1/donghua/anime/${slug}`, { signal: AbortSignal.timeout(8000) });
+    const res = await fetch(`/api/v1/donghua/anime/${slug}`, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
     if (data.data) return { title: data.data.title, description: data.data.description || "", poster: data.data.poster, genres: data.data.genres || [] };
   } catch {}

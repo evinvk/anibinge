@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseEpisodeServers, parseDetail } from "../../../../_animexin";
+import { fetchHtml, parseEpisodeServersAuto, parseDetailAuto } from "../../../../_animexin";
 
 export async function GET(
   req: Request,
@@ -11,12 +11,12 @@ export async function GET(
 
   try {
     const detailRes = await fetchHtml(`/${slug}/`);
-    const detail = parseDetail(detailRes, slug);
+    const detail = parseDetailAuto(detailRes, slug);
     const title = detail.title || slug;
 
     const epUrl = `/${slug}/episode-${epNum}/`;
     const html = await fetchHtml(epUrl);
-    const { servers, prev_url, next_url } = parseEpisodeServers(html);
+    const { servers, prev_url, next_url } = parseEpisodeServersAuto(html);
 
     return NextResponse.json({
       data: {

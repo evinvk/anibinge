@@ -342,6 +342,179 @@ export function parseSearchAuto(content: string): any[] {
   return parseCardsFromMarkdown(content);
 }
 
+// Parse donghua detail from Jina AI markdown output
+export function parseDetailFromMarkdown(text: string, slug: string) {
+  const lines = text.split("\n");
+
+  // Title — first h1 after markdown content
+  let title = slug;
+  for (const line of lines) {
+    const m = line.match(/^#\s+(.+)/);
+    if (m) { title = m[1].trim(); break; }
+  }
+
+  // Poster — first image URL
+  let poster = "";
+  for (const line of lines) {
+    const m = line.match(/!\[.*?\]\(([^)]+)\)/);
+    if (m) { poster = abs(m[1]); break; }
+  }
+
+  // Rating
+  let score: number | null = null;
+  for (const line of lines) {
+    const m = line.match(/\*\*Rating\s*([\d.]+)\*\*/);
+    if (m) { score = parseFloat(m[1]); break; }
+  }
+
+  // Metadata line (Status, Type, Episodes, Released, Duration, Country)
+  const meta: Record<string, string> = {};
+  const metaLine = lines.find(l => l.includes("**Status:**") && l.includes("**Type:**"));
+  if (metaLine) {
+    const parts = metaLine.split("**").filter(Boolean);
+    for (let i = 0; i < parts.length; i += 2) {
+      const key = parts[i].replace(/:$/, "").trim().toLowerCase();
+      const val = parts[i + 1] ? parts[i + 1].replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").trim() : "";
+      if (key) meta[key] = val;
+    }
+  }
+
+  // Genres — line with genre links
+  const genres: string[] = [];
+  for (const line of lines) {
+    if (line.includes("https://animexin.dev/genres/")) {
+      const genreMatches = line.matchAll(/\[([^\]]+)\]\(https:\/\/animexin\.dev\/genres\/[^)]+\)/g);
+      for (const gm of genreMatches) {
+        const g = gm[1].trim();
+        if (g && !genres.includes(g)) genres.push(g);
+      }
+      if (genres.length > 0) break;
+    }
+  }
+
+  // Description — after "Synopsis" header
+  let description = "";
+  let inSynopsis = false;
+  for (const line of lines) {
+    if (/^##\s+Synopsis/i.test(line)) { inSynopsis = true; continue; }
+    if (inSynopsis) {
+      if (/^##\s/.test(line)) break;
+      const clean = line.replace(/^\*\*/, "").replace(/\*\*$/, "").trim();
+      if (clean && !clean.startsWith("[") && !clean.startsWith("!")) description += clean + " ";
+    }
+  }
+  description = description.trim();
+
+  // Episode list
+  const episodeList: any[] = [];
+  let inEpisodes = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^###?\s+Watch/i.test(trimmed)) { inEpisodes = true; continue; }
+    if (inEpisodes && /^###?\s/.test(trimmed)) break;
+    if (!inEpisodes) continue;
+    // Match: * [N Title ...](url)
+    const itemMatch = trimmed.match(/^\*\s+\[(\d+)\s+(.+?)\]\(([^)]+)\)/);
+    if (itemMatch) {
+      const epNum = parseInt(itemMatch[1]);
+      const epTitle = itemMatch[2].trim();
+      const epUrl = abs(itemMatch[3]);
+      episodeList.push({
+        number: epNum,
+        title: epTitle,
+        url: epUrl,
+        slug: epUrl.replace(/\/$/, "").split("/").pop() || "",
+        date: null,
+      });
+    }
+  }
+  episodeList.sort((a, b) => a.number - b.number);
+
+  return {
+    slug,
+    title,
+    title_alt: null,
+    poster,
+    score,
+    status: meta["status"] || "Ongoing",
+    genres,
+    description,
+    episodes: meta["episodes"] ? parseInt(meta["episodes"]) || episodeList.length || null : episodeList.length || null,
+    type: meta["type"] || "ONA",
+    country: meta["country"] || "China",
+    released: meta["released"] || null,
+    duration: meta["duration"] || null,
+    episode_list: episodeList,
+    url: `${BASE}/${slug}/`,
+  };
+}
+
+// Parse donghua episode servers from Jina AI markdown output
+export function parseEpisodeServersFromMarkdown(text: string) {
+  const lines = text.split("\n");
+  const servers: { label: string; stream_url: string }[] = [];
+
+  // Find video links like [Video N](url) or [Server N](url)
+  let serverIdx = 0;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const videoMatch = trimmed.match(/^\[(?:Video|Server|Player)\s*(\d*)\s*\]\(([^)]+)\)/i);
+    if (videoMatch) {
+      const url = videoMatch[2].trim();
+      if (url && url.startsWith("http") && !url.includes("facebook") && !url.includes("google")) {
+        serverIdx++;
+        servers.push({
+          label: `Server ${videoMatch[1] || serverIdx}`,
+          stream_url: url,
+        });
+      }
+    }
+  }
+
+  // Also check for direct embed URLs
+  if (servers.length === 0) {
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const m = trimmed.match(/\]\(((?:https?:)?\/\/[^)]+)\)/);
+      if (m) {
+        const url = m[1];
+        if (url.startsWith("http") && !url.includes("facebook") && !url.includes("google") && !url.includes("animexin")) {
+          servers.push({ label: `Server ${servers.length + 1}`, stream_url: url });
+        }
+      }
+    }
+  }
+
+  // Prev/Next links
+  let prev_url: string | null = null;
+  let next_url: string | null = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const prevMatch = trimmed.match(/^\[Prev\]\(([^)]+)\)/i);
+    if (prevMatch) { prev_url = prevMatch[1]; continue; }
+    const nextMatch = trimmed.match(/^\[Next\]\(([^)]+)\)/i);
+    if (nextMatch) { next_url = nextMatch[1]; }
+  }
+
+  return { servers, prev_url, next_url };
+}
+
+// Auto-detect content format for detail
+export function parseDetailAuto(content: string, slug: string) {
+  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
+    return parseDetail(content, slug);
+  }
+  return parseDetailFromMarkdown(content, slug);
+}
+
+// Auto-detect content format for episode servers
+export function parseEpisodeServersAuto(content: string) {
+  if (content.includes("<") && (content.includes("<div") || content.includes("<iframe") || content.includes("<html") || content.includes("class=") || content.includes("option"))) {
+    return parseEpisodeServers(content);
+  }
+  return parseEpisodeServersFromMarkdown(content);
+}
+
 export function parseEpisodeServers(html: string): {
   servers: { label: string; stream_url: string }[];
   prev_url: string | null;

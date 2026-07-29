@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseDetail } from "../../_animexin";
+import { fetchHtml, parseDetailAuto } from "../../_animexin";
 
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   try {
     const html = await fetchHtml(`/${slug}/`);
-    const detail = parseDetail(html, slug);
+    const detail = parseDetailAuto(html, slug);
     if (!detail.title) {
       return NextResponse.json({ error: "Donghua not found" }, { status: 404 });
     }
