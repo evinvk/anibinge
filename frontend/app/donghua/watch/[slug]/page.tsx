@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Loader2 } from "lucide-react";
+import { fetchHtml, parseDetailAuto } from "@/app/api/v1/donghua/_animexin";
 import DonghuaWatchPlayer from "@/components/donghua-watch-player";
 
 interface PageProps {
@@ -10,9 +11,9 @@ interface PageProps {
 
 async function fetchDonghuaDetail(slug: string): Promise<{ title: string; description: string; poster: string | null; genres: string[] }> {
   try {
-    const res = await fetch(`/api/v1/donghua/anime/${slug}`, { signal: AbortSignal.timeout(8000) });
-    const data = await res.json();
-    if (data.data) return { title: data.data.title, description: data.data.description || "", poster: data.data.poster, genres: data.data.genres || [] };
+    const html = await fetchHtml(`/${slug}/`);
+    const detail = parseDetailAuto(html, slug);
+    return { title: detail.title || slug, description: detail.description || "", poster: detail.poster, genres: detail.genres || [] };
   } catch {}
   return { title: slug.replace(/-/g, " "), description: "", poster: null, genres: [] };
 }
