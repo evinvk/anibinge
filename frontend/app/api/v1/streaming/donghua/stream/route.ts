@@ -36,7 +36,7 @@ export async function GET(req: Request) {
       try {
         const resp = await fetch(
           `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
-          { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(10000) }
+          { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(5000) }
         );
         if (!resp.ok) continue;
         const data = await resp.json();

@@ -57,7 +57,7 @@ async function fetchViaCfProxy(url: string): Promise<string> {
   if (!CF_PROXY) throw new Error("CF_PROXY_URL not configured");
   const proxyUrl = `${CF_PROXY}?url=${encodeURIComponent(url)}`;
   const resp = await fetch(proxyUrl, {
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(5000),
   });
   if (!resp.ok) throw new Error(`CF Proxy ${resp.status}`);
   return resp.text();
@@ -186,7 +186,7 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
       "User-Agent": UA,
       Accept: "text/plain",
     },
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(8000),
   });
   if (!resp.ok) throw new Error(`Jina AI ${resp.status}`);
   const text = await resp.text();
@@ -226,7 +226,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   try {
     const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
       headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(5000),
     });
     if (r.ok) {
       const text = await r.text();
@@ -474,46 +474,47 @@ export function parseEpisodeServersFromMarkdown(text: string) {
   const lines = text.split("\n");
   const servers: { label: string; stream_url: string }[] = [];
 
-  // Find video links like [Video N](url) or [Server N](url)
-  let serverIdx = 0;
+  // Match [Video N](url), [Server N](url), [Player N](url), or plain embed URLs (dailymotion, etc.)
+  const knownEmbedPatterns = [
+    /^\[(?:Video|Server|Player)\s*(\d*)\s*\]\(([^)]+)\)/i,
+    /dailymotion\.com\/(?:video|embed)\/([a-zA-Z0-9]+)/,
+    /ok\.ru\/(?:video|embed)\/(\d+)/,
+    /youtube\.com\/embed\/([a-zA-Z0-9_-]+)/,
+    /youtu\.be\/([a-zA-Z0-9_-]+)/,
+  ];
+
   for (const line of lines) {
     const trimmed = line.trim();
-    const videoMatch = trimmed.match(/^\[(?:Video|Server|Player)\s*(\d*)\s*\]\(([^)]+)\)/i);
-    if (videoMatch) {
-      const url = videoMatch[2].trim();
-      if (url && url.startsWith("http") && !url.includes("facebook") && !url.includes("google")) {
-        serverIdx++;
-        servers.push({
-          label: `Server ${videoMatch[1] || serverIdx}`,
-          stream_url: url,
-        });
-      }
-    }
-  }
-
-  // Also check for direct embed URLs
-  if (servers.length === 0) {
-    for (const line of lines) {
-      const trimmed = line.trim();
-      const m = trimmed.match(/\]\(((?:https?:)?\/\/[^)]+)\)/);
+    for (const pattern of knownEmbedPatterns) {
+      const m = trimmed.match(pattern);
       if (m) {
-        const url = m[1];
-        if (url.startsWith("http") && !url.includes("facebook") && !url.includes("google") && !url.includes("animexin")) {
+        let url = "";
+        if (pattern === knownEmbedPatterns[0]) {
+          url = m[2].trim();
+        } else {
+          // Construct embed URL from the matched ID
+          const id = m[1];
+          if (trimmed.includes("dailymotion")) url = `https://www.dailymotion.com/embed/video/${id}`;
+          else if (trimmed.includes("ok.ru")) url = `https://ok.ru/videoembed/${id}`;
+          else if (trimmed.includes("youtube") || trimmed.includes("youtu.be")) url = `https://www.youtube.com/embed/${id}`;
+        }
+        if (url && !servers.some(s => s.stream_url === url)) {
           servers.push({ label: `Server ${servers.length + 1}`, stream_url: url });
         }
+        break; // matched this line, move to next
       }
     }
   }
 
-  // Prev/Next links
+  // Prev/Next
   let prev_url: string | null = null;
   let next_url: string | null = null;
   for (const line of lines) {
-    const trimmed = line.trim();
-    const prevMatch = trimmed.match(/^\[Prev\]\(([^)]+)\)/i);
-    if (prevMatch) { prev_url = prevMatch[1]; continue; }
-    const nextMatch = trimmed.match(/^\[Next\]\(([^)]+)\)/i);
-    if (nextMatch) { next_url = nextMatch[1]; }
+    const t = line.trim();
+    const pm = t.match(/^\[Prev\]\(([^)]+)\)/i);
+    if (pm) { prev_url = pm[1]; continue; }
+    const nm = t.match(/^\[Next\]\(([^)]+)\)/i);
+    if (nm) { next_url = nm[1]; }
   }
 
   return { servers, prev_url, next_url };

@@ -89,11 +89,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, revalidateSeconds = 60, retries = 1): Promise<T> {
+async function request<T>(path: string, revalidateSeconds = 60, retries = 0): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${API_BASE}${path}`, {
         next: { revalidate: revalidateSeconds },
         signal: controller.signal,
@@ -121,7 +121,7 @@ async function authedRequest<T>(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${API_BASE}${path}`, {
         ...init,
         cache: "no-store",
