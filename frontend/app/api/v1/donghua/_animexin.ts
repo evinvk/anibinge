@@ -1,7 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchViaCfProxy } from "@/lib/cf-proxy";
 
-const BASE = "https://animexin.dev";
+export const BASE = "https://animexin.dev";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 function abs(url: string): string {
