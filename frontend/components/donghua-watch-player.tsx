@@ -24,9 +24,8 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [prevUrl, setPrevUrl] = useState<string | null>(null);
-  const [nextUrl, setNextUrl] = useState<string | null>(null);
-  const playerRef = useRef<HTMLDivElement>(null);
+  const [isDirectStream, setIsDirectStream] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   // Fetch anime detail for title + episode count
   useEffect(() => {
@@ -36,38 +35,64 @@ export default function DonghuaWatchPage({ slug }: Props) {
     }).catch(() => {});
   }, [slug]);
 
-  // Fetch servers + stream when episode or server changes
-  const fetchStream = useCallback(async (ep: number, serverIdx: number) => {
+  // Fetch stream when episode changes
+  const fetchStream = useCallback(async (ep: number) => {
     setLoadingStream(true);
     setError(null);
+    setServers([]);
+    setStreamUrl(null);
+
+    let found = false;
+
+    // Try Anivexa direct stream first
+    try {
+      const res = await api.donghuaStream(slug, ep);
+      const s = res.data;
+      if (s?.stream_url) {
+        setServers([{ label: "Direct", stream_url: s.stream_url }]);
+        setActiveServer(0);
+        setStreamUrl(s.stream_url);
+        setIsDirectStream(true);
+        found = true;
+      }
+    } catch {}
+
+    // Also try animexin embed servers (as fallback)
     try {
       const res = await api.donghuaServers(slug, ep);
       const data = res.data;
-      setServers(data.servers || []);
-      setPrevUrl(data.prev_url || null);
-      setNextUrl(data.next_url || null);
-
-      if (data.servers && data.servers.length > 0) {
-        const idx = Math.min(serverIdx, data.servers.length - 1);
-        setActiveServer(idx);
-        setStreamUrl(data.servers[idx].stream_url);
-      } else {
-        setError("No streaming servers found for this episode.");
+      const embedServers = (data.servers || []).map((s: DonghuaServer) => ({
+        ...s,
+        label: s.label.includes("Server") ? `Embed ${s.label.replace("Server ", "")}` : s.label,
+      }));
+      if (embedServers.length > 0) {
+        setServers((prev) => {
+          const combined = [...prev, ...embedServers];
+          return combined;
+        });
+        if (!found && embedServers.length > 0) {
+          setActiveServer(0);
+          setStreamUrl(embedServers[0].stream_url);
+          setIsDirectStream(false);
+        }
       }
-    } catch {
-      setError("Failed to load streaming servers.");
+    } catch {}
+
+    if (!found && servers.length === 0) {
+      setError("No streaming sources found for this episode.");
     }
     setLoadingStream(false);
   }, [slug]);
 
   useEffect(() => {
-    fetchStream(currentEp, 0);
+    fetchStream(currentEp);
   }, [currentEp, fetchStream]);
 
   const handleServerChange = (idx: number) => {
     if (servers[idx]) {
       setActiveServer(idx);
       setStreamUrl(servers[idx].stream_url);
+      setIsDirectStream(idx === 0 && servers[0]?.label === "Direct");
     }
   };
 
@@ -76,12 +101,13 @@ export default function DonghuaWatchPage({ slug }: Props) {
     setCurrentEp(ep);
   };
 
-  const iframeSrc = (() => {
+  const resolvedUrl = (() => {
     if (!streamUrl) return null;
-    // Protocol-relative URLs need https: prefix for iframe src
     if (streamUrl.startsWith("//")) return `https:${streamUrl}`;
     return streamUrl;
   })();
+
+  const isEmbed = resolvedUrl && !resolvedUrl.match(/\.(m3u8|mp4|webm)(\?|$)/i);
 
   return (
     <div className="min-h-screen bg-void">
@@ -111,10 +137,22 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <AlertTriangle className="h-8 w-8 text-amber-400" />
               <p className="text-sm text-mist">{error}</p>
             </div>
-          ) : iframeSrc ? (
+          ) : isDirectStream && resolvedUrl ? (
+            <video
+              ref={videoRef}
+              key={resolvedUrl}
+              className="absolute inset-0 h-full w-full"
+              controls
+              autoPlay
+              playsInline
+              src={resolvedUrl}
+            >
+              <p>Your browser does not support HTML video.</p>
+            </video>
+          ) : isEmbed && resolvedUrl ? (
             <iframe
-              key={`${currentEp}-${activeServer}`}
-              src={iframeSrc}
+              key={resolvedUrl}
+              src={resolvedUrl}
               className="absolute inset-0 h-full w-full border-0"
               allow="autoplay; fullscreen; picture-in-picture"
               referrerPolicy="no-referrer"
@@ -127,7 +165,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
         </div>
 
         {/* Server selector */}
-        {servers.length > 0 && (
+        {servers.length > 1 && (
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <Server className="h-4 w-4 text-mist" />
