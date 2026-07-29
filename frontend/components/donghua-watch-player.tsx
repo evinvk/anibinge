@@ -151,13 +151,26 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <p>Your browser does not support HTML video.</p>
             </video>
           ) : resolvedUrl ? (
-            <iframe
-              key={resolvedUrl}
-              src={resolvedUrl}
-              className="absolute inset-0 h-full w-full border-0"
-              allow="autoplay; fullscreen; picture-in-picture"
-              referrerPolicy="no-referrer"
-            />
+            <div className="absolute inset-0 flex flex-col">
+              <iframe
+                key={resolvedUrl}
+                src={resolvedUrl}
+                className="h-full w-full border-0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                referrerPolicy="no-referrer"
+              />
+              <div className="flex items-center justify-center gap-2 bg-void/90 px-3 py-1.5 text-xs text-mist">
+                <span>Embed blocked? Try opening directly:</span>
+                <a
+                  href={resolvedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded bg-red-500 px-2.5 py-1 text-white hover:bg-red-400 transition-colors"
+                >
+                  Open video
+                </a>
+              </div>
+            </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <p className="text-mist">No stream available</p>
