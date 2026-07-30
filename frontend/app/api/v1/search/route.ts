@@ -27,10 +27,16 @@ function normalizeMedia(m: any) {
   };
 }
 
-const STATUS_MAP: Record<string, string> = { airing: "RELEASING", complete: "FINISHED", upcoming: "NOT_YET_RELEASED" };
-const FORMAT_MAP: Record<string, string> = { tv: "TV", movie: "MOVIE", ova: "OVA", ona: "ONA", special: "SPECIAL" };
-const SORT_MAP: Record<string, string> = { score: "SCORE_DESC", popularity: "POPULARITY_DESC", title: "TITLE_ENGLISH", start_date: "START_DATE_DESC" };
-const ASC_MAP: Record<string, string> = { SCORE_DESC: "SCORE", POPULARITY_DESC: "POPULARITY", TITLE_ENGLISH: "TITLE_ENGLISH", START_DATE_DESC: "START_DATE" };
+const SEARCH_QUERY = `query($q:String,$page:Int,$perPage:Int,$genres:[String],$status:MediaStatus,$format:[MediaFormat],$sort:[MediaSort]){
+  Page(page:$page,perPage:$perPage){
+    media(search:$q,type:ANIME,isAdult:false,sort:$sort,genre_in:$genres,status:$status,format_in:$format){
+      id idMal title{english romaji native}
+      coverImage{large} bannerImage
+      averageScore popularity episodes status genres description
+      startDate{year month day} season format
+    }
+  }
+}`;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -44,51 +50,18 @@ export async function GET(req: Request) {
 
   if (!q) return NextResponse.json({ data: [] });
 
-  // Build filter args and variable declarations dynamically
-  const filterArgs: string[] = ["search:$q", "type:ANIME", "isAdult:false"];
-  const varDecls: string[] = [];
-  const vars: Record<string, any> = { q, page, perPage: 20 };
-
   let sortVal = "SEARCH_MATCH";
+  const SORT_MAP: Record<string, string> = { score: "SCORE_DESC", popularity: "POPULARITY_DESC", title: "TITLE_ENGLISH", start_date: "START_DATE_DESC" };
+  const ASC_MAP: Record<string, string> = { SCORE_DESC: "SCORE", POPULARITY_DESC: "POPULARITY", TITLE_ENGLISH: "TITLE_ENGLISH", START_DATE_DESC: "START_DATE" };
   if (rawOrderBy && SORT_MAP[rawOrderBy]) sortVal = SORT_MAP[rawOrderBy];
   if (rawSort === "asc" && ASC_MAP[sortVal]) sortVal = ASC_MAP[sortVal];
 
-  varDecls.push("$q:String", "$page:Int", "$perPage:Int");
-  varDecls.push("$sort:[MediaSort]");
-  filterArgs.push("sort:$sort");
-  vars.sort = [sortVal];
+  const STATUS_MAP: Record<string, string> = { airing: "RELEASING", complete: "FINISHED", upcoming: "NOT_YET_RELEASED" };
+  const FORMAT_MAP: Record<string, string> = { tv: "TV", movie: "MOVIE", ova: "OVA", ona: "ONA", special: "SPECIAL" };
 
-  if (rawGenres) {
-    const genres = rawGenres.split(",").map((g) => g.trim()).filter(Boolean);
-    if (genres.length) {
-      filterArgs.push("genre_in:$genres");
-      varDecls.push("$genres:[String]");
-      vars.genres = genres;
-    }
-  }
-
-  if (rawStatus && STATUS_MAP[rawStatus]) {
-    filterArgs.push("status:$status");
-    varDecls.push("$status:MediaStatus");
-    vars.status = STATUS_MAP[rawStatus];
-  }
-
-  if (rawType && FORMAT_MAP[rawType]) {
-    filterArgs.push("format_in:$format");
-    varDecls.push("$format:[MediaFormat]");
-    vars.format = [FORMAT_MAP[rawType]];
-  }
-
-  const query = `query(${varDecls.join(",")}){
-    Page(page:$page,perPage:$perPage){
-      media(${filterArgs.join(",")}){
-        id idMal title{english romaji native}
-        coverImage{large} bannerImage
-        averageScore popularity episodes status genres description
-        startDate{year month day} season format
-      }
-    }
-  }`;
+  const genres = rawGenres ? rawGenres.split(",").map((g) => g.trim()).filter(Boolean) : null;
+  const status = rawStatus && STATUS_MAP[rawStatus] ? STATUS_MAP[rawStatus] : null;
+  const format = rawType && FORMAT_MAP[rawType] ? [FORMAT_MAP[rawType]] : null;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
@@ -96,7 +69,10 @@ export async function GET(req: Request) {
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: vars }),
+      body: JSON.stringify({
+        query: SEARCH_QUERY,
+        variables: { q, page, perPage: 20, genres, status, format, sort: [sortVal] },
+      }),
       signal: controller.signal,
     });
     clearTimeout(timeout);

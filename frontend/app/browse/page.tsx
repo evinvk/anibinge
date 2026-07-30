@@ -1,4 +1,3 @@
-import { api } from "@/lib/api";
 import { BrowseFilters } from "@/components/browse-filters";
 import { InfiniteAnimeGrid } from "@/components/infinite-anime-grid";
 
@@ -24,16 +23,10 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
     ...(params.sort ? { sort: params.sort } : {}),
   };
 
-  let data: Awaited<ReturnType<typeof api.search>>["data"] = [];
-  try {
-    if (params.status === "upcoming") {
-      const res = await api.upcoming(1);
-      data = res.data;
-    } else {
-      const res = await api.search(query, filters);
-      data = res.data;
-    }
-  } catch { /* data stays empty, loaded client-side */ }
+  // The InfiniteAnimeGrid loads data client-side.
+  // Return empty initialItems so it always fetches on the client
+  // (avoids SSR fetch timing out or failing for filtered queries).
+  const data: any[] = [];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
