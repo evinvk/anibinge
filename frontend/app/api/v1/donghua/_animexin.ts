@@ -558,20 +558,23 @@ export async function searchAnimeXin(query: string): Promise<any[]> {
   return parseSearchAuto(html);
 }
 
+function looksLikeEpisodePage(detail: any): boolean {
+  if (detail.episode_list?.length >= 8) return false;
+  if (/\bepisode\s+\d+/i.test(detail.title || "")) {
+    if (detail.episode_list?.length > 1 && detail.episodes && detail.episodes <= detail.episode_list.length) return false;
+    return true;
+  }
+  if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length) return true;
+  return false;
+}
+
 export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | null> {
   const paths = [`/${slug}/`, `/anime/${slug}/`];
   for (const path of paths) {
     try {
       const html = await fetchHtml(path);
       const detail = parseDetailAuto(html, slug);
-      if (detail.title) {
-        const isEpPage = detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length
-          ? false
-          : detail.episode_list?.length >= 3
-            ? false
-            : /\bepisode\s+\d+/i.test(detail.title || "");
-        if (!isEpPage) return path;
-      }
+      if (detail.title && !looksLikeEpisodePage(detail)) return path;
     } catch {}
   }
   try {
