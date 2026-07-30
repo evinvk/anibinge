@@ -58,11 +58,11 @@ export default function ManhwaReaderClient({ chapterId, mangaId }: Props) {
     );
   }
 
-  if (error) {
+  if (error || (pages.length === 0 && !loading)) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black">
         <AlertTriangle className="h-8 w-8 text-amber-400" />
-        <p className="text-mist">{error}</p>
+        <p className="text-mist">{error || "No pages available for this chapter."}</p>
         {mangaId && <Link href={`/manhwa/${mangaId}`} className="text-sm text-emerald-400 hover:underline">Back to details</Link>}
       </div>
     );
