@@ -15,7 +15,7 @@ export default function ManhwaDetailPage({ params }: { params: Promise<{ id: str
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    params.then((p) => setId(p.id));
+    Promise.resolve(params).then((p) => setId(p.id));
   }, [params]);
 
   useEffect(() => {
