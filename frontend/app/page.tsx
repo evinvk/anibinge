@@ -18,12 +18,10 @@ export const metadata: Metadata = {
   },
 };
 
+const SITE_URL = "https://anibinge.fun";
+
 async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
-  try {
-    return await fn();
-  } catch (err) {
-    return null;
-  }
+  try { return await fn(); } catch { return null; }
 }
 
 async function TrendingRow({ data }: { data: any[] }) {
@@ -36,8 +34,32 @@ export default async function HomePage() {
   const trendingData = trendingRes?.data ?? [];
   const heroAnime = trendingData[0];
 
+  const itemList = trendingData.slice(0, 10).map((item: any, i: number) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    url: `${SITE_URL}/anime/${item.id || item.mal_id}?source=${item.source || "mal"}`,
+    name: item.title_english || item.title || "",
+    image: item.image || undefined,
+  }));
+
   return (
     <>
+      {itemList.length > 0 && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "ItemList",
+              name: "Trending Anime",
+              description: "Trending anime on Anibinge",
+              numberOfItems: itemList.length,
+              itemListElement: itemList,
+            }),
+          }}
+        />
+      )}
+
       {heroAnime && <HeroBanner anime={heroAnime} />}
 
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
