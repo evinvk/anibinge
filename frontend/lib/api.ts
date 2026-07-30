@@ -99,6 +99,18 @@ export class ApiError extends Error {
   }
 }
 
+async function fetchWithTimeout<T>(url: string, timeoutMs = 10000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) throw new ApiError(res.status, `Request to ${url} failed: ${res.status}`);
+    return res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function request<T>(path: string, revalidateSeconds = 60, retries = 0): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -373,11 +385,11 @@ export const api = {
   anitsuStream: (q: string, ep: number) =>
     request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
 
-  // Donghua-specific streaming (uses Anitsu + Anivexa, optimized for Chinese anime)
+  // Donghua streaming — uses AnimeXin primary, longer timeout for AnimeXin fetches
   donghuaStream: (q: string, ep: number, audio = "sub", anilistId?: number) => {
     let path = `/api/v1/streaming/donghua/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`;
     if (anilistId) path += `&anilist_id=${anilistId}`;
-    return request<any>(path, 30);
+    return fetchWithTimeout<{ data: DonghuaStreamData }>(`${API_BASE}${path}`, 30000);
   },
   donghuaResolve: (q: string) =>
     request<{ data: any[]; query: string }>(`/api/v1/streaming/donghua/resolve?q=${encodeURIComponent(q)}`, 300),
