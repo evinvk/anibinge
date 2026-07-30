@@ -11,6 +11,16 @@ interface Props {
   slug: string;
 }
 
+const EMBED_PATTERNS = [
+  /ok\.ru\/(?:videoembed|video)\/\d+/,
+  /dailymotion\.com/,
+  /dai\.ly/,
+];
+
+function isEmbedUrl(url: string): boolean {
+  return EMBED_PATTERNS.some((p) => p.test(url));
+}
+
 export default function DonghuaWatchPage({ slug }: Props) {
   const searchParams = useSearchParams();
   const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
@@ -21,12 +31,12 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [servers, setServers] = useState<DonghuaServer[]>([]);
   const [activeServer, setActiveServer] = useState(0);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Fetch anime detail for title + episode count
   useEffect(() => {
     api.donghuaDetail(slug).then((r) => {
       setTitle(r.data.title);
@@ -34,7 +44,17 @@ export default function DonghuaWatchPage({ slug }: Props) {
     }).catch(() => {});
   }, [slug]);
 
-  // Fetch all available sources when episode changes
+  const tryResolveEmbed = useCallback(async (url: string): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(url)}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data?.data?.stream_url || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
   const fetchStream = useCallback(async (ep: number) => {
     setLoadingStream(true);
     setError(null);
@@ -43,7 +63,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
 
     const allServers: DonghuaServer[] = [];
 
-    // Try Anivexa direct stream
     try {
       const res = await api.donghuaStream(slug, ep);
       const s = res.data;
@@ -52,7 +71,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
       }
     } catch {}
 
-    // Try animexin embed servers
     try {
       const res = await api.donghuaServers(slug, ep);
       const data = res.data;
@@ -64,21 +82,42 @@ export default function DonghuaWatchPage({ slug }: Props) {
     if (allServers.length > 0) {
       setServers(allServers);
       setActiveServer(0);
-      setStreamUrl(allServers[0].stream_url);
+      const first = allServers[0];
+      if (isEmbedUrl(first.stream_url)) {
+        setStreamUrl(first.stream_url);
+        setResolving(true);
+        const direct = await tryResolveEmbed(first.stream_url);
+        if (direct) {
+          setStreamUrl(direct);
+        }
+        setResolving(false);
+      } else {
+        setStreamUrl(first.stream_url);
+      }
     } else {
       setError("No streaming sources found for this episode.");
     }
     setLoadingStream(false);
-  }, [slug]);
+  }, [slug, tryResolveEmbed]);
 
   useEffect(() => {
     fetchStream(currentEp);
   }, [currentEp, fetchStream]);
 
-  const handleServerChange = (idx: number) => {
-    if (servers[idx]) {
-      setActiveServer(idx);
-      setStreamUrl(servers[idx].stream_url);
+  const handleServerChange = async (idx: number) => {
+    if (!servers[idx]) return;
+    setActiveServer(idx);
+    const url = servers[idx].stream_url;
+    if (isEmbedUrl(url)) {
+      setStreamUrl(url);
+      setResolving(true);
+      const direct = await tryResolveEmbed(url);
+      if (direct) {
+        setStreamUrl(direct);
+      }
+      setResolving(false);
+    } else {
+      setStreamUrl(url);
     }
   };
 
@@ -93,10 +132,9 @@ export default function DonghuaWatchPage({ slug }: Props) {
     return streamUrl;
   })();
 
-  const isDirectVideo = resolvedUrl ? /\.(m3u8|mp4|webm)(\?|$)/i.test(resolvedUrl) : false;
+  const isDirectVideo = resolvedUrl ? /\.(m3u8|mp4|webm)(\?|$)/i.test(resolvedUrl) || resolvedUrl.includes("video-proxy") : false;
   const isHls = resolvedUrl ? /\.m3u8/i.test(resolvedUrl) : false;
 
-  // Initialize HLS.js for m3u8 streams
   useEffect(() => {
     if (!resolvedUrl || !isHls || !videoRef.current) return;
     let hls: any;
@@ -133,6 +171,11 @@ export default function DonghuaWatchPage({ slug }: Props) {
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-red-400" />
             </div>
+          ) : resolving ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-8 w-8 animate-spin text-red-400" />
+              <p className="text-sm text-mist">Resolving video source...</p>
+            </div>
           ) : error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <AlertTriangle className="h-8 w-8 text-amber-400" />
@@ -146,7 +189,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
               controls
               autoPlay
               playsInline
-              src={resolvedUrl}
+              src={!isHls ? resolvedUrl : undefined}
             >
               <p>Your browser does not support HTML video.</p>
             </video>
