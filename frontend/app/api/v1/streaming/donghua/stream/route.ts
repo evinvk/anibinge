@@ -4,7 +4,6 @@ import { fetchHtml, parseEpisodeServersAuto, parseDetailAuto, BASE } from "../..
 const ANIVEXA_API = "https://anivexa-api-eight.vercel.app";
 const GRAPHQL = "https://graphql.anilist.co";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-const VIDEO_PROXY_BASE = "/api/v1/streaming/donghua/video-proxy";
 
 async function resolveTitle(q: string): Promise<number | null> {
   try {
@@ -20,11 +19,6 @@ async function resolveTitle(q: string): Promise<number | null> {
   } catch { return null; }
 }
 
-function makeProxyUrl(reqUrl: string, videoUrl: string): string {
-  const origin = new URL(reqUrl).origin;
-  return `${origin}${VIDEO_PROXY_BASE}?url=${encodeURIComponent(videoUrl)}`;
-}
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const slug = url.searchParams.get("q") || "";
@@ -32,7 +26,6 @@ export async function GET(req: Request) {
   const audio = url.searchParams.get("audio") || "sub";
   const anilistIdParam = url.searchParams.get("anilist_id");
 
-  // Phase 1: Try AnimeXin (primary) — get episode URL from detail page, then scrape servers
   if (slug) {
     try {
       const detailRes = await fetchHtml(`/${slug}/`);
@@ -47,38 +40,11 @@ export async function GET(req: Request) {
           label: s.label || "Server",
           stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
         }));
-
-        // Try to resolve the first server
-        const first = servers[0];
-        let resolvedUrl: string | null = null;
-        let resolvedType = "hls";
-
-        try {
-          const resp = await fetch(
-            `/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(first.stream_url)}`,
-            { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000) }
-          );
-          if (resp.ok) {
-            const data = await resp.json();
-            resolvedUrl = data?.data?.stream_url || null;
-          }
-        } catch {}
-
-        return NextResponse.json({
-          data: {
-            stream_url: resolvedUrl || first.stream_url,
-            stream_type: resolvedUrl?.includes(".m3u8") ? "hls" : resolvedType,
-            referer: "https://animexin.dev/",
-            subtitles: [],
-            provider: "animexin",
-            servers,
-          },
-        });
+        return NextResponse.json({ data: { servers } });
       }
     } catch {}
   }
 
-  // Phase 2: Fallback — Anivexa multi-provider
   let anilistId = anilistIdParam ? parseInt(anilistIdParam) : null;
   if (!anilistId && slug) anilistId = await resolveTitle(slug);
 
@@ -101,19 +67,9 @@ export async function GET(req: Request) {
               language: s.language || "en",
               kind: "captions",
               default: s.default || false,
-              source: provider,
-              referer: `https://${provider}.app/`,
             }));
             return NextResponse.json({
-              data: {
-                stream_url: streamUrl,
-                stream_type: streamUrl?.endsWith(".mp4") ? "mp4" : "hls",
-                referer: `https://${provider}.app/`,
-                subtitles,
-                provider,
-                embed_url: data.embed_url || null,
-                servers: [],
-              },
+              data: { stream_url: streamUrl, stream_type: streamUrl?.endsWith(".mp4") ? "mp4" : "hls", referer: `https://${provider}.app/`, subtitles, provider, servers: [] },
             });
           }
         } catch { continue; }
