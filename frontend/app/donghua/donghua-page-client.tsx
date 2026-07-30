@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Loader2, Flame, Clock } from "lucide-react";
 import { api, type DonghuaItem } from "@/lib/api";
 import { DonghuaCard, DonghuaCardSkeleton } from "@/components/donghua-card";
+import { DonghuaEpisodeCard, DonghuaEpisodeCardSkeleton } from "@/components/donghua-episode-card";
 
 export default function DonghuaPage() {
   const [trending, setTrending] = useState<DonghuaItem[]>([]);
@@ -215,7 +216,7 @@ export default function DonghuaPage() {
               {loadingLatest ? (
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                   {Array.from({ length: 12 }).map((_, i) => (
-                    <DonghuaCardSkeleton key={i} />
+                    <DonghuaEpisodeCardSkeleton key={i} />
                   ))}
                 </div>
               ) : latest.length === 0 ? (
@@ -224,8 +225,8 @@ export default function DonghuaPage() {
                 <>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                     {latest.map((item) => (
-                      <div key={item.slug} className="w-full">
-                        <DonghuaCard item={item} />
+                      <div key={`${item.slug}-${item.episode || 0}`} className="w-full">
+                        <DonghuaEpisodeCard item={item} />
                       </div>
                     ))}
                   </div>
