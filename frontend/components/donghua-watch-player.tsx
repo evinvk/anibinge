@@ -31,8 +31,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [servers, setServers] = useState<DonghuaServer[]>([]);
   const [activeServer, setActiveServer] = useState(0);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [resolving, setResolving] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [loadingStream, setLoadingStream] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -45,6 +43,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
   }, [slug]);
 
   const tryResolveEmbed = useCallback(async (url: string): Promise<string | null> => {
+    if (/dailymotion\.com|dai\.ly/i.test(url)) return url;
     try {
       const resp = await fetch(`/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(url)}`);
       if (!resp.ok) return null;
@@ -70,10 +69,8 @@ export default function DonghuaWatchPage({ slug }: Props) {
 
       const first = streamData.servers[0];
       if (isEmbedUrl(first.stream_url)) {
-        setResolving(true);
         const direct = await tryResolveEmbed(first.stream_url);
-        if (direct) setStreamUrl(direct);
-        setResolving(false);
+        setStreamUrl(direct || first.stream_url);
       } else {
         setStreamUrl(first.stream_url);
       }
@@ -81,8 +78,8 @@ export default function DonghuaWatchPage({ slug }: Props) {
       setStreamUrl(streamData.stream_url);
       setLoadingStream(false);
     } else {
-      setError("No streaming sources found for this episode.");
       setLoadingStream(false);
+      setError("No streaming sources found for this episode.");
     }
   }, [slug, tryResolveEmbed]);
 
@@ -95,13 +92,8 @@ export default function DonghuaWatchPage({ slug }: Props) {
     setActiveServer(idx);
     const url = servers[idx].stream_url;
     if (isEmbedUrl(url)) {
-      setStreamUrl(url);
-      setResolving(true);
-      const direct = await tryResolveEmbed(url);
-      if (direct) {
-        setStreamUrl(direct);
-      }
-      setResolving(false);
+      const resolved = await tryResolveEmbed(url);
+      setStreamUrl(resolved || url);
     } else {
       setStreamUrl(url);
     }
@@ -156,11 +148,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
           {loadingStream ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-red-400" />
-            </div>
-          ) : resolving ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-              <Loader2 className="h-8 w-8 animate-spin text-red-400" />
-              <p className="text-sm text-mist">Resolving video source...</p>
             </div>
           ) : error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
