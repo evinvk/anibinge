@@ -32,6 +32,11 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
         setCharacters(charsRes.data || []);
         setRecommendations(recsRes.data || []);
         setLoading(false);
+        fetch("/api/v1/views", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: malId }),
+        }).catch(() => {});
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {

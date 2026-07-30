@@ -87,10 +87,10 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             </div>
           ) : null}
 
-          {anime.popularity ? (
+          {(anime.site_views ?? anime.popularity) ? (
             <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-void/70 px-2 py-1 backdrop-blur-md">
               <Eye className="h-3 w-3 text-white" />
-              <span className="font-mono text-[10px] text-white">{formatCount(anime.popularity)}</span>
+              <span className="font-mono text-[10px] text-white">{formatCount(anime.site_views ?? anime.popularity)}</span>
             </div>
           ) : null}
         </div>

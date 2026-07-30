@@ -19,6 +19,7 @@ export interface AnimeSummary {
   banner: string | null;
   score: number | null;
   popularity: number | null;
+  site_views?: number;
   episodes: number | null;
   status: string | null;
   genres: string[];

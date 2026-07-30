@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { enrichWithViews } from "@/lib/views";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
@@ -74,7 +75,7 @@ export async function GET(req: Request) {
     const data = await fetchAnilist(TRENDING_QUERY, { page, perPage: 30 });
     const media = data?.data?.Page?.media || [];
     const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
-    return NextResponse.json({ data: results });
+    return NextResponse.json({ data: enrichWithViews(results) });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 503 });
   }
