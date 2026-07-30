@@ -127,7 +127,7 @@ export default function DonghuaPage() {
           <h1 className="font-display text-3xl font-bold text-paper sm:text-4xl">
             Chinese Animation
           </h1>
-          <p className="mt-2 text-sm text-mist">Stream donghua with subtitles — powered by AnimeXin</p>
+          <p className="mt-2 text-sm text-mist">Stream the latest Chinese donghua with subtitles</p>
         </div>
 
         {/* Search */}
