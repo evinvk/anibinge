@@ -577,10 +577,27 @@ export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | n
       if (detail.title && !looksLikeEpisodePage(detail)) return path;
     } catch {}
   }
-  try {
-    const items = await searchAnimeXin(slug.replace(/-/g, " "));
-    const best = items.find((i: any) => i.slug && !i.slug.includes("episode")) || items[0];
-    if (best?.url) return best.url.replace(BASE, "");
-  } catch {}
+  const queries = [slug.replace(/-/g, " ")];
+  const misspelled = slug.replace(/rou/g, "ro");
+  if (misspelled !== slug) queries.push(misspelled.replace(/-/g, " "));
+  for (const query of queries) {
+    try {
+      const items = await searchAnimeXin(query);
+      const scored = items
+        .filter((i: any) => i.slug && !i.slug.includes("episode"))
+        .map((i: any) => {
+          let score = 0;
+          if (i.title?.toLowerCase().replace(/[^a-z]/g, "") === slug.replace(/[^a-z]/g, "")) score += 5;
+          if (i.slug === slug) score += 3;
+          const slugWords = slug.split("-");
+          const matchWords = slugWords.filter((w) => i.slug?.includes(w) || i.title?.toLowerCase().includes(w));
+          score += Math.min(matchWords.length, 2);
+          return { ...i, score };
+        })
+        .sort((a: any, b: any) => b.score - a.score);
+      const best = scored[0];
+      if (best?.url && best.score >= 3) return best.url.replace(BASE, "");
+    } catch {}
+  }
   return null;
 }
