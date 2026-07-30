@@ -33,7 +33,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [loadingStream, setLoadingStream] = useState(false);
+  const [loadingStream, setLoadingStream] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
