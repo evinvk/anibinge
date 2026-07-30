@@ -43,6 +43,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
   }, [slug]);
 
   const tryResolveEmbed = useCallback(async (url: string): Promise<string | null> => {
+    if (/dailymotion\.com|dai\.ly/i.test(url)) return url;
     try {
       const resp = await fetch(`/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(url)}`);
       if (!resp.ok) return null;
@@ -169,10 +170,9 @@ export default function DonghuaWatchPage({ slug }: Props) {
             <div className="absolute inset-0 flex flex-col">
               <iframe
                 key={resolvedUrl}
-                src={`/api/v1/streaming/donghua/embed-proxy?url=${encodeURIComponent(resolvedUrl)}`}
+                src={resolvedUrl}
                 className="h-full w-full border-0"
                 allow="autoplay; fullscreen; picture-in-picture"
-                referrerPolicy="no-referrer"
               />
               <div className="flex items-center justify-center gap-2 bg-void/90 px-3 py-1.5 text-xs text-mist">
                 <span>Embed blocked? Try opening directly:</span>
