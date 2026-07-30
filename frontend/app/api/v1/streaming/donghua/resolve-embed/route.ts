@@ -14,10 +14,10 @@ async function resolveOkRu(videoId: string): Promise<string | null> {
     if (!resp.ok) return null;
     const html = await resp.text();
 
-    const m = html.match(/"hlsManifestUrl"\s*:\s*"([^"]+?)"/);
+    const m = html.match(/hlsManifestUrl\\&quot;:\\&quot;(.+?)\\&quot;/);
     if (!m) return null;
 
-    return m[1].replace(/\\u0026/g, "&");
+    return m[1].replace(/\\\\u0026/g, "&");
   } catch {
     return null;
   }

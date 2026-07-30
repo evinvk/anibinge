@@ -27,13 +27,13 @@ export async function GET(req: Request) {
       );
     }
 
-    const contentType = resp.headers.get("Content-Type") || "";
+    const bodyBuf = await resp.arrayBuffer();
+    const bodyStr = new TextDecoder().decode(bodyBuf.slice(0, 20));
+    const baseUrl = new URL(decodedUrl).origin;
+    const proxyBase = `${new URL(req.url).origin}/api/v1/streaming/donghua/video-proxy`;
 
-    if (isM3u8 || contentType.includes("mpegurl") || contentType.includes("vnd.apple.mpegurl")) {
-      const body = await resp.text();
-      const baseUrl = new URL(decodedUrl).origin;
-      const proxyBase = `${new URL(req.url).origin}/api/v1/streaming/donghua/video-proxy`;
-
+    if (bodyStr.startsWith("#EXTM3U")) {
+      const body = new TextDecoder().decode(bodyBuf);
       const rewritten = body.split("\n").map((line) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) return line;
@@ -56,12 +56,7 @@ export async function GET(req: Request) {
       });
     }
 
-    const stream = resp.body;
-    if (!stream) {
-      return NextResponse.json({ error: "No body" }, { status: 502 });
-    }
-
-    return new Response(stream, {
+    return new Response(bodyBuf, {
       headers: {
         "Content-Type": contentType || "application/octet-stream",
         "Access-Control-Allow-Origin": "*",
