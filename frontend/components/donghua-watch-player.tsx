@@ -61,43 +61,40 @@ export default function DonghuaWatchPage({ slug }: Props) {
     setServers([]);
     setStreamUrl(null);
 
-    const allServers: DonghuaServer[] = [];
+    const streamPromise = api.donghuaStream(slug, ep).then(r => r.data).catch(() => null);
+    const serversPromise = api.donghuaServers(slug, ep).then(r => r.data).catch(() => null);
 
-    try {
-      const res = await api.donghuaStream(slug, ep);
-      const s = res.data;
-      if (s?.stream_url) {
-        allServers.push({ label: "Direct", stream_url: s.stream_url });
-      }
-    } catch {}
-
-    try {
-      const res = await api.donghuaServers(slug, ep);
-      const data = res.data;
-      if (data.servers?.length) {
-        allServers.push(...data.servers);
-      }
-    } catch {}
-
-    if (allServers.length > 0) {
-      setServers(allServers);
+    const serversData = await serversPromise;
+    if (serversData?.servers?.length) {
+      setServers(serversData.servers);
       setActiveServer(0);
-      const first = allServers[0];
+      const first = serversData.servers[0];
       if (isEmbedUrl(first.stream_url)) {
         setStreamUrl(first.stream_url);
         setResolving(true);
         const direct = await tryResolveEmbed(first.stream_url);
-        if (direct) {
-          setStreamUrl(direct);
-        }
+        if (direct) setStreamUrl(direct);
         setResolving(false);
+        setLoadingStream(false);
       } else {
         setStreamUrl(first.stream_url);
+        setLoadingStream(false);
       }
-    } else {
-      setError("No streaming sources found for this episode.");
     }
-    setLoadingStream(false);
+
+    const streamData = await streamPromise;
+    if (streamData?.stream_url) {
+      setServers(prev => {
+        const exists = prev.some(s => s.stream_url === streamData.stream_url);
+        if (exists) return prev;
+        return [{ label: "Direct", stream_url: streamData.stream_url }, ...prev];
+      });
+    }
+
+    if (!serversData?.servers?.length && !streamData?.stream_url) {
+      setError("No streaming sources found for this episode.");
+      setLoadingStream(false);
+    }
   }, [slug, tryResolveEmbed]);
 
   useEffect(() => {

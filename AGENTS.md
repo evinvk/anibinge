@@ -122,6 +122,13 @@ Maintain and fix bugs in the Anibinge anime discovery/tracking platform (Next.js
 - `app/services/gogoanime_client.py` — `get_catalog()`, `get_episode()` (returns `serverInfo` + `defaultStreamingUrl`), `resolve_server_url()` (resolves m3u8 from streaming.php), `search_anime()`
 - `app/services/anivexa_client.py` — `get_stream_with_fallback()` returns `stream_url`, `stream_type` (mp4/hls), `referer`
 
+### Donghua / Ok.ru Resolver & Video Proxy (New)
+- **`frontend/app/api/v1/streaming/donghua/resolve-embed/route.ts`** — Takes an ok.ru/DailyMotion embed URL, fetches the embed page, extracts the HLS manifest URL via regex (`hlsManifestUrl\&quot;:\&quot;(.+?)\&quot;`), returns JSON with `stream_url` (wrapped in video-proxy), `platform`, `type` (hls/mp4)
+- **`frontend/app/api/v1/streaming/donghua/video-proxy/route.ts`** — Generic proxy that fetches any URL (m3u8 manifests, .ts segments, mp4 files) and streams to browser with CORS headers. Detects HLS manifests by `#EXTM3U` prefix in body. For manifests, resolves relative segment URLs against the CDN URL's directory (not origin), rewrites all URLs to go through this proxy.
+- **`frontend/app/api/v1/streaming/donghua/embed-proxy/route.ts`** — Simple proxy for embed pages that relaxes X-Frame-Options and CSP headers so they can be iframed
+- **`frontend/components/donghua-watch-player.tsx`** — Watch player that auto-resolves embed URLs to direct video via `resolve-embed` on server select, shows "Resolving video source…" state, uses HLS.js for HLS streams
+- **Note**: DailyMotion CDN URLs are signed/token-authenticated — cannot be fetched from our server; ok.ru URLs are time-limited but work through the proxy. The resolve-embed endpoint will return 404 for DailyMotion embeds.
+
 ### Frontend (Next.js) — `anibinge/frontend/`
 - **`frontend/app/api/v1/streaming/recent/route.ts`** — **REWRITTEN** — Now fetches GogoAnime `/api/home` for real uploads, with AniList enrichment + fallback
 - **`frontend/app/api/v1/streaming/gogoanime/_gogoanime.ts`** — `fetchGogoApi()`: direct fetch → CF proxy fallback, exports `GOGO_BASE` = `https://gogoanimehd.to`
