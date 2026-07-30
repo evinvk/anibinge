@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Play, Server } from "lucide-react";
+import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server } from "lucide-react";
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
 
