@@ -82,19 +82,24 @@ export async function GET(req: Request) {
     }
   }`;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
   try {
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query, variables: vars }),
-      signal: AbortSignal.timeout(10000),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (!resp.ok) return NextResponse.json({ data: [] });
     const data = await resp.json();
     const media = data?.data?.Page?.media || [];
     const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
     return NextResponse.json({ data: results });
-  } catch {
+  } catch (e) {
+    clearTimeout(timeout);
+    console.error("search route error:", e);
     return NextResponse.json({ data: [] });
   }
 }
