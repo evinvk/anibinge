@@ -10,122 +10,94 @@ export async function GET(req: Request) {
   const page = parseInt(url.searchParams.get("page") || "1");
   const limit = parseInt(url.searchParams.get("limit") || String(PAGE_SIZE));
 
-  // Primary: fetch real uploads from GogoAnime
-  try {
-    const gogoData = await fetchGogoApi("/api/home");
-    let episodes: any[] = gogoData?.latest_episodes || gogoData?.recent_episodes || [];
-
-    if (episodes.length === 0) throw new Error("No episodes from GogoAnime");
-
-    const items = episodes
-      .map((e: any) => ({
-        slug: e.id || e.slug || "",
-        title: e.title || "",
-        poster: e.image || e.poster || null,
-        episode: parseInt(e.episode) || e.latest_episode || 0,
-      }))
-      .filter((e: any) => e.slug && e.episode > 0);
-
-    const start = (page - 1) * limit;
-    const pageItems = items.slice(start, start + limit);
-
-    // Enrich with AniList metadata in parallel (best effort)
-    const enriched = await enrichBatch(pageItems);
-
-    return NextResponse.json({
-      data: enriched,
-      page,
-      has_next: items.length > start + limit,
-    });
-  } catch {
-    // Fallback: AniList schedule data
-    return fallbackToAnilist(page, limit);
+  // Fetch recently aired episodes from AniList airing schedule
+  const airing = await fetchAiringSchedule(page);
+  if (airing.length === 0) {
+    return NextResponse.json({ data: [], page, has_next: false });
   }
+
+  // Optionally enrich with GogoAnime slugs (best-effort)
+  const enriched = await enrichWithGogoSlugs(airing);
+
+  const start = (page - 1) * limit;
+  const pageItems = enriched.slice(start, start + limit);
+
+  return NextResponse.json({
+    data: pageItems,
+    page,
+    has_next: enriched.length > start + limit,
+  });
 }
 
-async function enrichBatch(items: any[]): Promise<any[]> {
-  // Single AniList query for all items — search by title via fuzzy match
+async function fetchAiringSchedule(page: number): Promise<any[]> {
   try {
-    const titles = items.map((i) => i.title);
     const query = `
-      query {
-        ${titles.map((t, idx) => `a${idx}: Media(search: "${t.replace(/"/g, '\\"')}", type: ANIME) {
-          id title { english romaji } coverImage { large } genres
-        }`).join("\n")}
+      query($page:Int){
+        Page(page:$page,perPage:50){
+          airingSchedules(notYetAired:false,sort:TIME_DESC){
+            episode
+            airingAt
+            media{
+              id
+              title{english romaji}
+              coverImage{large}
+              genres
+            }
+          }
+        }
       }
     `;
     const resp = await fetch(GRAPHQL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify({ query, variables: { page } }),
       signal: AbortSignal.timeout(8000),
     });
+    if (!resp.ok) return [];
 
-    if (resp.ok) {
-      const data = await resp.json();
-      const now = Math.floor(Date.now() / 1000);
-      return items.map((item, idx) => {
-        const meta = data?.data?.[`a${idx}`];
+    const data = await resp.json();
+    const schedules = data?.data?.Page?.airingSchedules || [];
+    const now = Math.floor(Date.now() / 1000);
+
+    return schedules
+      .filter((s: any) => s.media)
+      .map((s: any) => {
+        const m = s.media;
+        const title = m.title?.english || m.title?.romaji || "";
         return {
-          title: item.title,
-          episode: item.episode,
-          poster: meta?.coverImage?.large || item.poster,
-          slug: item.slug,
-          aired_ago: 0,
-          genres: meta?.genres || [],
-          anilist_id: meta?.id || null,
+          title,
+          episode: s.episode,
+          poster: m.coverImage?.large || null,
+          slug: null,
+          aired_ago: now - s.airingAt,
+          genres: m.genres || [],
+          anilist_id: m.id,
         };
       });
-    }
-  } catch {}
-
-  // Fallback: return with GogoAnime data as-is
-  return items.map((item) => ({
-    title: item.title,
-    episode: item.episode,
-    poster: item.poster,
-    slug: item.slug,
-    aired_ago: 0,
-    genres: [],
-    anilist_id: null,
-  }));
+  } catch {
+    return [];
+  }
 }
 
-async function fallbackToAnilist(page: number, limit: number) {
+async function enrichWithGogoSlugs(items: any[]): Promise<any[]> {
   try {
-    const query = `query($page:Int){Page(page:$page,perPage:50){
-      media(status:RELEASING,type:ANIME,sort:POPULARITY_DESC){
-        id title{english romaji}
-        coverImage{large}
-        nextAiringEpisode{episode airingAt}
-        genres
-      }
-    }}`;
-    const resp = await fetch(GRAPHQL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: { page } }),
-    });
-    if (!resp.ok) return NextResponse.json({ data: [], page, has_next: false });
-    const data = await resp.json();
-    const media = data?.data?.Page?.media || [];
-    const now = Math.floor(Date.now() / 1000);
-    const results = media
-      .filter((m: any) => m.nextAiringEpisode)
-      .map((m: any) => ({
-        title: m.title?.english || m.title?.romaji || "",
-        episode: m.nextAiringEpisode.episode - 1,
-        poster: m.coverImage?.large || null,
-        slug: null,
-        aired_ago: now - (m.nextAiringEpisode.airingAt - 7 * 24 * 3600),
-        genres: m.genres || [],
-        anilist_id: m.id,
-      }))
-      .sort((a: any, b: any) => a.aired_ago - b.aired_ago)
-      .slice(0, limit);
+    const gogoData = await fetchGogoApi("/api/home");
+    const episodes: any[] = gogoData?.latest_episodes || gogoData?.recent_episodes || [];
 
-    return NextResponse.json({ data: results, page, has_next: results.length >= limit });
+    // Build a slug map from GogoAnime data (normalized title -> slug)
+    const slugMap = new Map<string, string>();
+    for (const e of episodes) {
+      const id = e.id || e.slug || "";
+      const title = (e.title || "").toLowerCase().trim();
+      if (id && title) slugMap.set(title, id);
+    }
+
+    return items.map((item) => {
+      const gogoSlug = slugMap.get(item.title.toLowerCase().trim());
+      return { ...item, slug: gogoSlug || null };
+    });
   } catch {
-    return NextResponse.json({ data: [], page, has_next: false });
+    // GogoAnime unreachable — return items without slugs
+    return items;
   }
 }
