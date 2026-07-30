@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Play } from "lucide-react";
-import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
+import { needsUnoptimized, hasValidImageUrl, timeAgo } from "@/lib/utils";
 import type { DonghuaItem } from "@/lib/api";
 
 interface Props {
@@ -66,6 +66,9 @@ export function DonghuaEpisodeCard({ item, priority = false }: Props) {
           </Link>
           <div className="mt-1.5 flex items-center gap-2">
             <span className="text-[10px] font-medium uppercase tracking-wider text-mist">{item.type || "ONA"}</span>
+            {item.released_at && (
+              <span className="text-[10px] text-mist/60">{timeAgo(item.released_at)}</span>
+            )}
           </div>
         </div>
       </Link>

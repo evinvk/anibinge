@@ -52,6 +52,7 @@ export interface DonghuaItem {
   sub_type: string;
   type: string;
   url: string;
+  released_at?: string | null;
 }
 
 export interface DonghuaDetail {

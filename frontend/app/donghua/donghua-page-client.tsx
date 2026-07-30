@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Loader2, Flame, Clock } from "lucide-react";
+import { Search, Loader2, Flame, Clock, ChevronDown } from "lucide-react";
 import { api, type DonghuaItem } from "@/lib/api";
 import { DonghuaCard, DonghuaCardSkeleton } from "@/components/donghua-card";
 import { DonghuaEpisodeCard, DonghuaEpisodeCardSkeleton } from "@/components/donghua-episode-card";
@@ -23,8 +23,6 @@ export default function DonghuaPage() {
   const [noMoreLatest, setNoMoreLatest] = useState(false);
 
   const seenSlugsRef = useRef(new Set<string>());
-  const trendingSentinelRef = useRef<HTMLDivElement>(null);
-  const latestSentinelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.donghuaTrending().then((r) => {
@@ -79,30 +77,6 @@ export default function DonghuaPage() {
     }
     setLoadingMoreLatest(false);
   }, [latestPage, loadingMoreLatest, noMoreLatest]);
-
-  useEffect(() => {
-    if (searchResults !== null) return;
-    const sentinel = trendingSentinelRef.current;
-    if (!sentinel) return;
-    const obs = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) loadMoreTrending(); },
-      { rootMargin: "200px" }
-    );
-    obs.observe(sentinel);
-    return () => obs.disconnect();
-  }, [searchResults, loadMoreTrending, trending.length]);
-
-  useEffect(() => {
-    if (searchResults !== null) return;
-    const sentinel = latestSentinelRef.current;
-    if (!sentinel) return;
-    const obs = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) loadMoreLatest(); },
-      { rootMargin: "200px" }
-    );
-    obs.observe(sentinel);
-    return () => obs.disconnect();
-  }, [searchResults, loadMoreLatest, latest.length]);
 
   const handleSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults(null); return; }
@@ -195,10 +169,24 @@ export default function DonghuaPage() {
                       </div>
                     ))}
                   </div>
-                  <div ref={trendingSentinelRef} className="mt-4 flex justify-center">
-                    {loadingMoreTrending && <Loader2 className="h-5 w-5 animate-spin text-mist" />}
-                    {noMoreTrending && <p className="text-xs text-mist/50">No more results</p>}
-                  </div>
+                  {!noMoreTrending ? (
+                    <div className="mt-8 flex justify-center">
+                      <button
+                        onClick={loadMoreTrending}
+                        disabled={loadingMoreTrending}
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-paper backdrop-blur-md transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                      >
+                        {loadingMoreTrending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                        {loadingMoreTrending ? "Loading..." : "Load More"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-6 text-center text-xs text-mist/50">No more results</p>
+                  )}
                 </>
               )}
             </section>
@@ -230,10 +218,24 @@ export default function DonghuaPage() {
                       </div>
                     ))}
                   </div>
-                  <div ref={latestSentinelRef} className="mt-4 flex justify-center">
-                    {loadingMoreLatest && <Loader2 className="h-5 w-5 animate-spin text-mist" />}
-                    {noMoreLatest && <p className="text-xs text-mist/50">No more results</p>}
-                  </div>
+                  {!noMoreLatest ? (
+                    <div className="mt-8 flex justify-center">
+                      <button
+                        onClick={loadMoreLatest}
+                        disabled={loadingMoreLatest}
+                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-paper backdrop-blur-md transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                      >
+                        {loadingMoreLatest ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                        {loadingMoreLatest ? "Loading..." : "Load More"}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-6 text-center text-xs text-mist/50">No more results</p>
+                  )}
                 </>
               )}
             </section>

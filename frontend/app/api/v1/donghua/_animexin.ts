@@ -25,9 +25,10 @@ function parseCard(el: any) {
   const episode = epMatch ? parseInt(epMatch[1]) : null;
   const subType = link.find(".sb").text().trim() || "Sub";
   const mediaType = link.find(".typez").text().trim() || "ONA";
+  const releasedAt = $("time[datetime]").attr("datetime") || null;
   let slug = href.replace(/\/$/, "").split("/").pop() || "";
   slug = slug.replace(/-episode-\d+.*$/, "").replace(/-(?:indonesia|english|subtitle).*$/i, "");
-  return { slug, title, poster, episode, sub_type: subType, type: mediaType, url: href };
+  return { slug, title, poster, episode, sub_type: subType, type: mediaType, url: href, released_at: releasedAt };
 }
 
 export function parseCards(html: string): any[] {
