@@ -87,16 +87,12 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             </div>
           ) : null}
 
-          {(() => {
-            const count = (anime.site_views ?? 0) > 0 ? anime.site_views : anime.popularity;
-            if (count == null) return null;
-            return (
-              <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-void/70 px-2 py-1 backdrop-blur-md">
-                <Eye className="h-3 w-3 text-white" />
-                <span className="font-mono text-[10px] text-white">{formatCount(count)}</span>
-              </div>
-            );
-          })()}
+          <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-void/70 px-2 py-1 backdrop-blur-md">
+            <Eye className="h-3 w-3 text-white" />
+            <span className="font-mono text-[10px] text-white">
+              {formatCount((anime.site_views ?? 0) > 0 ? anime.site_views : (anime.popularity ?? 0))}
+            </span>
+          </div>
         </div>
 
         <div className="flex h-28 flex-col justify-start p-3">
