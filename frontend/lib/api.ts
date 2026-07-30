@@ -293,7 +293,7 @@ export const api = {
     const idx = list.findIndex((e: WatchlistEntryData) => e.anime_id === entry.anime_id);
     const updated: WatchlistEntryData = {
       anime_id: entry.anime_id,
-      source: entry.source || "mal",
+      source: (entry.source || "mal") as WatchlistEntryData["source"],
       status: entry.status as WatchlistEntryData["status"],
       progress: entry.progress ?? (idx >= 0 ? list[idx].progress : 0),
       rating: entry.rating !== undefined ? entry.rating : (idx >= 0 ? list[idx].rating : null),
