@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { Star, Clock } from "lucide-react";
+import { Star, Clock, Eye } from "lucide-react";
 import { cn, needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import type { AnimeSummary } from "@/lib/api";
 
@@ -18,6 +18,13 @@ function formatDate(dateStr: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function formatCount(n: number | null): string | null {
+  if (n == null) return null;
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+  return n.toString();
 }
 
 export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
@@ -77,6 +84,13 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
             <div className="absolute right-2 top-2 flex items-center gap-1 rounded-full bg-void/70 px-2 py-1 backdrop-blur-md">
               <Star className="h-3 w-3 fill-primary-400 text-primary-400" />
               <span className="font-mono text-[10px] text-white">{anime.score.toFixed(1)}</span>
+            </div>
+          ) : null}
+
+          {anime.popularity ? (
+            <div className="absolute bottom-2 right-2 flex items-center gap-1 rounded-full bg-void/70 px-2 py-1 backdrop-blur-md">
+              <Eye className="h-3 w-3 text-white" />
+              <span className="font-mono text-[10px] text-white">{formatCount(anime.popularity)}</span>
             </div>
           ) : null}
         </div>
