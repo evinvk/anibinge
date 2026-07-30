@@ -11,6 +11,16 @@ interface Props {
   slug: string;
 }
 
+const EMBED_PATTERNS = [
+  /ok\.ru\/(?:videoembed|video)\/\d+/,
+  /dailymotion\.com/,
+  /dai\.ly/,
+];
+
+function isEmbedUrl(url: string): boolean {
+  return EMBED_PATTERNS.some((p) => p.test(url));
+}
+
 export default function DonghuaWatchPage({ slug }: Props) {
   const searchParams = useSearchParams();
   const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
@@ -21,14 +31,12 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [servers, setServers] = useState<DonghuaServer[]>([]);
   const [activeServer, setActiveServer] = useState(0);
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingStream, setLoadingStream] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [prevUrl, setPrevUrl] = useState<string | null>(null);
-  const [nextUrl, setNextUrl] = useState<string | null>(null);
-  const playerRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Fetch anime detail for title + episode count
   useEffect(() => {
     api.donghuaDetail(slug).then((r) => {
       setTitle(r.data.title);
@@ -36,38 +44,81 @@ export default function DonghuaWatchPage({ slug }: Props) {
     }).catch(() => {});
   }, [slug]);
 
-  // Fetch servers + stream when episode or server changes
-  const fetchStream = useCallback(async (ep: number, serverIdx: number) => {
+  const tryResolveEmbed = useCallback(async (url: string): Promise<string | null> => {
+    try {
+      const resp = await fetch(`/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(url)}`);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      return data?.data?.stream_url || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchStream = useCallback(async (ep: number) => {
     setLoadingStream(true);
     setError(null);
-    try {
-      const res = await api.donghuaServers(slug, ep);
-      const data = res.data;
-      setServers(data.servers || []);
-      setPrevUrl(data.prev_url || null);
-      setNextUrl(data.next_url || null);
+    setServers([]);
+    setStreamUrl(null);
 
-      if (data.servers && data.servers.length > 0) {
-        const idx = Math.min(serverIdx, data.servers.length - 1);
-        setActiveServer(idx);
-        setStreamUrl(data.servers[idx].stream_url);
+    const streamPromise = api.donghuaStream(slug, ep).then(r => r.data).catch(() => null);
+    const serversPromise = api.donghuaServers(slug, ep).then(r => r.data).catch(() => null);
+
+    const serversData = await serversPromise;
+    if (serversData?.servers?.length) {
+      setServers(serversData.servers);
+      setActiveServer(0);
+      const first = serversData.servers[0];
+      if (isEmbedUrl(first.stream_url)) {
+        setStreamUrl(first.stream_url);
+        setResolving(true);
+        const direct = await tryResolveEmbed(first.stream_url);
+        if (direct) setStreamUrl(direct);
+        setResolving(false);
+        setLoadingStream(false);
       } else {
-        setError("No streaming servers found for this episode.");
+        setStreamUrl(first.stream_url);
+        setLoadingStream(false);
       }
-    } catch {
-      setError("Failed to load streaming servers.");
     }
-    setLoadingStream(false);
-  }, [slug]);
+
+    const streamData = await streamPromise;
+    if (streamData?.stream_url) {
+      setServers(prev => {
+        const exists = prev.some(s => s.stream_url === streamData.stream_url);
+        if (exists) return prev;
+        return [{ label: "Direct", stream_url: streamData.stream_url }, ...prev];
+      });
+      if (!serversData?.servers?.length) {
+        setStreamUrl(streamData.stream_url);
+        setLoadingStream(false);
+      }
+    }
+
+    if (!serversData?.servers?.length && !streamData?.stream_url) {
+      setError("No streaming sources found for this episode.");
+      setLoadingStream(false);
+    }
+  }, [slug, tryResolveEmbed]);
 
   useEffect(() => {
-    fetchStream(currentEp, 0);
+    fetchStream(currentEp);
   }, [currentEp, fetchStream]);
 
-  const handleServerChange = (idx: number) => {
-    if (servers[idx]) {
-      setActiveServer(idx);
-      setStreamUrl(servers[idx].stream_url);
+  const handleServerChange = async (idx: number) => {
+    if (!servers[idx]) return;
+    setActiveServer(idx);
+    const url = servers[idx].stream_url;
+    if (isEmbedUrl(url)) {
+      setStreamUrl(url);
+      setResolving(true);
+      const direct = await tryResolveEmbed(url);
+      if (direct) {
+        setStreamUrl(direct);
+      }
+      setResolving(false);
+    } else {
+      setStreamUrl(url);
     }
   };
 
@@ -76,12 +127,27 @@ export default function DonghuaWatchPage({ slug }: Props) {
     setCurrentEp(ep);
   };
 
-  const iframeSrc = (() => {
+  const resolvedUrl = (() => {
     if (!streamUrl) return null;
-    // Protocol-relative URLs need https: prefix for iframe src
     if (streamUrl.startsWith("//")) return `https:${streamUrl}`;
     return streamUrl;
   })();
+
+  const isDirectVideo = resolvedUrl ? /\.(m3u8|mp4|webm)(\?|$)/i.test(resolvedUrl) || resolvedUrl.includes("video-proxy") : false;
+  const isHls = resolvedUrl ? /\.m3u8/i.test(resolvedUrl) : false;
+
+  useEffect(() => {
+    if (!resolvedUrl || !isHls || !videoRef.current) return;
+    let hls: any;
+    import("hls.js").then((Hls) => {
+      if (Hls.default.isSupported()) {
+        hls = new Hls.default();
+        hls.loadSource(resolvedUrl);
+        hls.attachMedia(videoRef.current!);
+      }
+    });
+    return () => { if (hls) hls.destroy(); };
+  }, [resolvedUrl, isHls]);
 
   return (
     <div className="min-h-screen bg-void">
@@ -106,19 +172,49 @@ export default function DonghuaWatchPage({ slug }: Props) {
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-red-400" />
             </div>
+          ) : resolving ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="h-8 w-8 animate-spin text-red-400" />
+              <p className="text-sm text-mist">Resolving video source...</p>
+            </div>
           ) : error ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
               <AlertTriangle className="h-8 w-8 text-amber-400" />
               <p className="text-sm text-mist">{error}</p>
             </div>
-          ) : iframeSrc ? (
-            <iframe
-              key={`${currentEp}-${activeServer}`}
-              src={iframeSrc}
-              className="absolute inset-0 h-full w-full border-0"
-              allow="autoplay; fullscreen; picture-in-picture"
-              referrerPolicy="no-referrer"
-            />
+          ) : isDirectVideo && resolvedUrl ? (
+            <video
+              ref={videoRef}
+              key={resolvedUrl}
+              className="absolute inset-0 h-full w-full"
+              controls
+              autoPlay
+              playsInline
+              src={!isHls ? resolvedUrl : undefined}
+            >
+              <p>Your browser does not support HTML video.</p>
+            </video>
+          ) : resolvedUrl ? (
+            <div className="absolute inset-0 flex flex-col">
+              <iframe
+                key={resolvedUrl}
+                src={resolvedUrl}
+                className="h-full w-full border-0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                referrerPolicy="no-referrer"
+              />
+              <div className="flex items-center justify-center gap-2 bg-void/90 px-3 py-1.5 text-xs text-mist">
+                <span>Embed blocked? Try opening directly:</span>
+                <a
+                  href={resolvedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded bg-red-500 px-2.5 py-1 text-white hover:bg-red-400 transition-colors"
+                >
+                  Open video
+                </a>
+              </div>
+            </div>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <p className="text-mist">No stream available</p>
@@ -127,11 +223,11 @@ export default function DonghuaWatchPage({ slug }: Props) {
         </div>
 
         {/* Server selector */}
-        {servers.length > 0 && (
+        {servers.length > 1 && (
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <Server className="h-4 w-4 text-mist" />
-              <span className="text-sm font-medium text-mist">Server</span>
+              <span className="text-sm font-medium text-mist">Select source</span>
             </div>
             <div className="flex flex-wrap gap-2">
               {servers.map((s, i) => (

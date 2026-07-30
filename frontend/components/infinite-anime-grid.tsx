@@ -10,22 +10,24 @@ interface InfiniteAnimeGridProps {
   filters: Record<string, string>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnimeGridProps) {
   const [items, setItems] = useState<AnimeSummary[]>(initialItems);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(initialItems.length > 0);
+  const [hasMore, setHasMore] = useState(true);
   const [isVisible, setIsVisible] = useState(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const initialLoadDoneRef = useRef(false);
 
   useEffect(() => {
     setItems(initialItems);
-    setPage(1);
-    setHasMore(initialItems.length > 0);
+    setPage(initialItems.length > 0 ? 1 : 0);
+    setHasMore(true);
+    initialLoadDoneRef.current = false;
   }, [initialItems, query, filtersKey]);
 
   const loadMore = useCallback(async () => {
@@ -50,6 +52,16 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
       setLoading(false);
     }
   }, [page, query, filters]);
+
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
+
+  useEffect(() => {
+    if (initialItems.length === 0 && !initialLoadDoneRef.current && !loading) {
+      initialLoadDoneRef.current = true;
+      loadMoreRef.current();
+    }
+  }, [initialItems, loading]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;

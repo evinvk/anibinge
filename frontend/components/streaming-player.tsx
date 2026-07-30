@@ -20,9 +20,10 @@ interface SearchResult {
 interface StreamingPlayerProps {
   animeTitle: string;
   anilistId?: number;
+  totalEpisodes?: number | null;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 const FRIENDLY_ERRORS: Record<string, string> = {
   networkError: "Streaming source is temporarily unavailable",
@@ -41,7 +42,7 @@ function friendlyError(raw: string): string {
   return raw;
 }
 
-export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps) {
+export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: StreamingPlayerProps) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
@@ -64,21 +65,24 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const tryAnitsuFallback = useCallback(async (ep: number, epAudio: string = audio): Promise<boolean> => {
+  const audioRef = useRef(audio);
+  audioRef.current = audio;
+
+  const tryAnitsuFallback = useCallback(async (ep: number, epAudio?: string): Promise<boolean> => {
     setStatusText("");
     try {
       const aid = resolvedAnilistRef.current;
+      const useAudio = epAudio || audioRef.current;
       let res: any;
 
       if (aid) {
-        // Use AniList ID directly — avoids re-searching by title which could match the wrong anime
-        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${epAudio}&source=anitsu`;
+        const apiBase = "";
+        const url = `${apiBase}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${useAudio}`;
         res = await fetch(url).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
       } else {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const apiBase = "";
         res = await fetch(
-          `${apiBase}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${epAudio}`
+          `${apiBase}/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${useAudio}`
         ).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
@@ -217,9 +221,13 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
       const match = results.find((r) => r.slug === selectedSlug);
       if (match?.episodes_count) {
         setTotalEps(match.episodes_count);
+      } else if (totalEpisodes) {
+        setTotalEps(totalEpisodes);
       }
+    } else if (totalEpisodes) {
+      setTotalEps(totalEpisodes);
     }
-  }, [selectedSlug]);
+  }, [selectedSlug, totalEpisodes]);
 
   useEffect(() => {
     if (player.masterUrl && videoRef.current) {
@@ -302,13 +310,20 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     if (resolvedAnilistRef.current) {
       setStatusText("");
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+        const apiBase = "";
         const res = await fetch(
           `${apiBase}/api/v1/streaming/donghua/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${audio}&anilist_id=${resolvedAnilistRef.current}`
         ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
         if (res?.data?.stream_url) {
           const s = res.data;
           player.sourceRef.current = "anitsu";
+          if (s.subtitles?.length > 0) {
+            subs.setSubs(s.subtitles.map((sub: any) => ({
+              ...sub,
+              file: `/api/proxy?url=${encodeURIComponent(sub.file)}&referer=${encodeURIComponent(sub.referer || "")}`,
+            })));
+            subs.loadSubtitles();
+          }
           if (s.stream_type === "mp4") {
             const mp4Url = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
             player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
@@ -340,7 +355,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     const fetchEp = currentEpRef.current;
     api.fetchSubtitles(animeTitle, fetchEp, resolvedAnilistRef.current || undefined)
       .then((subRes) => {
-        if (subRes.subtitles?.length > 0 && subs.subtitles.length === 0 && fetchEp === currentEpRef.current) {
+        if (subRes.subtitles?.length > 0 && fetchEp === currentEpRef.current) {
           subs.setSubs(subRes.subtitles.map((s: any) => ({
             ...s,
             file: `/api/proxy?url=${encodeURIComponent(s.file)}&referer=${encodeURIComponent(s.referer || "")}`,
@@ -352,7 +367,7 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
   }, [animeTitle, subs]);
 
   useEffect(() => {
-    if (selectedSlug && currentEp) {
+    if (currentEp) {
       if (initialLoadDoneRef.current) {
         loadStream(selectedSlug, currentEp);
       } else {
@@ -361,46 +376,10 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
     }
   }, [selectedSlug, currentEp, audio]);
 
-  function titleMatches(a: string, b: string): boolean {
-    if (!a || !b) return false;
-    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
-    const na = norm(a);
-    const nb = norm(b);
-    return na === nb || na.includes(nb) || nb.includes(na);
-  }
-
-  function gogoMatchesTitle(item: any, expectedTitle: string): boolean {
-    const titles = [item.title, item.title_english, item.title_japanese].filter(Boolean);
-    return titles.some((t) => titleMatches(t, expectedTitle));
-  }
-
   async function searchAnime() {
     player.setLoadingStream(true);
     player.setError(null);
     setStatusText("");
-
-    const gogoResult = await api.gogoanimeSearch(animeTitle).catch(() => null);
-    const gogoData = gogoResult?.data;
-
-    // Find the GogoAnime entry whose title actually matches the expected title
-    const match = gogoData?.find((r) => gogoMatchesTitle(r, animeTitle));
-    const gogoSlug = match?.slug ?? null;
-
-    if (gogoData) {
-      setResults(gogoData);
-      if (match) {
-        const ep = match.episodes_count || match.actual_episodes_count || match.latest_episode || null;
-        if (ep) setTotalEps(ep);
-        setSelectedSlug(match.slug);
-      }
-    }
-
-    setStatusText("");
-
-    if (gogoSlug) {
-      loadStream(gogoSlug, 1);
-      return;
-    }
 
     if (resolvedAnilistRef.current) {
       loadStream(null, 1);
@@ -698,8 +677,8 @@ export function StreamingPlayer({ animeTitle, anilistId }: StreamingPlayerProps)
         </div>
       )}
 
-      {selectedSlug && (
-        <EpisodeComments slug={selectedSlug} episodeNumber={currentEp} />
+      {(selectedSlug || resolvedAnilistRef.current) && (
+        <EpisodeComments slug={selectedSlug || String(resolvedAnilistRef.current)} episodeNumber={currentEp} />
       )}
     </section>
   );

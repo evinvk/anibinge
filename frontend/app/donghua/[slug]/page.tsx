@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Play, Star, Globe, Clock, ArrowLeft } from "lucide-react";
-import { api } from "@/lib/api";
+import { fetchHtml, parseDetailAuto } from "@/app/api/v1/donghua/_animexin";
 import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 
@@ -20,11 +20,15 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+async function getDetail(slug: string) {
+  const html = await fetchHtml(`/${slug}/`);
+  return parseDetailAuto(html, slug);
+}
+
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
   try {
-    const res = await api.donghuaDetail(slug);
-    const d = res.data;
+    const d = await getDetail(slug);
     return {
       title: `Watch ${d.title} — Episodes & Info | Donghua`,
       description: d.description?.slice(0, 160) || `Watch ${d.title} online free. Stream donghua episodes with subtitles.`,
@@ -44,8 +48,7 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
 
   let detail;
   try {
-    const res = await api.donghuaDetail(slug);
-    detail = res.data;
+    detail = await getDetail(slug);
   } catch {
     notFound();
   }

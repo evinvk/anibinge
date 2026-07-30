@@ -28,9 +28,10 @@ function WatchPageInner({ slug }: { slug: string }) {
     fetchedRef.current = true;
 
     async function fetchInfo() {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+      const apiBase = "";
       let resolvedTitle: string | null = null;
 
+      // Step 1: Try GogoAnime info endpoint (often blocked from Vercel, so don't treat failure as fatal)
       try {
         const res = await fetch(`${apiBase}/api/v1/streaming/gogoanime/${slug}/info`, { signal: AbortSignal.timeout(8000) });
         const data = await res.json();
@@ -41,6 +42,7 @@ function WatchPageInner({ slug }: { slug: string }) {
         }
       } catch {}
 
+      // Step 2: Try GogoAnime search as fallback
       if (!resolvedTitle) {
         try {
           const res = await fetch(`${apiBase}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`, { signal: AbortSignal.timeout(12000) });
@@ -52,18 +54,20 @@ function WatchPageInner({ slug }: { slug: string }) {
           } else if (data.data?.length > 0) {
             resolvedTitle = data.data[0].title;
             setTotalEps((prev) => prev ?? (data.data[0].episodes_count || data.data[0].actual_episodes_count || data.data[0].latest_episode || null));
-          } else {
-            setError("Anime not found");
           }
           if (resolvedTitle) setTitle(resolvedTitle);
-        } catch {
-          setError("Failed to load anime info");
-        }
+        } catch {}
       }
 
+      // Step 3: If GogoAnime failed, use the slug as a display title
+      if (!resolvedTitle) {
+        resolvedTitle = slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        setTitle(resolvedTitle);
+      }
+
+      // Step 4: Resolve to AniList ID so Anivexa can serve the stream directly
       try {
-        const searchQ = resolvedTitle || slug.replace(/-/g, " ");
-        const res = await fetch(`${apiBase}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(searchQ)}`);
+        const res = await fetch(`${apiBase}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(resolvedTitle)}`);
         const data = await res.json();
         if (data.anilist_id) setAnilistId(data.anilist_id);
         if (data.episodes) setTotalEps((prev) => prev ?? data.episodes);

@@ -1,4 +1,14 @@
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+function userIdFromToken(token: string): string | null {
+  try {
+    const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!b64) return null;
+    return JSON.parse(atob(b64)).sub || null;
+  } catch {
+    return null;
+  }
+}
 
 export interface AnimeSummary {
   id: number | string;
@@ -89,11 +99,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, revalidateSeconds = 60, retries = 1): Promise<T> {
+async function request<T>(path: string, revalidateSeconds = 60, retries = 0): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${API_BASE}${path}`, {
         next: { revalidate: revalidateSeconds },
         signal: controller.signal,
@@ -121,7 +131,7 @@ async function authedRequest<T>(
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      const timeout = setTimeout(() => controller.abort(), 5000);
       const res = await fetch(`${API_BASE}${path}`, {
         ...init,
         cache: "no-store",
@@ -232,9 +242,9 @@ export const api = {
   newsRankings: (ranking_type = "top-anime") => 
     request<any>(`/api/v1/news/rankings/${ranking_type}`, 3600),
 
-  // Authentication
+  // Authentication (local routes — backend on Render is suspended)
   register: (email: string, username: string, password: string) =>
-    fetch(`${API_BASE}/api/v1/auth/register`, {
+    fetch(`/api/v1/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, username, password }),
@@ -245,7 +255,7 @@ export const api = {
     }),
 
   login: (email: string, password: string) =>
-    fetch(`${API_BASE}/api/v1/auth/login`, {
+    fetch(`/api/v1/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, password }),
@@ -256,25 +266,55 @@ export const api = {
     }),
 
   getMe: (token: string) =>
-    authedRequest<UserProfile>("/api/v1/auth/me", token),
+    fetch(`/api/v1/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
+    }).then(async (res) => {
+      if (!res.ok) throw new ApiError(res.status, "Auth failed");
+      return res.json() as Promise<UserProfile>;
+    }),
 
-  // Watchlist
-  getWatchlist: (token: string) =>
-    authedRequest<{ user_id: string; entries: WatchlistEntryData[] }>("/api/v1/watchlist", token),
+  // Watchlist (localStorage-backed — works without backend)
+  getWatchlist: (token: string) => {
+    const uid = userIdFromToken(token);
+    const raw = uid ? localStorage.getItem(`wl_${uid}`) : null;
+    const entries: WatchlistEntryData[] = raw ? JSON.parse(raw) : [];
+    return Promise.resolve({ user_id: uid || "", entries });
+  },
 
   upsertWatchlistEntry: (
     token: string,
     entry: { anime_id: number; source?: string; status: string; progress?: number; rating?: number | null }
-  ) =>
-    authedRequest<{ user_id: string; entry: WatchlistEntryData }>("/api/v1/watchlist", token, {
-      method: "PUT",
-      body: JSON.stringify(entry),
-    }),
+  ) => {
+    const uid = userIdFromToken(token);
+    if (!uid) return Promise.reject(new ApiError(401, "Not authenticated"));
+    const raw = localStorage.getItem(`wl_${uid}`);
+    const list: WatchlistEntryData[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((e: WatchlistEntryData) => e.anime_id === entry.anime_id);
+    const updated: WatchlistEntryData = {
+      anime_id: entry.anime_id,
+      source: (entry.source || "mal") as WatchlistEntryData["source"],
+      status: entry.status as WatchlistEntryData["status"],
+      progress: entry.progress ?? (idx >= 0 ? list[idx].progress : 0),
+      rating: entry.rating !== undefined ? entry.rating : (idx >= 0 ? list[idx].rating : null),
+      updated_at: new Date().toISOString(),
+    };
+    if (idx >= 0) list[idx] = updated;
+    else list.push(updated);
+    localStorage.setItem(`wl_${uid}`, JSON.stringify(list));
+    return Promise.resolve({ user_id: uid, entry: updated });
+  },
 
-  removeWatchlistEntry: (token: string, animeId: number) =>
-    authedRequest<{ removed: number }>(`/api/v1/watchlist/${animeId}`, token, {
-      method: "DELETE",
-    }),
+  removeWatchlistEntry: (token: string, animeId: number) => {
+    const uid = userIdFromToken(token);
+    if (!uid) return Promise.reject(new ApiError(401, "Not authenticated"));
+    const raw = localStorage.getItem(`wl_${uid}`);
+    if (raw) {
+      const list: WatchlistEntryData[] = JSON.parse(raw);
+      localStorage.setItem(`wl_${uid}`, JSON.stringify(list.filter((e: WatchlistEntryData) => e.anime_id !== animeId)));
+    }
+    return Promise.resolve({ removed: 1 });
+  },
 
   // GogoAnime streaming
   gogoanimeSearch: (q: string) =>
@@ -432,4 +472,18 @@ export const api = {
     if (resolved !== undefined) path += `resolved=${resolved}&`;
     return authedRequest<{ issues: any[]; total: number }>(path, token);
   },
+
+  // Admin — user management
+  adminListUsers: (token: string, q = "", page = 1) =>
+    authedRequest<{ users: any[]; total: number }>(`/api/v1/admin/users?q=${encodeURIComponent(q)}&page=${page}`, token),
+
+  adminDeleteUser: (token: string, userId: string) =>
+    authedRequest<{ detail: string }>(`/api/v1/admin/users/${userId}`, token, { method: "DELETE" }),
+
+  adminSetAdmin: (token: string, userId: string, isAdmin: boolean) =>
+    authedRequest<any>(`/api/v1/admin/users/${userId}/admin`, token, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_admin: isAdmin }),
+    }),
 };
