@@ -66,7 +66,8 @@ export default function DonghuaWatchPage({ slug }: Props) {
     if (streamData?.servers?.length) {
       setServers(streamData.servers);
       setActiveServer(0);
-      // Auto-resolve first server
+      setLoadingStream(false);
+
       const first = streamData.servers[0];
       if (isEmbedUrl(first.stream_url)) {
         setResolving(true);
@@ -76,7 +77,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
       } else {
         setStreamUrl(first.stream_url);
       }
-      setLoadingStream(false);
     } else if (streamData?.stream_url) {
       setStreamUrl(streamData.stream_url);
       setLoadingStream(false);
