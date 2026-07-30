@@ -553,6 +553,7 @@ export function parseEpisodeServers(html: string): {
   return { servers, prev_url: prevLink, next_url: nextLink };
 }
 
+// Search AnimeXin and return parsed items
 export async function searchAnimeXin(query: string): Promise<any[]> {
   const html = await fetchHtml("/", { s: query });
   return parseSearchAuto(html);
@@ -574,7 +575,14 @@ export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | n
     try {
       const html = await fetchHtml(path);
       const detail = parseDetailAuto(html, slug);
-      if (detail.title && !looksLikeEpisodePage(detail)) return path;
+      if (detail.title && detail.episode_list?.length >= 2 && !looksLikeEpisodePage(detail)) return path;
+    } catch {}
+  }
+  for (const path of paths) {
+    try {
+      const html = await fetchHtml(path);
+      const detail = parseDetailAuto(html, slug);
+      if (detail.title && detail.episode_list?.length > 0 && !looksLikeEpisodePage(detail)) return path;
     } catch {}
   }
   const queries = [slug.replace(/-/g, " ")];
