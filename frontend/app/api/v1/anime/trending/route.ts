@@ -57,7 +57,7 @@ function normalizeMedia(m: any): AnimeItem {
 const TRENDING_QUERY = `
 query($page:Int,$perPage:Int){
   Page(page:$page,perPage:$perPage){
-    media(sort:TRENDING_DESC,type:ANIME){
+    media(sort:TRENDING_DESC,type:ANIME,isAdult:false){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status

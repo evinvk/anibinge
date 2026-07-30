@@ -54,7 +54,7 @@ export async function GET(req: Request) {
 
   const query = `query($q:String,$page:Int,$perPage:Int,$genres:[String],$status:MediaStatus,$format:[MediaFormat],$sort:[MediaSort]){
     Page(page:$page,perPage:$perPage){
-      media(search:$q,type:ANIME,sort:$sort,genre_in:$genres,status:$status,format_in:$format){
+      media(search:$q,type:ANIME,isAdult:false,sort:$sort,genre_in:$genres,status:$status,format_in:$format){
         id idMal title{english romaji native}
         coverImage{large} bannerImage
         averageScore popularity episodes status genres description
