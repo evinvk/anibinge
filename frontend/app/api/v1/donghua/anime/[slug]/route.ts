@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { fetchHtml, parseDetailAuto } from "../../_animexin";
 
+function isEpisodePage(detail: any): boolean {
+  if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length) return false;
+  if (detail.episode_list?.length >= 3) return false;
+  return /\bepisode\s+\d+/i.test(detail.title || "");
+}
+
 async function tryFetchDetail(slug: string): Promise<any | null> {
   const paths = [`/${slug}/`, `/anime/${slug}/`];
   for (const path of paths) {
     try {
       const html = await fetchHtml(path);
       const detail = parseDetailAuto(html, slug);
-      if (detail.title && detail.episode_list?.length > 0) return detail;
+      if (detail.title && !isEpisodePage(detail)) return detail;
     } catch {}
   }
   try {

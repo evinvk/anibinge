@@ -14,13 +14,19 @@ const EP_URL_PATTERNS = [
   (s: string, e: number) => `/${s}-episode-${e}-indonesia-english/`,
 ];
 
+function isEpisodePage(detail: any): boolean {
+  if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length) return false;
+  if (detail.episode_list?.length >= 3) return false;
+  return /\bepisode\s+\d+/i.test(detail.title || "");
+}
+
 async function fetchDetailPage(slug: string): Promise<{ html: string; slug: string } | null> {
   const paths = [`/${slug}/`, `/anime/${slug}/`];
   for (const p of paths) {
     try {
       const html = await fetchHtml(p);
       const detail = parseDetailAuto(html, slug);
-      if (detail.episode_list?.length > 0) return { html, slug };
+      if (detail.title && !isEpisodePage(detail)) return { html, slug };
     } catch {}
   }
   return null;
