@@ -5,6 +5,7 @@ import {
   fetchHtml,
   parseEpisodeServersAuto,
   parseDetailAuto,
+  resolveAnimeXinSeriesUrl,
   BASE,
 } from "../../../donghua/_animexin";
 
@@ -13,24 +14,6 @@ const EP_URL_PATTERNS = [
   (s: string, e: number) => `/${s}-episode-${e}-subtitle-indonesia-english/`,
   (s: string, e: number) => `/${s}-episode-${e}-indonesia-english/`,
 ];
-
-function isEpisodePage(detail: any): boolean {
-  if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length) return false;
-  if (detail.episode_list?.length >= 3) return false;
-  return /\bepisode\s+\d+/i.test(detail.title || "");
-}
-
-async function fetchDetailPage(slug: string): Promise<{ html: string; slug: string } | null> {
-  const paths = [`/${slug}/`, `/anime/${slug}/`];
-  for (const p of paths) {
-    try {
-      const html = await fetchHtml(p);
-      const detail = parseDetailAuto(html, slug);
-      if (detail.title && !isEpisodePage(detail)) return { html, slug };
-    } catch {}
-  }
-  return null;
-}
 
 async function tryFetchEpPage(slug: string, ep: number): Promise<string | null> {
   for (const pattern of EP_URL_PATTERNS) {
@@ -51,9 +34,11 @@ export async function GET(req: Request) {
   if (!slug) return NextResponse.json({ error: "No slug" }, { status: 400 });
 
   try {
-    const detail = await fetchDetailPage(slug);
-    if (detail) {
-      const epEntry = parseDetailAuto(detail.html, slug).episode_list?.find((e: any) => e.number === ep);
+    const resolvedPath = await resolveAnimeXinSeriesUrl(slug);
+    if (resolvedPath) {
+      const html = await fetchHtml(resolvedPath);
+      const detail = parseDetailAuto(html, slug);
+      const epEntry = detail.episode_list?.find((e: any) => e.number === ep);
       if (epEntry?.url) {
         const epPage = await fetchHtml(epEntry.url.replace(BASE, ""));
         const parsed = parseEpisodeServersAuto(epPage);

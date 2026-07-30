@@ -552,3 +552,32 @@ export function parseEpisodeServers(html: string): {
   const nextLink = $("a.next, .next_link, .navigation a:contains('Next')").attr("href") || null;
   return { servers, prev_url: prevLink, next_url: nextLink };
 }
+
+export async function searchAnimeXin(query: string): Promise<any[]> {
+  const html = await fetchHtml("/", { s: query });
+  return parseSearchAuto(html);
+}
+
+export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | null> {
+  const paths = [`/${slug}/`, `/anime/${slug}/`];
+  for (const path of paths) {
+    try {
+      const html = await fetchHtml(path);
+      const detail = parseDetailAuto(html, slug);
+      if (detail.title) {
+        const isEpPage = detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length
+          ? false
+          : detail.episode_list?.length >= 3
+            ? false
+            : /\bepisode\s+\d+/i.test(detail.title || "");
+        if (!isEpPage) return path;
+      }
+    } catch {}
+  }
+  try {
+    const items = await searchAnimeXin(slug.replace(/-/g, " "));
+    const best = items.find((i: any) => i.slug && !i.slug.includes("episode")) || items[0];
+    if (best?.url) return best.url.replace(BASE, "");
+  } catch {}
+  return null;
+}
