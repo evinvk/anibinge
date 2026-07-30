@@ -183,7 +183,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
             <div className="absolute inset-0 flex flex-col">
               <iframe
                 key={resolvedUrl}
-                src={resolvedUrl}
+                src={`/api/v1/streaming/donghua/embed-proxy?url=${encodeURIComponent(resolvedUrl)}`}
                 className="h-full w-full border-0"
                 allow="autoplay; fullscreen; picture-in-picture"
                 referrerPolicy="no-referrer"
