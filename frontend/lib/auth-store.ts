@@ -1,9 +1,10 @@
 import { randomBytes, scryptSync, createHmac } from "crypto";
+import fs from "fs";
+import path from "path";
 
 const SECRET = process.env.AUTH_SECRET || "anibinge-dev-secret-key-change-in-production";
 const PEPPER = process.env.AUTH_PEPPER || "anibinge-dev-pepper";
 
-// Bootstrap admin from env vars (survives deployments via Vercel env)
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
 
@@ -17,7 +18,51 @@ interface StoredUser {
   created_at: string;
 }
 
-const users = new Map<string, StoredUser>();
+function usersFilePath(): string {
+  try {
+    const dir = process.cwd();
+    try {
+      fs.accessSync(dir, fs.constants.W_OK);
+      return path.join(dir, ".auth-users.json");
+    } catch {
+      return "/tmp/.auth-users.json";
+    }
+  } catch {
+    return "/tmp/.auth-users.json";
+  }
+}
+
+function loadUsers(): Map<string, StoredUser> {
+  const map = new Map<string, StoredUser>();
+  try {
+    const file = usersFilePath();
+    if (fs.existsSync(file)) {
+      const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
+      for (const item of raw) map.set(item.email, item);
+    }
+  } catch {}
+  // Always sync admin from env vars (overwrites file version)
+  if (ADMIN_EMAIL && ADMIN_PASSWORD) {
+    const existing = map.get(ADMIN_EMAIL);
+    map.set(ADMIN_EMAIL, {
+      id: existing?.id || randomBytes(12).toString("hex"),
+      email: ADMIN_EMAIL,
+      username: existing?.username || ADMIN_EMAIL.split("@")[0],
+      hash: hashPassword(ADMIN_PASSWORD),
+      avatar_url: existing?.avatar_url || null,
+      is_admin: true,
+      created_at: existing?.created_at || new Date().toISOString(),
+    });
+  }
+  return map;
+}
+
+function saveUsers(users: Map<string, StoredUser>): void {
+  try {
+    const file = usersFilePath();
+    fs.writeFileSync(file, JSON.stringify(Array.from(users.values())), "utf-8");
+  } catch {}
+}
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -32,14 +77,22 @@ function verifyPassword(password: string, stored: string): boolean {
   return derivedKey === key;
 }
 
-function generateToken(userId: string): string {
+function generateToken(user: { id: string; email: string; username: string; is_admin: boolean }): string {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(JSON.stringify({ sub: userId, iat: Math.floor(Date.now() / 1000) })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({
+    sub: user.id,
+    email: user.email,
+    username: user.username,
+    is_admin: user.is_admin,
+    iat: Math.floor(Date.now() / 1000),
+  })).toString("base64url");
   const signature = createHmac("sha256", SECRET).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${signature}`;
 }
 
-function verifyToken(token: string): string | null {
+function decodeToken(token: string): {
+  sub: string; email: string; username: string; is_admin: boolean; iat: number;
+} | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
   const [header, payload, signature] = parts;
@@ -48,31 +101,14 @@ function verifyToken(token: string): string | null {
   try {
     const data = JSON.parse(Buffer.from(payload, "base64url").toString());
     if (typeof data.sub !== "string") return null;
-    return data.sub;
+    return data;
   } catch {
     return null;
   }
 }
 
-// Bootstrap admin on startup if env vars are set
-function bootstrapAdmin(): void {
-  if (ADMIN_EMAIL && ADMIN_PASSWORD && !users.has(ADMIN_EMAIL)) {
-    const id = randomBytes(12).toString("hex");
-    const user: StoredUser = {
-      id,
-      email: ADMIN_EMAIL,
-      username: ADMIN_EMAIL.split("@")[0],
-      hash: hashPassword(ADMIN_PASSWORD),
-      avatar_url: null,
-      is_admin: true,
-      created_at: new Date().toISOString(),
-    };
-    users.set(ADMIN_EMAIL, user);
-  }
-}
-bootstrapAdmin();
-
 export function registerUser(email: string, username: string, password: string): { access_token: string; token_type: string } {
+  const users = loadUsers();
   const normalizedEmail = email.toLowerCase().trim();
   if (users.has(normalizedEmail)) {
     throw Object.assign(new Error("Email already registered"), { status: 409 });
@@ -81,7 +117,7 @@ export function registerUser(email: string, username: string, password: string):
     throw Object.assign(new Error("Registration limit reached"), { status: 503 });
   }
   const id = randomBytes(12).toString("hex");
-  const isAdmin = users.size === 0; // first registered user becomes admin
+  const isAdmin = users.size === 0;
   const user: StoredUser = {
     id,
     email: normalizedEmail,
@@ -92,66 +128,42 @@ export function registerUser(email: string, username: string, password: string):
     created_at: new Date().toISOString(),
   };
   users.set(normalizedEmail, user);
-  return { access_token: generateToken(id), token_type: "bearer" };
+  saveUsers(users);
+  return { access_token: generateToken({ id, email: normalizedEmail, username: username.trim(), is_admin: isAdmin }), token_type: "bearer" };
 }
 
 export function loginUser(email: string, password: string): { access_token: string; token_type: string } {
+  const users = loadUsers();
   const normalizedEmail = email.toLowerCase().trim();
   const user = users.get(normalizedEmail);
   if (!user || !verifyPassword(password, user.hash)) {
     throw Object.assign(new Error("Invalid email or password"), { status: 401 });
   }
-  return { access_token: generateToken(user.id), token_type: "bearer" };
+  return { access_token: generateToken({ id: user.id, email: user.email, username: user.username, is_admin: user.is_admin }), token_type: "bearer" };
 }
 
-function getUserById(id: string): StoredUser | undefined {
-  for (const user of users.values()) {
-    if (user.id === id) return user;
-  }
-  return undefined;
-}
-
-function userToPublic(user: StoredUser) {
-  return {
-    id: user.id,
-    email: user.email,
-    username: user.username,
-    avatar_url: user.avatar_url,
-    is_admin: user.is_admin,
-    created_at: user.created_at,
-  };
-}
-
-// Verify token and return user from the request
 export function getCurrentUser(req: { headers: { get: (name: string) => string | null } }): { id: string; email: string; username: string; is_admin: boolean } | null {
   const auth = req.headers.get("authorization");
   if (!auth || !auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
-  const userId = verifyToken(token);
-  if (!userId) return null;
-  const user = getUserById(userId);
-  if (!user) return null;
-  return { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin };
+  const tokenData = decodeToken(auth.slice(7));
+  if (!tokenData) return null;
+  return { id: tokenData.sub, email: tokenData.email, username: tokenData.username, is_admin: tokenData.is_admin };
 }
 
-// Admin helper: verify token and check admin status from the request
 export function getCurrentAdminUser(req: { headers: { get: (name: string) => string | null } }): string | null {
   const auth = req.headers.get("authorization");
   if (!auth || !auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
-  const userId = verifyToken(token);
-  if (!userId) return null;
-  const user = getUserById(userId);
-  if (!user || !user.is_admin) return null;
-  return userId;
+  const tokenData = decodeToken(auth.slice(7));
+  if (!tokenData || !tokenData.is_admin) return null;
+  return tokenData.sub;
 }
 
 export function getUserCount(): number {
-  return users.size;
+  return loadUsers().size;
 }
 
-// Admin: list users with search and pagination
 export function listUsers(q: string, page: number, perPage: number): { users: any[]; total: number } {
+  const users = loadUsers();
   const all = Array.from(users.values());
   const filtered = q
     ? all.filter((u) => u.email.includes(q.toLowerCase()) || u.username.toLowerCase().includes(q.toLowerCase()))
@@ -160,40 +172,49 @@ export function listUsers(q: string, page: number, perPage: number): { users: an
   const start = (page - 1) * perPage;
   const pageItems = sorted.slice(start, start + perPage);
   return {
-    users: pageItems.map((u) => ({ ...userToPublic(u), has_google: false })),
+    users: pageItems.map((u) => ({
+      id: u.id, email: u.email, username: u.username,
+      avatar_url: u.avatar_url, is_admin: u.is_admin, created_at: u.created_at,
+      has_google: false,
+    })),
     total: filtered.length,
   };
 }
 
-// Admin: delete a user (cannot delete yourself)
 export function deleteUser(targetId: string, adminId: string): { detail: string } {
   if (targetId === adminId) {
     throw Object.assign(new Error("Cannot delete your own account"), { status: 400 });
   }
-  const target = getUserById(targetId);
+  const users = loadUsers();
+  let target: StoredUser | undefined;
+  for (const u of users.values()) {
+    if (u.id === targetId) { target = u; break; }
+  }
   if (!target) {
     throw Object.assign(new Error("User not found"), { status: 404 });
   }
   users.delete(target.email);
-  watchlists.delete(targetId);
+  saveUsers(users);
   return { detail: `User ${target.email} deleted` };
 }
 
-// Admin: set/unset admin (cannot demote yourself)
 export function setAdmin(targetId: string, isAdmin: boolean, adminId: string): any {
-  if (targetId === adminId && !isAdmin) {
-    throw Object.assign(new Error("Cannot remove your own admin privileges"), { status: 400 });
+  const users = loadUsers();
+  let target: StoredUser | undefined;
+  for (const u of users.values()) {
+    if (u.id === targetId) { target = u; break; }
   }
-  const target = getUserById(targetId);
   if (!target) {
     throw Object.assign(new Error("User not found"), { status: 404 });
   }
+  if (targetId === adminId && !isAdmin) {
+    throw Object.assign(new Error("Cannot remove your own admin privileges"), { status: 400 });
+  }
   target.is_admin = isAdmin;
-  return { ...userToPublic(target), has_google: false };
+  saveUsers(users);
+  return { id: target.id, email: target.email, username: target.username, avatar_url: target.avatar_url, is_admin: target.is_admin, created_at: target.created_at, has_google: false };
 }
 
-// ── Watchlist storage ──
-// user_id -> Map<anime_id, entry>
 const watchlists = new Map<string, Map<number, any>>();
 
 export interface WatchlistEntry {
@@ -240,19 +261,14 @@ export function getUserFromToken(token: string): {
   is_admin: boolean;
   created_at: string | null;
 } | null {
-  const userId = verifyToken(token);
-  if (!userId) return null;
-  for (const user of users.values()) {
-    if (user.id === userId) {
-      return {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        avatar_url: user.avatar_url,
-        is_admin: user.is_admin,
-        created_at: user.created_at,
-      };
-    }
-  }
-  return null;
+  const data = decodeToken(token);
+  if (!data) return null;
+  return {
+    id: data.sub,
+    email: data.email,
+    username: data.username,
+    avatar_url: null,
+    is_admin: data.is_admin,
+    created_at: null,
+  };
 }
