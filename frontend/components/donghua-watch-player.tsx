@@ -43,7 +43,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
   }, [slug]);
 
   const tryResolveEmbed = useCallback(async (url: string): Promise<string | null> => {
-    if (/dailymotion\.com|dai\.ly/i.test(url)) return url;
     try {
       const resp = await fetch(`/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(url)}`);
       if (!resp.ok) return null;

@@ -66,15 +66,15 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Could not resolve video" }, { status: 404 });
   }
 
-  // DailyMotion CDN URLs are signed per-IP — can't proxy from server
+  // DailyMotion CDN URLs are signed per-IP — proxy through Vercel so IP matches
   if (platform === "dailymotion") {
-    const embedUrl = decoded.startsWith("//") ? `https:${decoded}` : decoded;
+    const proxyUrl = `${new URL(req.url).origin}/api/v1/streaming/donghua/video-proxy?url=${encodeURIComponent(videoUrl)}`;
     return NextResponse.json({
       data: {
-        stream_url: embedUrl,
+        stream_url: proxyUrl,
         original_url: videoUrl,
         platform,
-        type: "embed",
+        type: "hls",
       },
     });
   }
