@@ -18,6 +18,7 @@ const nextConfig = {
       { protocol: "https", hostname: "i.ytimg.com" },
       { protocol: "https", hostname: "cdn.anipixcdn.co" },
       { protocol: "https", hostname: "img.animeschedule.net" },
+      { protocol: "https", hostname: "uploads.mangadex.org" },
     ],
   },
   experimental: {

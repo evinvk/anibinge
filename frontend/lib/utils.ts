@@ -6,7 +6,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function needsUnoptimized(url: string): boolean {
-  return url.includes("cdn.anipixcdn.co");
+  return url.includes("cdn.anipixcdn.co") || url.includes("uploads.mangadex.org");
 }
 
 const BROKEN_CDNS = ["img.animeschedule.net"];
