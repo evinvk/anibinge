@@ -122,6 +122,18 @@ function userToPublic(user: StoredUser) {
   };
 }
 
+// Verify token and return user from the request
+export function getCurrentUser(req: { headers: { get: (name: string) => string | null } }): { id: string; email: string; username: string; is_admin: boolean } | null {
+  const auth = req.headers.get("authorization");
+  if (!auth || !auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7);
+  const userId = verifyToken(token);
+  if (!userId) return null;
+  const user = getUserById(userId);
+  if (!user) return null;
+  return { id: user.id, email: user.email, username: user.username, is_admin: user.is_admin };
+}
+
 // Admin helper: verify token and check admin status from the request
 export function getCurrentAdminUser(req: { headers: { get: (name: string) => string | null } }): string | null {
   const auth = req.headers.get("authorization");
@@ -163,6 +175,7 @@ export function deleteUser(targetId: string, adminId: string): { detail: string 
     throw Object.assign(new Error("User not found"), { status: 404 });
   }
   users.delete(target.email);
+  watchlists.delete(targetId);
   return { detail: `User ${target.email} deleted` };
 }
 
@@ -177,6 +190,46 @@ export function setAdmin(targetId: string, isAdmin: boolean, adminId: string): a
   }
   target.is_admin = isAdmin;
   return { ...userToPublic(target), has_google: false };
+}
+
+// ── Watchlist storage ──
+// user_id -> Map<anime_id, entry>
+const watchlists = new Map<string, Map<number, any>>();
+
+export interface WatchlistEntry {
+  anime_id: number;
+  source: string;
+  status: string;
+  progress: number;
+  rating: number | null;
+  updated_at: string;
+}
+
+export function getWatchlist(userId: string): WatchlistEntry[] {
+  const list = watchlists.get(userId);
+  return list ? Array.from(list.values()) : [];
+}
+
+export function upsertWatchlistEntry(userId: string, entry: { anime_id: number; source?: string; status: string; progress?: number; rating?: number | null }): WatchlistEntry {
+  if (!watchlists.has(userId)) watchlists.set(userId, new Map());
+  const list = watchlists.get(userId)!;
+  const existing = list.get(entry.anime_id);
+  const updated: WatchlistEntry = {
+    anime_id: entry.anime_id,
+    source: entry.source || existing?.source || "mal",
+    status: entry.status,
+    progress: entry.progress ?? existing?.progress ?? 0,
+    rating: entry.rating !== undefined ? entry.rating : (existing?.rating ?? null),
+    updated_at: new Date().toISOString(),
+  };
+  list.set(entry.anime_id, updated);
+  return updated;
+}
+
+export function removeWatchlistEntry(userId: string, animeId: number): { removed: number } {
+  const list = watchlists.get(userId);
+  if (list) list.delete(animeId);
+  return { removed: 1 };
 }
 
 export function getUserFromToken(token: string): {
