@@ -385,11 +385,11 @@ export const api = {
   anitsuStream: (q: string, ep: number) =>
     request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
 
-  // Donghua streaming — uses AnimeXin primary, longer timeout for AnimeXin fetches
+  // Donghua streaming — proxies through Render backend (Cold start ~30-60s)
   donghuaStream: (q: string, ep: number, audio = "sub", anilistId?: number) => {
     let path = `/api/v1/streaming/donghua/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`;
     if (anilistId) path += `&anilist_id=${anilistId}`;
-    return fetchWithTimeout<{ data: DonghuaStreamData }>(`${API_BASE}${path}`, 30000);
+    return fetchWithTimeout<{ data: DonghuaStreamData }>(`${API_BASE}${path}`, 60000);
   },
   donghuaResolve: (q: string) =>
     request<{ data: any[]; query: string }>(`/api/v1/streaming/donghua/resolve?q=${encodeURIComponent(q)}`, 300),
