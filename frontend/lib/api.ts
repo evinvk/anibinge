@@ -438,4 +438,18 @@ export const api = {
     if (resolved !== undefined) path += `resolved=${resolved}&`;
     return authedRequest<{ issues: any[]; total: number }>(path, token);
   },
+
+  // Admin — user management
+  adminListUsers: (token: string, q = "", page = 1) =>
+    authedRequest<{ users: any[]; total: number }>(`/api/v1/admin/users?q=${encodeURIComponent(q)}&page=${page}`, token),
+
+  adminDeleteUser: (token: string, userId: string) =>
+    authedRequest<{ detail: string }>(`/api/v1/admin/users/${userId}`, token, { method: "DELETE" }),
+
+  adminSetAdmin: (token: string, userId: string, isAdmin: boolean) =>
+    authedRequest<any>(`/api/v1/admin/users/${userId}/admin`, token, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ is_admin: isAdmin }),
+    }),
 };
