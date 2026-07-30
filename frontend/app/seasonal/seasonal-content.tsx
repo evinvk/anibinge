@@ -33,7 +33,10 @@ export function SeasonalContent({ year: yearParam, season: seasonParam }: Props)
     setError(null);
     try {
       const res = await fetch(`/api/v1/seasonal/${y}/${s}?page=1`);
-      if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(`Failed to load: ${res.status}${body.error ? ` — ${body.error}` : ""}`);
+      }
       const json = await res.json();
       setItems(json.data || []);
     } catch (err: any) {
