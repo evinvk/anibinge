@@ -44,36 +44,17 @@ export async function GET(req: Request) {
 
   if (!q) return NextResponse.json({ data: [] });
 
-  // Build AniList query with only the filters that are active
-  const filters: string[] = ["search:$q", "type:ANIME"];
-  const vars: Record<string, any> = { q, page, perPage: 20 };
+  let sortVal: string[] = ["SEARCH_MATCH"];
+  if (rawOrderBy && SORT_MAP[rawOrderBy]) sortVal = [SORT_MAP[rawOrderBy]];
+  if (rawSort === "asc" && ASC_MAP[sortVal[0]]) sortVal = [ASC_MAP[sortVal[0]]];
 
-  let sortVal = "SEARCH_MATCH";
-  if (rawOrderBy && SORT_MAP[rawOrderBy]) sortVal = SORT_MAP[rawOrderBy];
-  if (rawSort === "asc" && ASC_MAP[sortVal]) sortVal = ASC_MAP[sortVal];
-  filters.push(`sort:[${sortVal}]`);
+  const genres = rawGenres ? rawGenres.split(",").map((g) => g.trim()).filter(Boolean) : null;
+  const status = rawStatus && STATUS_MAP[rawStatus] ? STATUS_MAP[rawStatus] : null;
+  const format = rawType && FORMAT_MAP[rawType] ? [FORMAT_MAP[rawType]] : null;
 
-  if (rawGenres) {
-    const genres = rawGenres.split(",").map((g) => g.trim()).filter(Boolean);
-    if (genres.length) {
-      filters.push("genre_in:$genres");
-      vars.genres = genres;
-    }
-  }
-
-  if (rawStatus && STATUS_MAP[rawStatus]) {
-    filters.push("status:$status");
-    vars.status = STATUS_MAP[rawStatus];
-  }
-
-  if (rawType && FORMAT_MAP[rawType]) {
-    filters.push("format_in:$format");
-    vars.format = FORMAT_MAP[rawType];
-  }
-
-  const query = `query($q:String,$page:Int,$perPage:Int${vars.genres ? ",$genres:[String]" : ""}${vars.status ? ",$status:MediaStatus" : ""}${vars.format ? ",$format:MediaFormat" : ""}){
+  const query = `query($q:String,$page:Int,$perPage:Int,$genres:[String],$status:MediaStatus,$format:[MediaFormat],$sort:[MediaSort]){
     Page(page:$page,perPage:$perPage){
-      media(${filters.join(",")}){
+      media(search:$q,type:ANIME,sort:$sort,genre_in:$genres,status:$status,format_in:$format){
         id idMal title{english romaji native}
         coverImage{large} bannerImage
         averageScore popularity episodes status genres description
@@ -83,17 +64,25 @@ export async function GET(req: Request) {
   }`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const timeout = setTimeout(() => controller.abort(), 15000);
   try {
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: vars }),
+      body: JSON.stringify({ query, variables: { q, page, perPage: 20, genres, status, format, sort: sortVal } }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    if (!resp.ok) return NextResponse.json({ data: [] });
+    if (!resp.ok) {
+      const text = await resp.text();
+      console.error("AniList HTTP error:", resp.status, text.slice(0, 300));
+      return NextResponse.json({ data: [] });
+    }
     const data = await resp.json();
+    if (data.errors) {
+      console.error("AniList GraphQL errors:", JSON.stringify(data.errors).slice(0, 300));
+      return NextResponse.json({ data: [] });
+    }
     const media = data?.data?.Page?.media || [];
     const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
     return NextResponse.json({ data: results });
