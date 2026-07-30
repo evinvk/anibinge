@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseEpisodeServersAuto } from "../../../donghua/_animexin";
+import { fetchHtml, parseEpisodeServersAuto, parseDetailAuto, BASE } from "../../../donghua/_animexin";
 
 const ANIVEXA_API = "https://anivexa-api-eight.vercel.app";
 const GRAPHQL = "https://graphql.anilist.co";
@@ -32,10 +32,15 @@ export async function GET(req: Request) {
   const audio = url.searchParams.get("audio") || "sub";
   const anilistIdParam = url.searchParams.get("anilist_id");
 
-  // Phase 1: Try AnimeXin (primary)
+  // Phase 1: Try AnimeXin (primary) — get episode URL from detail page, then scrape servers
   if (slug) {
     try {
-      const epPage = await fetchHtml(`/${slug}/episode-${ep}/`);
+      const detailRes = await fetchHtml(`/${slug}/`);
+      const detail = parseDetailAuto(detailRes, slug);
+      const epEntry = detail.episode_list?.find((e: any) => e.number === ep);
+      const epUrl = epEntry?.url?.replace(BASE, "") || `/${slug}/episode-${ep}/`;
+
+      const epPage = await fetchHtml(epUrl);
       const parsed = parseEpisodeServersAuto(epPage);
       if (parsed.servers?.length) {
         const servers = parsed.servers.map((s: any) => ({
