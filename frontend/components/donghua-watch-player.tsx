@@ -89,6 +89,10 @@ export default function DonghuaWatchPage({ slug }: Props) {
         if (exists) return prev;
         return [{ label: "Direct", stream_url: streamData.stream_url }, ...prev];
       });
+      if (!serversData?.servers?.length) {
+        setStreamUrl(streamData.stream_url);
+        setLoadingStream(false);
+      }
     }
 
     if (!serversData?.servers?.length && !streamData?.stream_url) {
