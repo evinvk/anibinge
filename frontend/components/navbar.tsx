@@ -11,6 +11,7 @@ import { NotificationBell } from "@/components/notification-bell";
 const LINKS = [
   { href: "/browse", label: "Browse" },
   { href: "/donghua", label: "Donghua" },
+  { href: "/manhwa", label: "Manhwa" },
   { href: "/seasonal", label: "Seasonal" },
   { href: "/schedule", label: "Schedule" },
   { href: "/news", label: "News" },

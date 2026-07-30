@@ -76,6 +76,26 @@ export interface DonghuaServer {
   stream_url: string;
 }
 
+export interface ManhwaItem {
+  id: string;
+  title: string;
+  poster: string | null;
+  chapter: number | null;
+  rating: number | null;
+  status: string;
+  genres: string[];
+  description: string;
+}
+
+export interface ChapterInfo {
+  id: string;
+  chapter: string;
+  title: string;
+  volume: string | null;
+  pages: number;
+  createdAt: string;
+}
+
 export interface DonghuaStreamData {
   stream_url: string;
   label: string;
@@ -384,6 +404,20 @@ export const api = {
   // Anitsu streaming (AnimeXin — 2nd fallback for donghua)
   anitsuStream: (q: string, ep: number) =>
     request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
+
+  // Manhwa (MangaDex)
+  manhwaTrending: (page = 1) =>
+    fetchWithTimeout<{ data: ManhwaItem[]; page: number }>(`/api/v1/manhwa/trending?page=${page}`, 15000),
+  manhwaLatest: (page = 1) =>
+    fetchWithTimeout<{ data: ManhwaItem[]; page: number }>(`/api/v1/manhwa/latest?page=${page}`, 15000),
+  manhwaSearch: (q: string) =>
+    fetchWithTimeout<{ data: ManhwaItem[]; query: string }>(`/api/v1/manhwa/search?q=${encodeURIComponent(q)}`, 15000),
+  manhwaDetail: (id: string) =>
+    fetchWithTimeout<{ data: ManhwaItem }>(`/api/v1/manhwa/manga/${encodeURIComponent(id)}`, 20000),
+  manhwaChapters: (id: string) =>
+    fetchWithTimeout<{ data: ChapterInfo[] }>(`/api/v1/manhwa/manga/${encodeURIComponent(id)}/chapters`, 15000),
+  manhwaChapterPages: (id: string) =>
+    fetchWithTimeout<{ data: { baseUrl: string; hash: string; pages: string[] } }>(`/api/v1/manhwa/chapter/${encodeURIComponent(id)}`, 15000),
 
   // Donghua streaming — proxies through Render backend (Cold start ~30-60s)
   donghuaStream: (q: string, ep: number, audio = "sub", anilistId?: number) => {
