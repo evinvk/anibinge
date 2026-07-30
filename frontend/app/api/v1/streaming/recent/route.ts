@@ -37,8 +37,9 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
           airingSchedules(notYetAired:false,sort:TIME_DESC){
             episode
             airingAt
-            media{
+              media{
               id
+              isAdult
               title{english romaji}
               coverImage{large}
               genres
@@ -60,7 +61,7 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
     const now = Math.floor(Date.now() / 1000);
 
     return schedules
-      .filter((s: any) => s.media)
+      .filter((s: any) => s.media && !s.media.isAdult)
       .map((s: any) => {
         const m = s.media;
         const title = m.title?.english || m.title?.romaji || "";
