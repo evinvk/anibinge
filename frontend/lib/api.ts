@@ -1,5 +1,15 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
+function userIdFromToken(token: string): string | null {
+  try {
+    const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/");
+    if (!b64) return null;
+    return JSON.parse(atob(b64)).sub || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface AnimeSummary {
   id: number | string;
   source: "mal" | "jikan" | "anilist" | "animeschedule";
@@ -264,23 +274,46 @@ export const api = {
       return res.json() as Promise<UserProfile>;
     }),
 
-  // Watchlist
-  getWatchlist: (token: string) =>
-    authedRequest<{ user_id: string; entries: WatchlistEntryData[] }>("/api/v1/watchlist", token),
+  // Watchlist (localStorage-backed — works without backend)
+  getWatchlist: (token: string) => {
+    const uid = userIdFromToken(token);
+    const raw = uid ? localStorage.getItem(`wl_${uid}`) : null;
+    return Promise.resolve({ user_id: uid || "", entries: raw ? JSON.parse(raw) : [] });
+  },
 
   upsertWatchlistEntry: (
     token: string,
     entry: { anime_id: number; source?: string; status: string; progress?: number; rating?: number | null }
-  ) =>
-    authedRequest<{ user_id: string; entry: WatchlistEntryData }>("/api/v1/watchlist", token, {
-      method: "PUT",
-      body: JSON.stringify(entry),
-    }),
+  ) => {
+    const uid = userIdFromToken(token);
+    if (!uid) return Promise.reject(new ApiError(401, "Not authenticated"));
+    const raw = localStorage.getItem(`wl_${uid}`);
+    const list: WatchlistEntryData[] = raw ? JSON.parse(raw) : [];
+    const idx = list.findIndex((e) => e.anime_id === entry.anime_id);
+    const updated: WatchlistEntryData = {
+      anime_id: entry.anime_id,
+      source: entry.source || "mal",
+      status: entry.status as WatchlistEntryData["status"],
+      progress: entry.progress ?? (idx >= 0 ? list[idx].progress : 0),
+      rating: entry.rating !== undefined ? entry.rating : (idx >= 0 ? list[idx].rating : null),
+      updated_at: new Date().toISOString(),
+    };
+    if (idx >= 0) list[idx] = updated;
+    else list.push(updated);
+    localStorage.setItem(`wl_${uid}`, JSON.stringify(list));
+    return Promise.resolve({ user_id: uid, entry: updated });
+  },
 
-  removeWatchlistEntry: (token: string, animeId: number) =>
-    authedRequest<{ removed: number }>(`/api/v1/watchlist/${animeId}`, token, {
-      method: "DELETE",
-    }),
+  removeWatchlistEntry: (token: string, animeId: number) => {
+    const uid = userIdFromToken(token);
+    if (!uid) return Promise.reject(new ApiError(401, "Not authenticated"));
+    const raw = localStorage.getItem(`wl_${uid}`);
+    if (raw) {
+      const list: WatchlistEntryData[] = JSON.parse(raw);
+      localStorage.setItem(`wl_${uid}`, JSON.stringify(list.filter((e) => e.anime_id !== animeId)));
+    }
+    return Promise.resolve({ removed: 1 });
+  },
 
   // GogoAnime streaming
   gogoanimeSearch: (q: string) =>
