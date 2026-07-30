@@ -44,17 +44,44 @@ export async function GET(req: Request) {
 
   if (!q) return NextResponse.json({ data: [] });
 
-  let sortVal: string[] = ["SEARCH_MATCH"];
-  if (rawOrderBy && SORT_MAP[rawOrderBy]) sortVal = [SORT_MAP[rawOrderBy]];
-  if (rawSort === "asc" && ASC_MAP[sortVal[0]]) sortVal = [ASC_MAP[sortVal[0]]];
+  // Build filter args and variable declarations dynamically
+  const filterArgs: string[] = ["search:$q", "type:ANIME", "isAdult:false"];
+  const varDecls: string[] = [];
+  const vars: Record<string, any> = { q, page, perPage: 20 };
 
-  const genres = rawGenres ? rawGenres.split(",").map((g) => g.trim()).filter(Boolean) : null;
-  const status = rawStatus && STATUS_MAP[rawStatus] ? STATUS_MAP[rawStatus] : null;
-  const format = rawType && FORMAT_MAP[rawType] ? [FORMAT_MAP[rawType]] : null;
+  let sortVal = "SEARCH_MATCH";
+  if (rawOrderBy && SORT_MAP[rawOrderBy]) sortVal = SORT_MAP[rawOrderBy];
+  if (rawSort === "asc" && ASC_MAP[sortVal]) sortVal = ASC_MAP[sortVal];
 
-  const query = `query($q:String,$page:Int,$perPage:Int,$genres:[String],$status:MediaStatus,$format:[MediaFormat],$sort:[MediaSort]){
+  varDecls.push("$q:String", "$page:Int", "$perPage:Int");
+  varDecls.push("$sort:[MediaSort]");
+  filterArgs.push("sort:$sort");
+  vars.sort = [sortVal];
+
+  if (rawGenres) {
+    const genres = rawGenres.split(",").map((g) => g.trim()).filter(Boolean);
+    if (genres.length) {
+      filterArgs.push("genre_in:$genres");
+      varDecls.push("$genres:[String]");
+      vars.genres = genres;
+    }
+  }
+
+  if (rawStatus && STATUS_MAP[rawStatus]) {
+    filterArgs.push("status:$status");
+    varDecls.push("$status:MediaStatus");
+    vars.status = STATUS_MAP[rawStatus];
+  }
+
+  if (rawType && FORMAT_MAP[rawType]) {
+    filterArgs.push("format_in:$format");
+    varDecls.push("$format:[MediaFormat]");
+    vars.format = [FORMAT_MAP[rawType]];
+  }
+
+  const query = `query(${varDecls.join(",")}){
     Page(page:$page,perPage:$perPage){
-      media(search:$q,type:ANIME,isAdult:false,sort:$sort,genre_in:$genres,status:$status,format_in:$format){
+      media(${filterArgs.join(",")}){
         id idMal title{english romaji native}
         coverImage{large} bannerImage
         averageScore popularity episodes status genres description
@@ -69,18 +96,16 @@ export async function GET(req: Request) {
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: { q, page, perPage: 20, genres, status, format, sort: sortVal } }),
+      body: JSON.stringify({ query, variables: vars }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
     if (!resp.ok) {
       const text = await resp.text();
-      console.error("AniList HTTP error:", resp.status, text.slice(0, 300));
       return NextResponse.json({ data: [] });
     }
     const data = await resp.json();
     if (data.errors) {
-      console.error("AniList GraphQL errors:", JSON.stringify(data.errors).slice(0, 300));
       return NextResponse.json({ data: [] });
     }
     const media = data?.data?.Page?.media || [];
@@ -88,7 +113,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ data: results });
   } catch (e) {
     clearTimeout(timeout);
-    console.error("search route error:", e);
     return NextResponse.json({ data: [] });
   }
 }
