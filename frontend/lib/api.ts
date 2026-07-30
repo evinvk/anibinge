@@ -278,7 +278,8 @@ export const api = {
   getWatchlist: (token: string) => {
     const uid = userIdFromToken(token);
     const raw = uid ? localStorage.getItem(`wl_${uid}`) : null;
-    return Promise.resolve({ user_id: uid || "", entries: raw ? JSON.parse(raw) : [] });
+    const entries: WatchlistEntryData[] = raw ? JSON.parse(raw) : [];
+    return Promise.resolve({ user_id: uid || "", entries });
   },
 
   upsertWatchlistEntry: (
@@ -289,7 +290,7 @@ export const api = {
     if (!uid) return Promise.reject(new ApiError(401, "Not authenticated"));
     const raw = localStorage.getItem(`wl_${uid}`);
     const list: WatchlistEntryData[] = raw ? JSON.parse(raw) : [];
-    const idx = list.findIndex((e) => e.anime_id === entry.anime_id);
+    const idx = list.findIndex((e: WatchlistEntryData) => e.anime_id === entry.anime_id);
     const updated: WatchlistEntryData = {
       anime_id: entry.anime_id,
       source: entry.source || "mal",
@@ -310,7 +311,7 @@ export const api = {
     const raw = localStorage.getItem(`wl_${uid}`);
     if (raw) {
       const list: WatchlistEntryData[] = JSON.parse(raw);
-      localStorage.setItem(`wl_${uid}`, JSON.stringify(list.filter((e) => e.anime_id !== animeId)));
+      localStorage.setItem(`wl_${uid}`, JSON.stringify(list.filter((e: WatchlistEntryData) => e.anime_id !== animeId)));
     }
     return Promise.resolve({ removed: 1 });
   },
