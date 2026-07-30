@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const ANILIST_API = "https://graphql.anilist.co";
 
-const SEARCH_QUERY = `query($q:String,$page:Int,$perPage:Int){
+const SEARCH_QUERY = `query($q:String,$page:Int,$perPage:Int,$genres:[String],$status:MediaStatus,$format:MediaFormat,$sortBy:[MediaSort]){
   Page(page:$page,perPage:$perPage){
-    media(search:$q,type:ANIME,sort:SEARCH_MATCH){
+    media(search:$q,type:ANIME,sort:$sortBy,genre_in:$genres,status:$status,format_in:$format){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status genres description
@@ -91,10 +91,34 @@ export async function GET(req: Request) {
 
   // Fallback: AniList
   try {
+    const statusMap: Record<string, string> = { airing: "RELEASING", complete: "FINISHED", upcoming: "NOT_YET_RELEASED" };
+    const formatMap: Record<string, string> = { tv: "TV", movie: "MOVIE", ova: "OVA", ona: "ONA", special: "SPECIAL" };
+    const sortMap: Record<string, string> = { score: "SCORE_DESC", popularity: "POPULARITY_DESC", title: "TITLE_ENGLISH", start_date: "START_DATE_DESC" };
+
+    const variables: Record<string, any> = { q, page, perPage: 20, sortBy: ["SEARCH_MATCH"] };
+
+    const rawGenres = filters.genres;
+    if (rawGenres) variables.genres = rawGenres.split(",").map((g: string) => g.trim());
+
+    const rawStatus = filters.status;
+    if (rawStatus && statusMap[rawStatus]) variables.status = statusMap[rawStatus];
+
+    const rawType = filters.type;
+    if (rawType && formatMap[rawType]) variables.format = formatMap[rawType];
+
+    const rawOrderBy = filters.order_by;
+    if (rawOrderBy && sortMap[rawOrderBy]) variables.sortBy = [sortMap[rawOrderBy]];
+
+    const rawSort = filters.sort;
+    if (rawSort === "asc" && variables.sortBy.length) {
+      const ascMap: Record<string, string> = { SCORE_DESC: "SCORE", POPULARITY_DESC: "POPULARITY", TITLE_ENGLISH: "TITLE_ENGLISH", START_DATE_DESC: "START_DATE" };
+      if (ascMap[variables.sortBy[0]]) variables.sortBy = [ascMap[variables.sortBy[0]]];
+    }
+
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query: SEARCH_QUERY, variables: { q, page, perPage: 20 } }),
+      body: JSON.stringify({ query: SEARCH_QUERY, variables }),
     });
     if (!resp.ok) return NextResponse.json({ data: [] });
     const data = await resp.json();
