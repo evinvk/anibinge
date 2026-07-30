@@ -29,6 +29,7 @@ export async function GET(req: Request) {
 
     const bodyBuf = await resp.arrayBuffer();
     const bodyStr = new TextDecoder().decode(bodyBuf.slice(0, 20));
+    const contentType = resp.headers.get("Content-Type") || "";
     const baseUrl = new URL(decodedUrl).origin;
     const proxyBase = `${new URL(req.url).origin}/api/v1/streaming/donghua/video-proxy`;
 
