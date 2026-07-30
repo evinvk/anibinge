@@ -134,6 +134,10 @@ export function getCurrentAdminUser(req: { headers: { get: (name: string) => str
   return userId;
 }
 
+export function getUserCount(): number {
+  return users.size;
+}
+
 // Admin: list users with search and pagination
 export function listUsers(q: string, page: number, perPage: number): { users: any[]; total: number } {
   const all = Array.from(users.values());
