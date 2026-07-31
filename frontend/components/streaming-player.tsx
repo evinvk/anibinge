@@ -548,44 +548,42 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
         )}
       </div>
 
-      {selectedSlug && (
-        <div className="mt-3 flex gap-2">
-          {(["sub", "dub", "hindi"] as const).map((opt) => (
-            <button
-              key={opt}
-              onClick={() => {
-                if (opt !== audio) {
-                  setAudio(opt);
-                }
-              }}
-              className={clsx(
-                "rounded-md px-3 py-1.5 text-xs font-medium transition",
-                audio === opt
-                  ? "bg-primary-600 text-white"
-                  : "bg-white/5 text-mist hover:bg-white/10"
-              )}
-            >
-              {opt === "sub" ? "Sub" : opt === "dub" ? "English" : "Hindi"}
-            </button>
-          ))}
+      <div className="mt-3 flex gap-2">
+        {(["sub", "dub", "hindi"] as const).map((opt) => (
           <button
+            key={opt}
             onClick={() => {
-              const dlUrl = api.downloadUrl({
-                slug: selectedSlug || undefined,
-                anilist_id: resolvedAnilistRef.current || undefined,
-                ep: currentEp,
-                audio: audio === "hindi" ? "sub" : audio,
-                filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
-              });
-              window.open(dlUrl, "_blank");
+              if (opt !== audio) {
+                setAudio(opt);
+              }
             }}
-            className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+            className={clsx(
+              "rounded-md px-3 py-1.5 text-xs font-medium transition",
+              audio === opt
+                ? "bg-primary-600 text-white"
+                : "bg-white/5 text-mist hover:bg-white/10"
+            )}
           >
-            <Download className="h-3 w-3" />
-            Download
+            {opt === "sub" ? "Sub" : opt === "dub" ? "English" : "Hindi"}
           </button>
-        </div>
-      )}
+        ))}
+        <button
+          onClick={() => {
+            const dlUrl = api.downloadUrl({
+              slug: selectedSlug || undefined,
+              anilist_id: resolvedAnilistRef.current || undefined,
+              ep: currentEp,
+              audio: audio === "hindi" ? "sub" : audio,
+              filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
+            });
+            window.open(dlUrl, "_blank");
+          }}
+          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
+        >
+          <Download className="h-3 w-3" />
+          Download
+        </button>
+      </div>
 
       {subs.subtitles.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
