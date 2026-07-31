@@ -74,6 +74,7 @@ async function fetchAniListBatch(titles: string[]): Promise<(string | null)[]> {
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query, variables: vars }),
       signal: controller.signal,
+      next: { revalidate: 86400 },
     });
     if (!resp.ok) throw new Error(`AniList ${resp.status}`);
     const json = await resp.json();
@@ -87,16 +88,13 @@ async function fetchAniListBatch(titles: string[]): Promise<(string | null)[]> {
 
 async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> {
   if (titles.length === 0) return [];
-  if (titles.length === 1) {
-    try {
-      return await fetchAniListBatch(titles);
-    } catch {
-      return [null];
-    }
-  }
   try {
     return await fetchAniListBatch(titles);
-  } catch {
+  } catch (e: any) {
+    const status = e?.message?.includes("AniList 404");
+    if (titles.length === 1 || !status) {
+      return titles.map(() => null);
+    }
     const mid = Math.ceil(titles.length / 2);
     const [left, right] = await Promise.all([
       fetchAniListCovers(titles.slice(0, mid)),
