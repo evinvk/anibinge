@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { href: "/", label: "Anime" },
   { href: "/seasonal", label: "Seasonal" },
   { href: "/schedule", label: "Schedule" },
   { href: "/news", label: "News" },
@@ -14,10 +13,9 @@ const TABS = [
 export function AnimeSectionTabs({ className }: { className?: string }) {
   const pathname = usePathname();
   return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
+    <div className={cn("flex flex-wrap justify-center gap-2", className)}>
       {TABS.map((t) => {
-        const active =
-          t.href === "/" ? pathname === "/" || pathname === "/anime" : pathname === t.href;
+        const active = pathname === t.href;
         return (
           <Link
             key={t.href}
