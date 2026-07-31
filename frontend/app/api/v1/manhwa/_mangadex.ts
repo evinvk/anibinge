@@ -1,5 +1,7 @@
 const API = "https://api.mangadex.org";
 const CDN = "https://uploads.mangadex.org";
+const ANILIST_GRAPHQL = "https://graphql.anilist.co";
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 function coverUrl(mangaId: string, fileName: string): string {
   return fileName ? `${CDN}/covers/${mangaId}/${fileName}.256.jpg` : "";
@@ -58,6 +60,45 @@ function extractCover(manga: MdManga): string | null {
   return fn ? coverUrl(manga.id, fn) : null;
 }
 
+async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> {
+  if (titles.length === 0) return [];
+  const vars = Object.fromEntries(titles.map((t, i) => [`t${i}`, t]));
+  const query = `query(${titles.map((_, i) => `$t${i}: String`).join(",")}) {
+    ${titles.map((_, i) => `m${i}: Media(search: $t${i}, type: MANGA) { coverImage { extraLarge large } }`).join("\n")}
+  }`;
+  const resp = await fetch(ANILIST_GRAPHQL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": UA },
+    body: JSON.stringify({ query, variables: vars }),
+    signal: AbortSignal.timeout(12000),
+    next: { revalidate: 86400 },
+  });
+  if (!resp.ok) throw new Error(`AniList ${resp.status}`);
+  const json = await resp.json();
+  if (json?.errors) throw new Error("AniList query errors");
+  const data = json?.data || {};
+  return titles.map((_, i) => data[`m${i}`]?.coverImage?.extraLarge || data[`m${i}`]?.coverImage?.large || null);
+}
+
+async function enrichPosters(items: ManhwaItemData[]): Promise<ManhwaItemData[]> {
+  if (items.length === 0) return items;
+  try {
+    const results: (string | null)[] = new Array(items.length).fill(null);
+    const CHUNK = 10;
+    await Promise.all(
+      Array.from({ length: Math.ceil(items.length / CHUNK) }, async (_, c) => {
+        const start = c * CHUNK;
+        const chunk = items.slice(start, start + CHUNK);
+        const covers = await fetchAniListCovers(chunk.map((i) => i.title));
+        covers.forEach((cover, k) => { if (cover) results[start + k] = cover; });
+      })
+    );
+    return items.map((item, i) => (results[i] ? { ...item, poster: results[i] } : item));
+  } catch {
+    return items;
+  }
+}
+
 export function parseMangaItem(manga: MdManga): ManhwaItemData {
   const attrs = manga.attributes;
   return {
@@ -79,7 +120,7 @@ export async function getTrending(page = 1): Promise<{ data: ManhwaItemData[] }>
     `/manga?limit=${limit}&offset=${offset}&order[followedCount]=desc&contentRating[]=safe&contentRating[]=suggestive&originalLanguage[]=ko&includes[]=cover_art`,
     120
   );
-  return { data: (json.data || []).map(parseMangaItem) };
+  return { data: await enrichPosters((json.data || []).map(parseMangaItem)) };
 }
 
 export async function getLatest(page = 1): Promise<{ data: ManhwaItemData[] }> {
@@ -89,7 +130,7 @@ export async function getLatest(page = 1): Promise<{ data: ManhwaItemData[] }> {
     `/manga?limit=${limit}&offset=${offset}&order[latestUploadedChapter]=desc&contentRating[]=safe&contentRating[]=suggestive&originalLanguage[]=ko&includes[]=cover_art`,
     60
   );
-  return { data: (json.data || []).map(parseMangaItem) };
+  return { data: await enrichPosters((json.data || []).map(parseMangaItem)) };
 }
 
 export async function searchManga(q: string): Promise<{ data: ManhwaItemData[] }> {
@@ -97,7 +138,7 @@ export async function searchManga(q: string): Promise<{ data: ManhwaItemData[] }
     `/manga?limit=20&title=${encodeURIComponent(q)}&order[relevance]=desc&contentRating[]=safe&contentRating[]=suggestive&originalLanguage[]=ko&includes[]=cover_art`,
     30
   );
-  return { data: (json.data || []).map(parseMangaItem) };
+  return { data: await enrichPosters((json.data || []).map(parseMangaItem)) };
 }
 
 export async function getMangaDetail(id: string): Promise<ManhwaItemData> {
@@ -105,7 +146,8 @@ export async function getMangaDetail(id: string): Promise<ManhwaItemData> {
     `/manga/${id}?includes[]=cover_art&includes[]=author&includes[]=artist`,
     300
   );
-  return parseMangaItem(json.data);
+  const [item] = await enrichPosters([parseMangaItem(json.data)]);
+  return item;
 }
 
 export interface ChapterData {
