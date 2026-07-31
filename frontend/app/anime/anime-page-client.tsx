@@ -30,7 +30,7 @@ export default function AnimePage() {
     }).catch(() => setLoadingPopular(false));
 
     api.airing(1).then((r) => {
-      const items = r.data || [];
+      const items = (r.data || []) as AnimeSummary[];
       items.forEach((i) => seenIdsRef.current.add(seenKey(i)));
       setAiring(items);
       setLoadingAiring(false);
