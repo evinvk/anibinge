@@ -1,22 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { Search, Loader2, Flame, Radio, ChevronDown } from "lucide-react";
 import { api, type AnimeSummary } from "@/lib/api";
 import { AnimeCard, AnimeCardSkeleton, AnimeGrid } from "@/components/anime-card";
-import { cn } from "@/lib/utils";
-
-const SECTION_TABS = [
-  { href: "/anime", label: "Anime" },
-  { href: "/seasonal", label: "Seasonal" },
-  { href: "/schedule", label: "Schedule" },
-  { href: "/news", label: "News" },
-];
+import { AnimeSectionTabs } from "@/components/anime-section-tabs";
 
 export default function AnimePage() {
-  const pathname = usePathname();
   const [popular, setPopular] = useState<AnimeSummary[]>([]);
   const [airing, setAiring] = useState<AnimeSummary[]>([]);
   const [searchResults, setSearchResults] = useState<AnimeSummary[] | null>(null);
@@ -95,25 +85,7 @@ export default function AnimePage() {
         </div>
 
         {/* Section tabs */}
-        <div className="mb-8 flex flex-wrap gap-2">
-          {SECTION_TABS.map((t) => {
-            const active = pathname === t.href;
-            return (
-              <Link
-                key={t.href}
-                href={t.href}
-                className={cn(
-                  "rounded-full border px-4 py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "border-primary-400/40 bg-primary-500/15 text-primary-300"
-                    : "border-white/10 bg-white/5 text-mist hover:text-paper"
-                )}
-              >
-                {t.label}
-              </Link>
-            );
-          })}
-        </div>
+        <AnimeSectionTabs className="mb-8" />
 
         {/* Search */}
         <div className="mb-10">

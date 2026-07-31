@@ -5,6 +5,7 @@ import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 import { HomeSearch } from "@/components/home-search";
+import { AnimeSectionTabs } from "@/components/anime-section-tabs";
 
 export const revalidate = 300;
 
@@ -65,6 +66,9 @@ export default async function HomePage() {
 
       <div className="pt-6">
         <HomeSearch />
+        <div className="mt-4">
+          <AnimeSectionTabs />
+        </div>
       </div>
 
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
