@@ -1,3 +1,5 @@
+import { fetchViaCfProxy, hasCfProxy } from "@/lib/cf-proxy";
+
 const API = "https://api.comick.dev";
 const COVER_CDN = "https://meo.comick.pictures";
 const UA =
@@ -273,8 +275,24 @@ export async function getChapterPages(chapterId: string): Promise<{
     const pages = (Array.isArray(json) ? json : [])
       .filter((u: any): u is string => typeof u === "string" && u.length > 0)
       .map((u: string) => (u.startsWith("//") ? `https:${u}` : u));
-    return { baseUrl: "", hash: "", pages };
+    if (pages.length > 0) return { baseUrl: "", hash: "", pages };
   } catch {
-    return { baseUrl: "", hash: "", pages: [] };
+    // fall through to CF Worker attempt
   }
+  if (hasCfProxy()) {
+    try {
+      const text = await fetchViaCfProxy(
+        `${API}/chapter/${encodeURIComponent(chapterId)}/get_images`
+      );
+      const parsed = JSON.parse(text);
+      const pages = (Array.isArray(parsed) ? parsed : [])
+        .filter((u: any): u is string => typeof u === "string" && u.length > 0)
+        .map((u: string) => (u.startsWith("//") ? `https:${u}` : u));
+      console.log(`ComicK CF proxy pages for ${chapterId}: ${pages.length}`);
+      if (pages.length > 0) return { baseUrl: "", hash: "", pages };
+    } catch (e: any) {
+      console.error(`ComicK CF proxy failed for ${chapterId}:`, e?.message || e);
+    }
+  }
+  return { baseUrl: "", hash: "", pages: [] };
 }
