@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,6 +10,8 @@ import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 import { DownloadButton } from "@/components/download-button";
 import { LazyStreamingPlayer } from "@/components/lazy-streaming-player";
+import { FaqSection } from "@/components/faq-section";
+import { findGenreByName } from "@/lib/genre-seo";
 
 export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?: string }) {
   const [detail, setDetail] = useState<any>(null);
@@ -47,6 +49,39 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
         }
       });
   }, [id, source, malId]);
+
+  const displayTitle = detail?.title_english || detail?.title || "This anime";
+  const faqItems = useMemo(() => {
+    if (!detail) return [];
+    const items = [];
+    const finished = /finished/i.test(detail.status || "");
+    const airing = /currently|airing/i.test(detail.status || "");
+    items.push({
+      question: `Is ${displayTitle} finished airing?`,
+      answer: finished
+        ? `Yes, ${displayTitle} has finished airing. The complete series is available to stream free on Anibinge.`
+        : airing
+          ? `No, ${displayTitle} is currently airing. New episodes are added to Anibinge as they are released.`
+          : `${displayTitle} has not finished airing yet. Check back for new episodes as they are added to Anibinge.`,
+    });
+    items.push({
+      question: `How many episodes does ${displayTitle} have?`,
+      answer: detail.episodes
+        ? `${displayTitle} has ${detail.episodes} episode${detail.episodes === 1 ? "" : "s"}. Stream them all free in HD on Anibinge.`
+        : `The total episode count for ${displayTitle} depends on how many are released. You can stream every available episode free on Anibinge.`,
+    });
+    items.push({
+      question: `Where can I watch ${displayTitle} online for free?`,
+      answer: `You can watch ${displayTitle} online free on Anibinge. Stream every episode in HD with sub and dub audio, and track your progress with your watchlist.`,
+    });
+    items.push({
+      question: `Is there a season 2 of ${displayTitle}?`,
+      answer: detail.status && /finished/i.test(detail.status)
+        ? `As of now, ${displayTitle} has aired ${detail.episodes || "its"} episode${detail.episodes === 1 ? "" : "s"}. Any sequel or season 2 announcement will be covered on Anibinge as soon as it's official.`
+        : `${displayTitle} is ${/currently/i.test(detail.status || "") ? "currently airing" : "ongoing"}. If a season 2 is announced, Anibinge will have it available to stream free.`,
+    });
+    return items;
+  }, [detail, displayTitle]);
 
   if (loading) {
     return <AnimeDetailSkeleton />;
@@ -101,15 +136,18 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {detail.genres?.map((g: any) => (
-                <Link
-                  key={g.mal_id ?? g.name}
-                  href={`/browse?genres=${encodeURIComponent(g.name)}`}
-                  className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400 transition-colors hover:bg-primary-600/30"
-                >
-                  {g.name}
-                </Link>
-              ))}
+              {detail.genres?.map((g: any) => {
+                const page = findGenreByName(g.name ?? "");
+                return (
+                  <Link
+                    key={g.mal_id ?? g.name}
+                    href={page ? `/genres/${page.slug}` : `/browse?genres=${encodeURIComponent(g.name)}`}
+                    className="rounded-full bg-primary-600/20 px-3 py-1 text-xs text-primary-400 transition-colors hover:bg-primary-600/30"
+                  >
+                    {g.name}
+                  </Link>
+                );
+              })}
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -162,6 +200,8 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
           anilistId={detail.anilist_id}
           totalEpisodes={detail.episodes}
         />
+
+        <FaqSection items={faqItems} />
 
         {recommendations.filter((r: any) => r.id && r.title && typeof r.title === "string" && r.title.length > 0).length > 0 && (
           <section className="mt-12 pb-12">

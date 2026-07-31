@@ -16,6 +16,10 @@ export function Footer() {
           <h4 className="font-display text-sm font-semibold text-paper">Discover</h4>
           <ul className="mt-3 space-y-2 text-sm text-mist">
             <li><Link href="/news">News</Link></li>
+            <li><Link href="/genres/action">Action</Link></li>
+            <li><Link href="/genres/romance">Romance</Link></li>
+            <li><Link href="/genres/fantasy">Fantasy</Link></li>
+            <li><Link href="/genres/sci-fi">Sci-Fi</Link></li>
           </ul>
         </div>
         <div>

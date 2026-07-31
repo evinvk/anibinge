@@ -3,6 +3,7 @@ import WatchPageClient from "./page-client";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ ep?: string }>;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -39,6 +40,38 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-export default function WatchPage({ params }: PageProps) {
-  return <WatchPageClient params={params} />;
+export default async function WatchPage({ params, searchParams }: PageProps) {
+  const [{ slug }, { ep }] = await Promise.all([params, searchParams]);
+  const title = await fetchAnimeTitle(slug);
+  const episodeNumber = parseInt(ep || "1", 10) || 1;
+  const url = `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/watch/${slug}?ep=${episodeNumber}`;
+
+  const videoJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    name: `${title} — Episode ${episodeNumber}`,
+    description: `Watch ${title} episode ${episodeNumber} online free in sub and dub. HD quality.`,
+    uploadDate: new Date().toISOString().split("T")[0],
+    contentUrl: url,
+    embedUrl: url,
+    inLanguage: "ja",
+    isAccessibleForFree: true,
+    partOfEpisode: {
+      "@type": "Episode",
+      episodeNumber,
+      name: `Episode ${episodeNumber}`,
+      partOfSeries: {
+        "@type": "TVSeries",
+        name: title,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/watch/${slug}`,
+      },
+    },
+  };
+
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }} />
+      <WatchPageClient params={params} />
+    </>
+  );
 }

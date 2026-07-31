@@ -40,15 +40,46 @@ function LoadingFallback() {
   );
 }
 
-export default function DonghuaWatchPage({ params }: PageProps) {
+export default function DonghuaWatchPage({ params, searchParams }: PageProps) {
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <DonghuaWatchPageInner params={params} />
+      <DonghuaWatchPageInner params={params} searchParams={searchParams} />
     </Suspense>
   );
 }
 
-async function DonghuaWatchPageInner({ params }: { params: Promise<{ slug: string }> }) {
-  const { slug } = await params;
-  return <DonghuaWatchPlayer slug={slug} />;
+async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ ep?: string }> }) {
+  const [{ slug }, { ep }] = await Promise.all([params, searchParams]);
+  const detail = await fetchDonghuaDetail(slug);
+  const episodeNumber = parseInt(ep || "1", 10) || 1;
+
+  const videoJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    name: `${detail.title} — Episode ${episodeNumber}`,
+    description: detail.description?.slice(0, 300) || `Watch ${detail.title} episode ${episodeNumber} online free.`,
+    thumbnailUrl: detail.poster || undefined,
+    uploadDate: new Date().toISOString().split("T")[0],
+    contentUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    embedUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    inLanguage: "zh",
+    isAccessibleForFree: true,
+    partOfEpisode: {
+      "@type": "Episode",
+      episodeNumber,
+      name: `Episode ${episodeNumber}`,
+      partOfSeries: {
+        "@type": "TVSeries",
+        name: detail.title,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/donghua/${slug}`,
+      },
+    },
+  };
+
+  return (
+    <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }} />
+      <DonghuaWatchPlayer slug={slug} />
+    </>
+  );
 }

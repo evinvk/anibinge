@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { api } from "@/lib/api";
+import { GENRE_PAGES } from "@/lib/genre-seo";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 
@@ -25,10 +26,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${SITE_URL}/watchlist`, changeFrequency: "monthly", priority: 0.2 },
   ];
 
-  const genreRoutes: MetadataRoute.Sitemap = POPULAR_GENRES.map((g) => ({
+  const browseGenreRoutes: MetadataRoute.Sitemap = POPULAR_GENRES.map((g) => ({
     url: `${SITE_URL}/browse?genres=${encodeURIComponent(g)}`,
     changeFrequency: "weekly" as const,
     priority: 0.7,
+  }));
+
+  const genrePageRoutes: MetadataRoute.Sitemap = GENRE_PAGES.map((g) => ({
+    url: `${SITE_URL}/genres/${g.slug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.8,
   }));
 
   try {
@@ -49,8 +56,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       }));
     } catch {}
 
-    return [...staticRoutes, ...genreRoutes, ...animeRoutes, ...donghuaRoutes];
+    return [...staticRoutes, ...browseGenreRoutes, ...genrePageRoutes, ...animeRoutes, ...donghuaRoutes];
   } catch {
-    return [...staticRoutes, ...genreRoutes];
+    return [...staticRoutes, ...browseGenreRoutes, ...genrePageRoutes];
   }
 }

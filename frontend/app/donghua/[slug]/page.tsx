@@ -1,12 +1,15 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Play, Star, Globe, Clock, ArrowLeft } from "lucide-react";
+import { Play, Star, Globe, ArrowLeft, ChevronDown } from "lucide-react";
 import { fetchHtml, parseDetailAuto } from "@/app/api/v1/donghua/_animexin";
 import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
+import { findGenreByName } from "@/lib/genre-seo";
 
 export const revalidate = 60;
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 
 function slugToId(slug: string): number {
   let hash = 0;
@@ -58,6 +61,41 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
   const episodes = detail.episode_list || [];
   const totalEps = detail.episodes || episodes.length;
 
+  const faqItems = [
+    {
+      question: `Is ${detail.title} finished airing?`,
+      answer: /(ongoing|airing|releasing)/i.test(detail.status || "")
+        ? `No, ${detail.title} is currently airing. New episodes are added to Anibinge as they are released.`
+        : `Yes, ${detail.title} has finished airing. The complete series is available to stream free on Anibinge.`,
+    },
+    {
+      question: `How many episodes does ${detail.title} have?`,
+      answer: totalEps
+        ? `${detail.title} has ${totalEps} episode${totalEps === 1 ? "" : "s"} available. Stream them all free in HD on Anibinge.`
+        : `The total episode count for ${detail.title} grows as new episodes release. Stream every available episode free on Anibinge.`,
+    },
+    {
+      question: `Where can I watch ${detail.title} online for free?`,
+      answer: `You can watch ${detail.title} online free on Anibinge. Stream every episode in HD with subtitles, and track your progress with your watchlist.`,
+    },
+    {
+      question: `Is ${detail.title} worth watching?`,
+      answer: detail.score
+        ? `${detail.title} is well-regarded with a score of ${detail.score}/10. Watch the first few episodes free on Anibinge to decide for yourself.`
+        : `Anime fans enjoy ${detail.title} for its ${detail.genres.slice(0, 3).join(", ") || "storytelling"}. Watch the first few episodes free on Anibinge to decide for yourself.`,
+    },
+  ];
+
+  const faqJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map((f) => ({
+      "@type": "Question",
+      name: f.question,
+      acceptedAnswer: { "@type": "Answer", text: f.answer },
+    })),
+  };
+
   return (
     <div className="min-h-screen bg-void">
       {/* JSON-LD structured data */}
@@ -68,10 +106,18 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
             "@context": "https://schema.org",
             "@type": "TVSeries",
             name: detail.title,
+            url: `${SITE_URL}/donghua/${slug}`,
             description: detail.description || undefined,
             image: detail.poster || undefined,
             genre: detail.genres,
+            inLanguage: "zh",
             numberOfEpisodes: totalEps || undefined,
+            episode: episodes.slice(0, 50).map((ep: any) => ({
+              "@type": "Episode",
+              episodeNumber: ep.number,
+              name: ep.title || `Episode ${ep.number}`,
+              url: `${SITE_URL}/donghua/watch/${slug}?ep=${ep.number}`,
+            })),
             aggregateRating: detail.score ? {
               "@type": "AggregateRating",
               ratingValue: detail.score,
@@ -80,6 +126,10 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
             } : undefined,
           }),
         }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
       />
       {/* Banner */}
       <div className="relative h-64 w-full overflow-hidden sm:h-80">
@@ -152,15 +202,18 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
-              {detail.genres.map((g) => (
-                <Link
-                  key={g}
-                  href={`/browse?genres=${encodeURIComponent(g)}`}
-                  className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-red-400/30 hover:text-paper"
-                >
-                  {g}
-                </Link>
-              ))}
+              {detail.genres.map((g) => {
+                const page = findGenreByName(g);
+                return (
+                  <Link
+                    key={g}
+                    href={page ? `/genres/${page.slug}` : `/browse?genres=${encodeURIComponent(g)}`}
+                    className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-red-400/30 hover:text-paper"
+                  >
+                    {g}
+                  </Link>
+                );
+              })}
             </div>
 
             <div className="mt-4">
@@ -231,6 +284,25 @@ export default async function DonghuaDetailPage({ params }: PageProps) {
               Watch Episode 1
             </Link>
           )}
+        </section>
+
+        {/* FAQ */}
+        <section className="pb-16">
+          <h2 className="font-display text-xl font-bold text-paper">Frequently Asked Questions</h2>
+          <div className="mt-4 flex flex-col gap-3">
+            {faqItems.map((item, i) => (
+              <details
+                key={i}
+                className="group rounded-xl border border-white/5 bg-white/[0.02] transition-colors open:bg-white/[0.04]"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-paper">
+                  {item.question}
+                  <ChevronDown className="h-4 w-4 shrink-0 text-mist transition-transform group-open:rotate-180" />
+                </summary>
+                <p className="px-4 pb-4 text-sm leading-relaxed text-mist">{item.answer}</p>
+              </details>
+            ))}
+          </div>
         </section>
       </div>
     </div>

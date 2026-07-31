@@ -51,10 +51,12 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         "@context": "https://schema.org",
         "@type": isMovie ? "Movie" : "TVSeries",
         name: title,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/anime/${id}`,
         description: data.synopsis?.slice(0, 300) || undefined,
         image: data.image || data.banner || undefined,
         genre: data.genres || undefined,
         datePublished: data.start_date || undefined,
+        inLanguage: data.audio === "dub" ? "en" : "ja",
         ...(data.episodes && !isMovie ? { numberOfEpisodes: data.episodes } : {}),
         ...(data.score ? {
           aggregateRating: {
