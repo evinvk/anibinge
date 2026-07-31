@@ -51,6 +51,7 @@ async function fetchDirect(url: string): Promise<Response> {
       "Cache-Control": "no-cache",
       Referer: "https://animexin.dev/",
     },
+    signal: AbortSignal.timeout(6000),
     next: { revalidate: 3600 },
   });
 }
@@ -187,21 +188,35 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
   return mdMatch ? mdMatch[1].trim() : text;
 }
 
+const htmlCache = new Map<string, { html: string; at: number }>();
+const HTML_TTL_MS = 60 * 60 * 1000;
+
 export async function fetchHtml(path: string, params?: Record<string, string>): Promise<string> {
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
   const url = BASE + path + qs;
+  const key = path + qs;
+
+  const cached = htmlCache.get(key);
+  if (cached && Date.now() - cached.at < HTML_TTL_MS) return cached.html;
 
   const errors: string[] = [];
 
   // Try direct fetch first
   const resp = await fetchDirect(url);
-  if (resp.ok) return resp.text();
+  if (resp.ok) {
+    const text = await resp.text();
+    htmlCache.set(key, { html: text, at: Date.now() });
+    return text;
+  }
   errors.push(`Direct ${resp.status}`);
 
   // Fallback: Cloudflare Worker proxy (not blocked by animexin.dev's Cloudflare)
   try {
     const html = await fetchViaCfProxy(url);
-    if (html?.length > 100) return html;
+    if (html?.length > 100) {
+      htmlCache.set(key, { html, at: Date.now() });
+      return html;
+    }
   } catch (e: any) {
     errors.push(e.message || "CF Proxy failed");
   }
@@ -209,7 +224,10 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   // Fallback: try Jina AI (returns markdown)
   try {
     const md = await fetchViaJina(path, params);
-    if (md?.length > 50) return md;
+    if (md?.length > 50) {
+      htmlCache.set(key, { html: md, at: Date.now() });
+      return md;
+    }
   } catch (e: any) {
     errors.push(e.message || "Jina AI failed");
   }
@@ -222,7 +240,10 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
     });
     if (r.ok) {
       const text = await r.text();
-      if (text?.length > 100) return text;
+      if (text?.length > 100) {
+        htmlCache.set(key, { html: text, at: Date.now() });
+        return text;
+      }
     }
     errors.push(`AllOrigins ${r.status}`);
   } catch (e: any) {
