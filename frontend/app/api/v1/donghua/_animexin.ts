@@ -627,43 +627,65 @@ function looksLikeEpisodePage(detail: any): boolean {
   return false;
 }
 
+const resolveCache = new Map<string, { url: string | null; at: number }>();
+const RESOLVE_TTL_MS = 60 * 60 * 1000;
+
 export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | null> {
+  const cached = resolveCache.get(slug);
+  if (cached && Date.now() - cached.at < RESOLVE_TTL_MS) return cached.url;
+
+  let result: string | null = null;
   const paths = [`/${slug}/`, `/anime/${slug}/`];
   for (const path of paths) {
     try {
       const html = await fetchHtml(path);
       const detail = parseDetailAuto(html, slug);
-      if (detail.title && detail.episode_list?.length >= 2 && !looksLikeEpisodePage(detail)) return path;
+      if (detail.title && detail.episode_list?.length >= 2 && !looksLikeEpisodePage(detail)) {
+        result = path;
+        break;
+      }
     } catch {}
   }
-  for (const path of paths) {
-    try {
-      const html = await fetchHtml(path);
-      const detail = parseDetailAuto(html, slug);
-      if (detail.title && detail.episode_list?.length > 0 && !looksLikeEpisodePage(detail)) return path;
-    } catch {}
+  if (!result) {
+    for (const path of paths) {
+      try {
+        const html = await fetchHtml(path);
+        const detail = parseDetailAuto(html, slug);
+        if (detail.title && detail.episode_list?.length > 0 && !looksLikeEpisodePage(detail)) {
+          result = path;
+          break;
+        }
+      } catch {}
+    }
   }
-  const queries = [slug.replace(/-/g, " ")];
-  const misspelled = slug.replace(/rou/g, "ro");
-  if (misspelled !== slug) queries.push(misspelled.replace(/-/g, " "));
-  for (const query of queries) {
-    try {
-      const items = await searchAnimeXin(query);
-      const scored = items
-        .filter((i: any) => i.slug && !i.slug.includes("episode"))
-        .map((i: any) => {
-          let score = 0;
-          if (i.title?.toLowerCase().replace(/[^a-z]/g, "") === slug.replace(/[^a-z]/g, "")) score += 5;
-          if (i.slug === slug) score += 3;
-          const slugWords = slug.split("-");
-          const matchWords = slugWords.filter((w) => i.slug?.includes(w) || i.title?.toLowerCase().includes(w));
-          score += Math.min(matchWords.length, 2);
-          return { ...i, score };
-        })
-        .sort((a: any, b: any) => b.score - a.score);
-      const best = scored[0];
-      if (best?.url && best.score >= 3) return best.url.replace(BASE, "");
-    } catch {}
+  if (!result) {
+    const queries = [slug.replace(/-/g, " ")];
+    const misspelled = slug.replace(/rou/g, "ro");
+    if (misspelled !== slug) queries.push(misspelled.replace(/-/g, " "));
+    for (const query of queries) {
+      try {
+        const items = await searchAnimeXin(query);
+        const scored = items
+          .filter((i: any) => i.slug && !i.slug.includes("episode"))
+          .map((i: any) => {
+            let score = 0;
+            if (i.title?.toLowerCase().replace(/[^a-z]/g, "") === slug.replace(/[^a-z]/g, "")) score += 5;
+            if (i.slug === slug) score += 3;
+            const slugWords = slug.split("-");
+            const matchWords = slugWords.filter((w) => i.slug?.includes(w) || i.title?.toLowerCase().includes(w));
+            score += Math.min(matchWords.length, 2);
+            return { ...i, score };
+          })
+          .sort((a: any, b: any) => b.score - a.score);
+        const best = scored[0];
+        if (best?.url && best.score >= 3) {
+          result = best.url.replace(BASE, "");
+          break;
+        }
+      } catch {}
+    }
   }
-  return null;
+
+  resolveCache.set(slug, { url: result, at: Date.now() });
+  return result;
 }

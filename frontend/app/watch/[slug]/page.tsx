@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import WatchPageClient from "./page-client";
 
 interface PageProps {
@@ -8,7 +9,7 @@ interface PageProps {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function fetchAnimeTitle(slug: string): Promise<string | null> {
+const fetchAnimeTitle = cache(async (slug: string): Promise<string> => {
   try {
     const res = await fetch(`${API_BASE}/api/v1/streaming/gogoanime/${slug}/info`, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
@@ -24,7 +25,7 @@ async function fetchAnimeTitle(slug: string): Promise<string | null> {
   } catch {}
 
   return slug.replace(/-/g, " ");
-}
+});
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;

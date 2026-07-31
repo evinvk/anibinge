@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
+import { Suspense, cache } from "react";
 import { Loader2 } from "lucide-react";
 import { fetchHtml, parseDetailAuto, resolveAnimeXinSeriesUrl } from "@/app/api/v1/donghua/_animexin";
 import DonghuaWatchPlayer from "@/components/donghua-watch-player";
@@ -9,7 +9,7 @@ interface PageProps {
   searchParams: Promise<{ ep?: string }>;
 }
 
-async function fetchDonghuaDetail(slug: string): Promise<{ title: string; description: string; poster: string | null; genres: string[] }> {
+const fetchDonghuaDetail = cache(async (slug: string): Promise<{ title: string; description: string; poster: string | null; genres: string[] }> => {
   try {
     const path = (await resolveAnimeXinSeriesUrl(slug)) || `/${slug}/`;
     const html = await fetchHtml(path);
@@ -17,7 +17,7 @@ async function fetchDonghuaDetail(slug: string): Promise<{ title: string; descri
     return { title: detail.title || slug, description: detail.description || "", poster: detail.poster, genres: detail.genres || [] };
   } catch {}
   return { title: slug.replace(/-/g, " "), description: "", poster: null, genres: [] };
-}
+});
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;

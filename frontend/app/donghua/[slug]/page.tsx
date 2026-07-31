@@ -1,13 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { Play, Star, Globe, ArrowLeft, ChevronDown } from "lucide-react";
 import { fetchHtml, parseDetailAuto, resolveAnimeXinSeriesUrl } from "@/app/api/v1/donghua/_animexin";
 import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 import { findGenreByName } from "@/lib/genre-seo";
 
-export const revalidate = 60;
+export const revalidate = 1800;
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 
@@ -23,11 +24,11 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-async function getDetail(slug: string) {
+const getDetail = cache(async (slug: string) => {
   const path = (await resolveAnimeXinSeriesUrl(slug)) || `/${slug}/`;
   const html = await fetchHtml(path);
   return parseDetailAuto(html, slug);
-}
+});
 
 export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
