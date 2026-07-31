@@ -81,21 +81,17 @@ async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> 
 
 async function enrichPosters(items: ManhwaItemData[]): Promise<ManhwaItemData[]> {
   if (items.length === 0) return items;
-  try {
-    const results: (string | null)[] = new Array(items.length).fill(null);
-    const CHUNK = 10;
-    await Promise.all(
-      Array.from({ length: Math.ceil(items.length / CHUNK) }, async (_, c) => {
-        const start = c * CHUNK;
-        const chunk = items.slice(start, start + CHUNK);
-        const covers = await fetchAniListCovers(chunk.map((i) => i.title));
-        covers.forEach((cover, k) => { if (cover) results[start + k] = cover; });
-      })
-    );
-    return items.map((item, i) => (results[i] ? { ...item, poster: results[i] } : item));
-  } catch {
-    return items;
-  }
+  const results: (string | null)[] = new Array(items.length).fill(null);
+  const CHUNK = 10;
+  await Promise.all(
+    Array.from({ length: Math.ceil(items.length / CHUNK) }, async (_, c) => {
+      const start = c * CHUNK;
+      const chunk = items.slice(start, start + CHUNK);
+      const covers = await fetchAniListCovers(chunk.map((i) => i.title));
+      covers.forEach((cover, k) => { if (cover) results[start + k] = cover; });
+    })
+  );
+  return items.map((item, i) => (results[i] ? { ...item, poster: results[i] } : item));
 }
 
 export function parseMangaItem(manga: MdManga): ManhwaItemData {

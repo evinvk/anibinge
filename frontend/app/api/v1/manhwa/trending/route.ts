@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   try {
     const data = await getTrending(page);
     return NextResponse.json({ data: data.data, page });
-  } catch {
-    return NextResponse.json({ data: [], page }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json({ data: [], page, error: e?.message || String(e) }, { status: 500 });
   }
 }
