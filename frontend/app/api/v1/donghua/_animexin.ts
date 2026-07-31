@@ -360,19 +360,31 @@ function parseWpPost(p: any) {
 // Fetch latest release posts from the WordPress REST API (has exact publish dates)
 export async function fetchLatestWp(page = 1): Promise<any[] | null> {
   const url = `${BASE}/wp-json/wp/v2/posts?per_page=30&page=${page}`;
+  let data: any = null;
   try {
     const resp = await fetch(url, {
       headers: { "User-Agent": UA, Accept: "application/json" },
       signal: AbortSignal.timeout(8000),
     });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    if (!Array.isArray(data)) return null;
-    const items = data.map(parseWpPost).filter((i: any) => i.slug && i.title);
-    return items.length ? items : null;
+    if (resp.ok) {
+      const j = await resp.json();
+      if (Array.isArray(j)) data = j;
+    }
   } catch {
-    return null;
+    data = null;
   }
+  if (!data) {
+    try {
+      const text = await fetchViaCfProxy(url);
+      const j = JSON.parse(text);
+      if (Array.isArray(j)) data = j;
+    } catch {
+      data = null;
+    }
+  }
+  if (!Array.isArray(data) || !data.length) return null;
+  const items = data.map(parseWpPost).filter((i: any) => i.slug && i.title);
+  return items.length ? items : null;
 }
 
 // Auto-detect content format and parse accordingly
