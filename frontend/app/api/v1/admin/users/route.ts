@@ -14,7 +14,7 @@ export async function GET(req: NextRequest) {
     const perPage = 50;
 
     const { listUsers } = await import("@/lib/auth-store");
-    const result = listUsers(q, page, perPage);
+    const result = await listUsers(q, page, perPage);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ detail: e.message || "Failed to list users" }, { status: 500 });

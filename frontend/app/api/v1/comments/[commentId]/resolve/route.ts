@@ -8,7 +8,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
   }
   try {
-    const result = toggleResolve(parseInt(commentId));
+    const result = await toggleResolve(parseInt(commentId));
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ detail: e.message }, { status: 404 });

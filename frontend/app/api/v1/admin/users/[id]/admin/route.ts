@@ -14,7 +14,7 @@ export async function PATCH(
 
     const { is_admin } = await req.json();
     const { setAdmin } = await import("@/lib/auth-store");
-    const result = setAdmin(id, is_admin, adminId);
+    const result = await setAdmin(id, is_admin, adminId);
     return NextResponse.json(result);
   } catch (e: any) {
     const status = e.status || 500;

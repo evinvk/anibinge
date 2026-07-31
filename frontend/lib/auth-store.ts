@@ -1,68 +1,11 @@
 import { randomBytes, scryptSync, createHmac } from "crypto";
-import fs from "fs";
-import path from "path";
+import { query } from "./db";
 
 const SECRET = process.env.AUTH_SECRET || "anibinge-dev-secret-key-change-in-production";
 const PEPPER = process.env.AUTH_PEPPER || "anibinge-dev-pepper";
 
 const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "";
-
-interface StoredUser {
-  id: string;
-  email: string;
-  username: string;
-  hash: string;
-  avatar_url: string | null;
-  is_admin: boolean;
-  created_at: string;
-}
-
-function usersFilePath(): string {
-  try {
-    const dir = process.cwd();
-    try {
-      fs.accessSync(dir, fs.constants.W_OK);
-      return path.join(dir, ".auth-users.json");
-    } catch {
-      return "/tmp/.auth-users.json";
-    }
-  } catch {
-    return "/tmp/.auth-users.json";
-  }
-}
-
-function loadUsers(): Map<string, StoredUser> {
-  const map = new Map<string, StoredUser>();
-  try {
-    const file = usersFilePath();
-    if (fs.existsSync(file)) {
-      const raw = JSON.parse(fs.readFileSync(file, "utf-8"));
-      for (const item of raw) map.set(item.email, item);
-    }
-  } catch {}
-  // Always sync admin from env vars (overwrites file version)
-  if (ADMIN_EMAIL && ADMIN_PASSWORD) {
-    const existing = map.get(ADMIN_EMAIL);
-    map.set(ADMIN_EMAIL, {
-      id: existing?.id || randomBytes(12).toString("hex"),
-      email: ADMIN_EMAIL,
-      username: existing?.username || ADMIN_EMAIL.split("@")[0],
-      hash: hashPassword(ADMIN_PASSWORD),
-      avatar_url: existing?.avatar_url || null,
-      is_admin: true,
-      created_at: existing?.created_at || new Date().toISOString(),
-    });
-  }
-  return map;
-}
-
-function saveUsers(users: Map<string, StoredUser>): void {
-  try {
-    const file = usersFilePath();
-    fs.writeFileSync(file, JSON.stringify(Array.from(users.values())), "utf-8");
-  } catch {}
-}
 
 function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -107,35 +50,43 @@ function decodeToken(token: string): {
   }
 }
 
-export function registerUser(email: string, username: string, password: string): { access_token: string; token_type: string } {
-  const users = loadUsers();
+async function syncAdminUser(): Promise<void> {
+  if (!ADMIN_EMAIL || !ADMIN_PASSWORD) return;
+  await query(
+    `INSERT INTO users (id, email, username, hash, avatar_url, is_admin, created_at)
+     VALUES ($1, $2, $3, $4, NULL, true, now())
+     ON CONFLICT (email) DO UPDATE SET hash = EXCLUDED.hash, is_admin = true`,
+    [randomBytes(12).toString("hex"), ADMIN_EMAIL, ADMIN_EMAIL.split("@")[0], hashPassword(ADMIN_PASSWORD)],
+  );
+}
+
+export async function registerUser(email: string, username: string, password: string): Promise<{ access_token: string; token_type: string }> {
+  await syncAdminUser();
   const normalizedEmail = email.toLowerCase().trim();
-  if (users.has(normalizedEmail)) {
+  const existing = await query(`SELECT 1 FROM users WHERE email = $1`, [normalizedEmail]);
+  if (existing.length > 0) {
     throw Object.assign(new Error("Email already registered"), { status: 409 });
   }
-  if (users.size >= 1000) {
+  const count = await query(`SELECT count(*)::int AS c FROM users`);
+  if (count[0].c >= 1000) {
     throw Object.assign(new Error("Registration limit reached"), { status: 503 });
   }
   const id = randomBytes(12).toString("hex");
-  const isAdmin = users.size === 0;
-  const user: StoredUser = {
-    id,
-    email: normalizedEmail,
-    username: username.trim(),
-    hash: hashPassword(password),
-    avatar_url: null,
-    is_admin: isAdmin,
-    created_at: new Date().toISOString(),
-  };
-  users.set(normalizedEmail, user);
-  saveUsers(users);
-  return { access_token: generateToken({ id, email: normalizedEmail, username: username.trim(), is_admin: isAdmin }), token_type: "bearer" };
+  const isAdmin = count[0].c === 0;
+  const cleanUsername = username.trim();
+  await query(
+    `INSERT INTO users (id, email, username, hash, avatar_url, is_admin, created_at)
+     VALUES ($1, $2, $3, $4, NULL, $5, now())`,
+    [id, normalizedEmail, cleanUsername, hashPassword(password), isAdmin],
+  );
+  return { access_token: generateToken({ id, email: normalizedEmail, username: cleanUsername, is_admin: isAdmin }), token_type: "bearer" };
 }
 
-export function loginUser(email: string, password: string): { access_token: string; token_type: string } {
-  const users = loadUsers();
+export async function loginUser(email: string, password: string): Promise<{ access_token: string; token_type: string }> {
+  await syncAdminUser();
   const normalizedEmail = email.toLowerCase().trim();
-  const user = users.get(normalizedEmail);
+  const rows = await query(`SELECT * FROM users WHERE email = $1`, [normalizedEmail]);
+  const user = rows[0];
   if (!user || !verifyPassword(password, user.hash)) {
     throw Object.assign(new Error("Invalid email or password"), { status: 401 });
   }
@@ -158,64 +109,55 @@ export function getCurrentAdminUser(req: { headers: { get: (name: string) => str
   return tokenData.sub;
 }
 
-export function getUserCount(): number {
-  return loadUsers().size;
+export async function getUserCount(): Promise<number> {
+  await syncAdminUser();
+  const rows = await query(`SELECT count(*)::int AS c FROM users`);
+  return rows[0].c;
 }
 
-export function listUsers(q: string, page: number, perPage: number): { users: any[]; total: number } {
-  const users = loadUsers();
-  const all = Array.from(users.values());
-  const filtered = q
-    ? all.filter((u) => u.email.includes(q.toLowerCase()) || u.username.toLowerCase().includes(q.toLowerCase()))
-    : all;
-  const sorted = filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const start = (page - 1) * perPage;
-  const pageItems = sorted.slice(start, start + perPage);
+export async function listUsers(q: string, page: number, perPage: number): Promise<{ users: any[]; total: number }> {
+  await syncAdminUser();
+  const where = q ? `WHERE email ILIKE $1 OR username ILIKE $1` : "";
+  const params = q ? [`%${q}%`] : [];
+  const total = await query(`SELECT count(*)::int AS c FROM users ${where}`, params);
+  const rows = await query(
+    `SELECT id, email, username, avatar_url, is_admin, created_at
+     FROM users ${where} ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, perPage, (page - 1) * perPage],
+  );
   return {
-    users: pageItems.map((u) => ({
+    users: rows.map((u) => ({
       id: u.id, email: u.email, username: u.username,
       avatar_url: u.avatar_url, is_admin: u.is_admin, created_at: u.created_at,
       has_google: false,
     })),
-    total: filtered.length,
+    total: total[0].c,
   };
 }
 
-export function deleteUser(targetId: string, adminId: string): { detail: string } {
+export async function deleteUser(targetId: string, adminId: string): Promise<{ detail: string }> {
   if (targetId === adminId) {
     throw Object.assign(new Error("Cannot delete your own account"), { status: 400 });
   }
-  const users = loadUsers();
-  let target: StoredUser | undefined;
-  for (const u of users.values()) {
-    if (u.id === targetId) { target = u; break; }
-  }
-  if (!target) {
+  const target = await query(`SELECT email FROM users WHERE id = $1`, [targetId]);
+  if (target.length === 0) {
     throw Object.assign(new Error("User not found"), { status: 404 });
   }
-  users.delete(target.email);
-  saveUsers(users);
-  return { detail: `User ${target.email} deleted` };
+  await query(`DELETE FROM users WHERE id = $1`, [targetId]);
+  return { detail: `User ${target[0].email} deleted` };
 }
 
-export function setAdmin(targetId: string, isAdmin: boolean, adminId: string): any {
-  const users = loadUsers();
-  let target: StoredUser | undefined;
-  for (const u of users.values()) {
-    if (u.id === targetId) { target = u; break; }
-  }
-  if (!target) {
+export async function setAdmin(targetId: string, isAdmin: boolean, adminId: string): Promise<any> {
+  const target = await query(`SELECT id, email, username, avatar_url, is_admin, created_at FROM users WHERE id = $1`, [targetId]);
+  if (target.length === 0) {
     throw Object.assign(new Error("User not found"), { status: 404 });
   }
   if (targetId === adminId && !isAdmin) {
     throw Object.assign(new Error("Cannot remove your own admin privileges"), { status: 400 });
   }
-  target.is_admin = isAdmin;
-  saveUsers(users);
-  return { id: target.id, email: target.email, username: target.username, avatar_url: target.avatar_url, is_admin: target.is_admin, created_at: target.created_at, has_google: false };
+  await query(`UPDATE users SET is_admin = $1 WHERE id = $2`, [isAdmin, targetId]);
+  return { ...target[0], is_admin: isAdmin, has_google: false };
 }
-
-const watchlists = new Map<string, Map<number, any>>();
 
 export interface WatchlistEntry {
   anime_id: number;
@@ -226,30 +168,29 @@ export interface WatchlistEntry {
   updated_at: string;
 }
 
-export function getWatchlist(userId: string): WatchlistEntry[] {
-  const list = watchlists.get(userId);
-  return list ? Array.from(list.values()) : [];
+export async function getWatchlist(userId: string): Promise<WatchlistEntry[]> {
+  const rows = await query(
+    `SELECT anime_id, source, status, progress, rating, updated_at
+     FROM watchlist WHERE user_id = $1 ORDER BY updated_at DESC`,
+    [userId],
+  );
+  return rows;
 }
 
-export function upsertWatchlistEntry(userId: string, entry: { anime_id: number; source?: string; status: string; progress?: number; rating?: number | null }): WatchlistEntry {
-  if (!watchlists.has(userId)) watchlists.set(userId, new Map());
-  const list = watchlists.get(userId)!;
-  const existing = list.get(entry.anime_id);
-  const updated: WatchlistEntry = {
-    anime_id: entry.anime_id,
-    source: entry.source || existing?.source || "mal",
-    status: entry.status,
-    progress: entry.progress ?? existing?.progress ?? 0,
-    rating: entry.rating !== undefined ? entry.rating : (existing?.rating ?? null),
-    updated_at: new Date().toISOString(),
-  };
-  list.set(entry.anime_id, updated);
-  return updated;
+export async function upsertWatchlistEntry(userId: string, entry: { anime_id: number; source?: string; status: string; progress?: number; rating?: number | null }): Promise<WatchlistEntry> {
+  const rows = await query(
+    `INSERT INTO watchlist (user_id, anime_id, source, status, progress, rating, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, now())
+     ON CONFLICT (user_id, anime_id)
+     DO UPDATE SET source = EXCLUDED.source, status = EXCLUDED.status, progress = EXCLUDED.progress, rating = EXCLUDED.rating, updated_at = now()
+     RETURNING anime_id, source, status, progress, rating, updated_at`,
+    [userId, entry.anime_id, entry.source || "mal", entry.status, entry.progress ?? 0, entry.rating !== undefined ? entry.rating : null],
+  );
+  return rows[0];
 }
 
-export function removeWatchlistEntry(userId: string, animeId: number): { removed: number } {
-  const list = watchlists.get(userId);
-  if (list) list.delete(animeId);
+export async function removeWatchlistEntry(userId: string, animeId: number): Promise<{ removed: number }> {
+  await query(`DELETE FROM watchlist WHERE user_id = $1 AND anime_id = $2`, [userId, animeId]);
   return { removed: 1 };
 }
 

@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
     if (password.length < 8) {
       return NextResponse.json({ detail: "Password must be at least 8 characters" }, { status: 400 });
     }
-    const result = registerUser(email, username, password);
+    const result = await registerUser(email, username, password);
     return NextResponse.json(result);
   } catch (e: any) {
     const status = e.status || 500;

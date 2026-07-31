@@ -13,7 +13,7 @@ export async function DELETE(
     }
 
     const { deleteUser } = await import("@/lib/auth-store");
-    const result = deleteUser(id, adminId);
+    const result = await deleteUser(id, adminId);
     return NextResponse.json(result);
   } catch (e: any) {
     const status = e.status || 500;

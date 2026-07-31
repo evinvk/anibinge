@@ -9,6 +9,6 @@ export async function DELETE(
   if (!user) return NextResponse.json({ detail: "Not authenticated" }, { status: 401 });
 
   const { anime_id } = await params;
-  const result = removeWatchlistEntry(user.id, parseInt(anime_id));
+  const result = await removeWatchlistEntry(user.id, parseInt(anime_id));
   return NextResponse.json(result);
 }

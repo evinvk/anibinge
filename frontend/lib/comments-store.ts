@@ -1,7 +1,6 @@
-const comments = new Map<string, any[]>();
-const nextId = { value: 1 };
+import { query } from "./db";
 
-export interface StoredComment {
+interface CommentRow {
   id: number;
   user_id: string;
   username: string;
@@ -13,103 +12,11 @@ export interface StoredComment {
   likes: number;
   replies_count: number;
   is_resolved: boolean;
-  liked_by: Set<string>;
+  liked_by: string[];
   created_at: string;
 }
 
-export function getComments(slug: string, episodeNumber: number, sort: string) {
-  const key = `${slug}:${episodeNumber}`;
-  const all = (comments.get(key) || []).filter((c) => !c.parent_id);
-  const sorted = [...all].sort((a, b) => {
-    if (sort === "oldest") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    if (sort === "popular") return b.likes - a.likes;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
-  return { comments: sorted.map((c) => enrichComment(c, null)), total: sorted.length };
-}
-
-export function createComment(userId: string, username: string, body: { slug: string; episode_number: number; body: string; tag: string; parent_id: number | null }) {
-  const key = `${body.slug}:${body.episode_number}`;
-  if (!comments.has(key)) comments.set(key, []);
-
-  if (body.parent_id) {
-    const parent = comments.get(key)?.find((c) => c.id === body.parent_id);
-    if (!parent) throw new Error("Parent comment not found");
-  }
-
-  const comment: StoredComment = {
-    id: nextId.value++,
-    user_id: userId,
-    username: username || "User",
-    slug: body.slug,
-    episode_number: body.episode_number,
-    body: body.body,
-    tag: body.tag,
-    parent_id: body.parent_id || null,
-    likes: 0,
-    replies_count: 0,
-    is_resolved: false,
-    liked_by: new Set(),
-    created_at: new Date().toISOString(),
-  };
-
-  comments.get(key)!.push(comment);
-
-  if (body.parent_id) {
-    const parent = comments.get(key)!.find((c) => c.id === body.parent_id);
-    if (parent) parent.replies_count++;
-  }
-
-  return enrichComment(comment, null);
-}
-
-export function toggleLike(commentId: number, userId: string) {
-  for (const [, list] of comments) {
-    const c = list.find((c) => c.id === commentId);
-    if (c) {
-      if (c.liked_by.has(userId)) {
-        c.liked_by.delete(userId);
-        c.likes = Math.max(0, c.likes - 1);
-        return { liked: false, likes: c.likes };
-      } else {
-        c.liked_by.add(userId);
-        c.likes++;
-        return { liked: true, likes: c.likes };
-      }
-    }
-  }
-  throw new Error("Comment not found");
-}
-
-export function toggleResolve(commentId: number) {
-  for (const [, list] of comments) {
-    const c = list.find((c) => c.id === commentId);
-    if (c) {
-      c.is_resolved = !c.is_resolved;
-      return { is_resolved: c.is_resolved };
-    }
-  }
-  throw new Error("Comment not found");
-}
-
-export function deleteComment(commentId: number) {
-  for (const [, list] of comments) {
-    const idx = list.findIndex((c) => c.id === commentId);
-    if (idx !== -1) {
-      list.splice(idx, 1);
-      return { deleted: true };
-    }
-  }
-  throw new Error("Comment not found");
-}
-
-export function getReplies(slug: string, episodeNumber: number, parentId: number) {
-  const key = `${slug}:${episodeNumber}`;
-  const all = (comments.get(key) || []).filter((c) => c.parent_id === parentId);
-  return all.map((c) => enrichComment(c, null));
-}
-
-function enrichComment(c: StoredComment, requestUserId: string | null) {
+function enrichComment(c: CommentRow, requestUserId: string | null) {
   return {
     id: c.id,
     user_id: c.user_id,
@@ -121,10 +28,77 @@ function enrichComment(c: StoredComment, requestUserId: string | null) {
     tag: c.tag,
     parent_id: c.parent_id,
     likes: c.likes,
-    replies_count: c.replies_count,
+    replies_count: c.replies_count ?? 0,
     is_resolved: c.is_resolved,
-    liked_by_me: requestUserId ? c.liked_by.has(requestUserId) : false,
+    liked_by_me: requestUserId ? (c.liked_by || []).includes(requestUserId) : false,
     created_at: c.created_at,
     replies: [] as any[],
   };
+}
+
+const ORDER_SQL: Record<string, string> = {
+  oldest: "created_at ASC",
+  popular: "likes DESC, created_at DESC",
+  newest: "created_at DESC",
+};
+
+export async function getComments(slug: string, episodeNumber: number, sort: string): Promise<{ comments: any[]; total: number }> {
+  const order = ORDER_SQL[sort] || ORDER_SQL.newest;
+  const rows = await query<CommentRow>(
+    `SELECT *, (SELECT count(*)::int FROM comments r WHERE r.parent_id = c.id) AS replies_count
+     FROM comments c WHERE c.slug = $1 AND c.episode_number = $2 AND c.parent_id IS NULL
+     ORDER BY ${order}`,
+    [slug, episodeNumber],
+  );
+  const total = await query(`SELECT count(*)::int AS c FROM comments WHERE slug = $1 AND episode_number = $2 AND parent_id IS NULL`, [slug, episodeNumber]);
+  return { comments: rows.map((c) => enrichComment(c, null)), total: total[0].c };
+}
+
+export async function createComment(userId: string, username: string, body: { slug: string; episode_number: number; body: string; tag: string; parent_id: number | null }): Promise<any> {
+  if (body.parent_id) {
+    const parent = await query(`SELECT 1 FROM comments WHERE id = $1 AND slug = $2 AND episode_number = $3`, [body.parent_id, body.slug, body.episode_number]);
+    if (parent.length === 0) throw new Error("Parent comment not found");
+  }
+  const rows = await query<CommentRow>(
+    `INSERT INTO comments (slug, episode_number, user_id, username, body, tag, parent_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING *`,
+    [body.slug, body.episode_number, userId, username || "User", body.body, body.tag, body.parent_id || null],
+  );
+  return enrichComment({ ...rows[0], replies_count: 0 }, null);
+}
+
+export async function toggleLike(commentId: number, userId: string): Promise<{ liked: boolean; likes: number }> {
+  const rows = await query<{ likes: number; liked_by: string[] }>(`SELECT likes, liked_by FROM comments WHERE id = $1`, [commentId]);
+  if (rows.length === 0) throw new Error("Comment not found");
+  const c = rows[0];
+  const likedBy = c.liked_by || [];
+  const alreadyLiked = likedBy.includes(userId);
+  const nextLikedBy = alreadyLiked ? likedBy.filter((x) => x !== userId) : [...likedBy, userId];
+  const nextLikes = alreadyLiked ? Math.max(0, c.likes - 1) : c.likes + 1;
+  await query(`UPDATE comments SET liked_by = $1, likes = $2 WHERE id = $3`, [nextLikedBy, nextLikes, commentId]);
+  return { liked: !alreadyLiked, likes: nextLikes };
+}
+
+export async function toggleResolve(commentId: number): Promise<{ is_resolved: boolean }> {
+  const rows = await query<{ is_resolved: boolean }>(
+    `UPDATE comments SET is_resolved = NOT is_resolved WHERE id = $1 RETURNING is_resolved`,
+    [commentId],
+  );
+  if (rows.length === 0) throw new Error("Comment not found");
+  return { is_resolved: rows[0].is_resolved };
+}
+
+export async function deleteComment(commentId: number): Promise<{ deleted: boolean }> {
+  const rows = await query(`DELETE FROM comments WHERE id = $1 RETURNING id`, [commentId]);
+  if (rows.length === 0) throw new Error("Comment not found");
+  return { deleted: true };
+}
+
+export async function getReplies(slug: string, episodeNumber: number, parentId: number): Promise<any[]> {
+  const rows = await query<CommentRow>(
+    `SELECT * FROM comments WHERE slug = $1 AND episode_number = $2 AND parent_id = $3 ORDER BY created_at ASC`,
+    [slug, episodeNumber, parentId],
+  );
+  return rows.map((c) => enrichComment(c, null));
 }

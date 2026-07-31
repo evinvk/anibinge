@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
   const user = getCurrentUser(req);
   if (!user) return NextResponse.json({ detail: "Not authenticated" }, { status: 401 });
 
-  const entries = getWatchlist(user.id);
+  const entries = await getWatchlist(user.id);
   return NextResponse.json({ user_id: user.id, entries });
 }
 
@@ -20,7 +20,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ detail: "anime_id and status are required" }, { status: 400 });
     }
 
-    const entry = upsertWatchlistEntry(user.id, {
+    const entry = await upsertWatchlistEntry(user.id, {
       anime_id,
       source: source || "mal",
       status,

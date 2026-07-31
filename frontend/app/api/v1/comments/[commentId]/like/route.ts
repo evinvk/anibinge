@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (!userId) return NextResponse.json({ detail: "Invalid token" }, { status: 401 });
 
   try {
-    const result = toggleLike(parseInt(commentId), userId);
+    const result = await toggleLike(parseInt(commentId), userId);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ detail: e.message }, { status: 404 });

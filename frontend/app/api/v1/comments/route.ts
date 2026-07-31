@@ -35,12 +35,12 @@ export async function GET(req: NextRequest) {
   if (!slug) return NextResponse.json({ comments: [], total: 0 });
 
   try {
-    const result = getComments(slug, episodeNumber, sort);
+    const result = await getComments(slug, episodeNumber, sort);
 
     // Attach replies to each top-level comment
     for (const comment of result.comments) {
       const { getReplies } = await import("@/lib/comments-store");
-      comment.replies = getReplies(slug, episodeNumber, comment.id);
+      comment.replies = await getReplies(slug, episodeNumber, comment.id);
     }
 
     return NextResponse.json(result, {
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const username = getUserName(req) || "User-" + userId.slice(0, 6);
-    const comment = createComment(userId, username, body);
+    const comment = await createComment(userId, username, body);
     return NextResponse.json(comment, { status: 201 });
   } catch (e: any) {
     return NextResponse.json({ detail: e.message }, { status: 400 });
