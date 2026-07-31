@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
 import { CarouselRow } from "@/components/carousel-row";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
+import { HomeSearch } from "@/components/home-search";
 
 export const revalidate = 300;
 
@@ -61,6 +62,10 @@ export default async function HomePage() {
       )}
 
       {heroAnime && <HeroBanner anime={heroAnime} />}
+
+      <div className="pt-6">
+        <HomeSearch />
+      </div>
 
       <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
         <TrendingRow data={trendingData} />

@@ -2,14 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Search, Menu, X, Sparkles, User, Bookmark } from "lucide-react";
+import { Menu, X, Sparkles, User, Bookmark } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { SearchModal } from "@/components/search-modal";
 import { useAuth } from "@/lib/auth-context";
 import { NotificationBell } from "@/components/notification-bell";
 
 const LINKS = [
-  { href: "/browse", label: "Browse" },
   { href: "/donghua", label: "Donghua" },
   { href: "/manhwa", label: "Manhwa" },
   { href: "/seasonal", label: "Seasonal" },
@@ -19,7 +17,6 @@ const LINKS = [
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const { user, loading } = useAuth();
 
   return (
@@ -39,13 +36,6 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            aria-label="Search"
-            onClick={() => setSearchOpen(true)}
-            className="rounded-full p-2 text-mist transition-colors hover:bg-white/5 hover:text-paper"
-          >
-            <Search className="h-5 w-5" />
-          </button>
           <NotificationBell />
           <Link
             href="/watchlist"
@@ -117,7 +107,6 @@ export function Navbar() {
         </div>
       </div>
 
-      <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   );
 }
