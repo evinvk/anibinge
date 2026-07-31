@@ -11,9 +11,6 @@ const LINKS = [
   { href: "/anime", label: "Anime" },
   { href: "/donghua", label: "Donghua" },
   { href: "/manhwa", label: "Manhwa" },
-  { href: "/seasonal", label: "Seasonal" },
-  { href: "/schedule", label: "Schedule" },
-  { href: "/news", label: "News" },
 ];
 
 export function Navbar() {
