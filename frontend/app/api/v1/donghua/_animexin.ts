@@ -659,7 +659,10 @@ export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | n
   if (cached && Date.now() - cached.at < RESOLVE_TTL_MS) return cached.url;
 
   let result: string | null = null;
-  const paths = [`/${slug}/`, `/anime/${slug}/`];
+  const misspelled = slug.replace(/rou/g, "ro");
+  const paths = misspelled !== slug
+    ? [`/${slug}/`, `/anime/${slug}/`, `/${misspelled}/`, `/anime/${misspelled}/`]
+    : [`/${slug}/`, `/anime/${slug}/`];
   for (const path of paths) {
     try {
       const html = await fetchHtml(path);
