@@ -51,6 +51,7 @@ async function fetchDirect(url: string): Promise<Response> {
       "Cache-Control": "no-cache",
       Referer: "https://animexin.dev/",
     },
+    next: { revalidate: 3600 },
   });
 }
 
