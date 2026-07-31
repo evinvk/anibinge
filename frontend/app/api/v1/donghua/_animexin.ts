@@ -15,12 +15,13 @@ function parseCard(el: any) {
   const link = $("a").first();
   const href = link.attr("href") || "";
   const title =
+    link.find(".eggtitle").text().trim() ||
     link.find(".tt").contents().first().text().trim() ||
-    link.find(".tt h2").text().trim() ||
+    link.find(".tt h2").text().replace(/\s+Episode\s*\d+.*$/i, "").trim() ||
     link.attr("title") ||
     "";
   const poster = abs(link.find("img").attr("src") || "");
-  const epText = link.find(".epx").text().trim();
+  const epText = link.find(".epx").text().trim() || link.find(".eggepisode").text().trim();
   const epMatch = epText.match(/(\d+)/);
   const episode = epMatch ? parseInt(epMatch[1]) : null;
   const subType = link.find(".sb").text().trim() || "Sub";
@@ -328,6 +329,50 @@ export function parseSearch(html: string): any[] {
     if (item.title) items.push(item);
   });
   return items;
+}
+
+function parseWpPost(p: any) {
+  const slug: string = p.slug || "";
+  const epMatch = slug.match(/-episode-(\d+)/i);
+  const episode = epMatch ? parseInt(epMatch[1]) : null;
+  let title = (p.title?.rendered || "").replace(/<[^>]+>/g, "").trim();
+  const cleanTitle = title.replace(/\s+Episode\s*\d+[^]*$/i, "").trim();
+  let poster = "";
+  const oh: string = p.yoast_head || "";
+  const om = oh.match(/property="og:image"\s+content="([^"]+)"/);
+  if (om) poster = om[1];
+  let cleanSlug = slug.replace(/-episode-\d+.*$/i, "");
+  cleanSlug = cleanSlug.replace(/-(?:indonesia|english|subtitle|subbed?|dubbed?)(?:-|$).*$/i, "");
+  const dateRaw: string = p.date_gmt || p.date || "";
+  const releasedAt = dateRaw ? dateRaw.replace(/Z$/, "") + "Z" : null;
+  return {
+    slug: cleanSlug,
+    title: cleanTitle || title,
+    poster,
+    episode,
+    sub_type: "Sub",
+    type: "ONA",
+    url: p.link || `${BASE}/${slug}/`,
+    released_at: releasedAt,
+  };
+}
+
+// Fetch latest release posts from the WordPress REST API (has exact publish dates)
+export async function fetchLatestWp(page = 1): Promise<any[] | null> {
+  const url = `${BASE}/wp-json/wp/v2/posts?per_page=30&page=${page}`;
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!Array.isArray(data)) return null;
+    const items = data.map(parseWpPost).filter((i: any) => i.slug && i.title);
+    return items.length ? items : null;
+  } catch {
+    return null;
+  }
 }
 
 // Auto-detect content format and parse accordingly

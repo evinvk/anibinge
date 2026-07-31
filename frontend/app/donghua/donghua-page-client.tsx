@@ -23,18 +23,19 @@ export default function DonghuaPage() {
   const [noMoreLatest, setNoMoreLatest] = useState(false);
 
   const seenSlugsRef = useRef(new Set<string>());
+  const seenKey = (i: DonghuaItem) => `${i.slug}:${i.episode ?? "full"}`;
 
   useEffect(() => {
     api.donghuaTrending().then((r) => {
       const items = r.data || [];
-      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      items.forEach((i) => seenSlugsRef.current.add(seenKey(i)));
       setTrending(items);
       setLoadingTrending(false);
     }).catch(() => setLoadingTrending(false));
 
     api.donghuaLatest(1).then((r) => {
       const items = r.data || [];
-      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      items.forEach((i) => seenSlugsRef.current.add(seenKey(i)));
       setLatest(items);
       setLoadingLatest(false);
     }).catch(() => setLoadingLatest(false));
@@ -45,8 +46,8 @@ export default function DonghuaPage() {
     setLoadingMoreTrending(true);
     try {
       const r = await api.donghuaBrowse(trendingPage);
-      const items = (r.data || []).filter((i) => !seenSlugsRef.current.has(i.slug));
-      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      const items = (r.data || []).filter((i) => !seenSlugsRef.current.has(seenKey(i)));
+      items.forEach((i) => seenSlugsRef.current.add(seenKey(i)));
       if (items.length === 0) {
         setNoMoreTrending(true);
       } else {
@@ -64,8 +65,8 @@ export default function DonghuaPage() {
     setLoadingMoreLatest(true);
     try {
       const r = await api.donghuaLatest(latestPage);
-      const items = (r.data || []).filter((i) => !seenSlugsRef.current.has(i.slug));
-      items.forEach((i) => seenSlugsRef.current.add(i.slug));
+      const items = (r.data || []).filter((i) => !seenSlugsRef.current.has(seenKey(i)));
+      items.forEach((i) => seenSlugsRef.current.add(seenKey(i)));
       if (items.length === 0) {
         setNoMoreLatest(true);
       } else {
