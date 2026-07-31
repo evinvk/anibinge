@@ -3,6 +3,8 @@ const withPWA = require("next-pwa")({
   disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
+  clientsClaim: true,
+  cleanupOutdatedCaches: true,
 });
 
 /** @type {import('next').NextConfig} */
