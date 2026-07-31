@@ -98,8 +98,13 @@ export function Navbar() {
                 Profile ({user.username})
               </Link>
             ) : (
-              <Link href="/login" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
-                Sign in
+              <Link
+                href="/login"
+                aria-label="Sign in"
+                onClick={() => setOpen(false)}
+                className="inline-flex w-fit rounded-full border border-white/10 p-2.5 text-mist hover:text-paper"
+              >
+                <LogIn className="h-4 w-4" />
               </Link>
             )
           )}
