@@ -5,7 +5,6 @@ import { useState } from "react";
 import { Menu, X, Sparkles, User, Bookmark, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
-import { NotificationBell } from "@/components/notification-bell";
 
 const LINKS = [
   { href: "/", label: "Anime" },
@@ -34,7 +33,6 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          <NotificationBell />
           <Link
             href="/watchlist"
             className="flex items-center gap-2 rounded-full bg-primary-600 px-2.5 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:px-4"
@@ -88,10 +86,6 @@ export function Navbar() {
           <Link href="/watchlist" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-primary-400 hover:bg-white/5">
             My Watchlist
           </Link>
-          <div className="flex items-center gap-2 px-3 py-2">
-            <span className="text-sm text-mist">Notifications</span>
-            <NotificationBell />
-          </div>
           {!loading && (
             user ? (
               <Link href="/profile" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
