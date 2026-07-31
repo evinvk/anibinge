@@ -180,6 +180,7 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
       Accept: "text/plain",
     },
     signal: AbortSignal.timeout(8000),
+    next: { revalidate: 3600 },
   });
   if (!resp.ok) throw new Error(`Jina AI ${resp.status}`);
   const text = await resp.text();
@@ -237,6 +238,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
     const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(5000),
+      next: { revalidate: 3600 },
     });
     if (r.ok) {
       const text = await r.text();

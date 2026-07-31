@@ -5,6 +5,7 @@ export async function fetchViaCfProxy(url: string, timeoutMs = 5000): Promise<st
   const proxyUrl = `${CF_PROXY}?url=${encodeURIComponent(url)}`;
   const resp = await fetch(proxyUrl, {
     signal: AbortSignal.timeout(timeoutMs),
+    next: { revalidate: 3600 },
   });
   if (!resp.ok) throw new Error(`CF Proxy ${resp.status}`);
   return resp.text();
