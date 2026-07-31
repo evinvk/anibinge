@@ -3,6 +3,9 @@ const CDN = "https://uploads.mangadex.org";
 const ANILIST_GRAPHQL = "https://graphql.anilist.co";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
+export const CACHE_HEADERS = { "Cache-Control": "public, s-maxage=600, stale-while-revalidate=86400" };
+export const SEARCH_CACHE_HEADERS = { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=3600" };
+
 function coverUrl(mangaId: string, fileName: string): string {
   return fileName ? `${CDN}/covers/${mangaId}/${fileName}.256.jpg` : "";
 }
@@ -66,24 +69,17 @@ async function fetchAniListBatch(titles: string[]): Promise<(string | null)[]> {
   const query = `query(${titles.map((_, i) => `$t${i}: String`).join(",")}) {
     ${titles.map((_, i) => `m${i}: Media(search: $t${i}, type: MANGA) { coverImage { extraLarge large } }`).join("\n")}
   }`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
-  try {
-    const resp = await fetch(ANILIST_GRAPHQL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: vars }),
-      signal: controller.signal,
-      next: { revalidate: 86400 },
-    });
-    if (!resp.ok) throw new Error(`AniList ${resp.status}`);
-    const json = await resp.json();
-    if (json?.errors) throw new Error("AniList query errors");
-    const data = json?.data || {};
-    return titles.map((_, i) => data[`m${i}`]?.coverImage?.extraLarge || data[`m${i}`]?.coverImage?.large || null);
-  } finally {
-    clearTimeout(timer);
-  }
+  const resp = await fetch(ANILIST_GRAPHQL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "User-Agent": UA },
+    body: JSON.stringify({ query, variables: vars }),
+    next: { revalidate: 86400 },
+  });
+  if (!resp.ok) throw new Error(`AniList ${resp.status}`);
+  const json = await resp.json();
+  if (json?.errors) throw new Error("AniList query errors");
+  const data = json?.data || {};
+  return titles.map((_, i) => data[`m${i}`]?.coverImage?.extraLarge || data[`m${i}`]?.coverImage?.large || null);
 }
 
 async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> {
