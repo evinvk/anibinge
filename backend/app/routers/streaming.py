@@ -19,6 +19,7 @@ from app.services import gogoanime_client
 from app.services import anivexa_client
 from app.services import wibu_client
 from app.services import anitsu_client as anitsu_client_mod
+from app.services import hindi_client
 
 logger = logging.getLogger("anibinge.streaming")
 
@@ -1047,6 +1048,30 @@ async def anitsu_stream(
         raise
     except Exception as e:
         raise HTTPException(status_code=503, detail="AnimeXin stream unavailable")
+
+
+@router.get("/hindi/stream")
+@limiter.limit("30/minute")
+async def hindi_stream(
+    request: Request,
+    anilist_id: int = Query(..., description="AniList ID of the anime"),
+    ep: int = Query(..., ge=1, description="Episode number"),
+):
+    """
+    Get a Hindi-dubbed HLS stream for an episode via ToonStream.
+    The returned master playlist contains multi-language audio tracks
+    (Hindi/English/Urdu/Tamil/Telugu/Japanese) with Hindi as the default.
+    """
+    try:
+        result = await hindi_client.get_stream(anilist_id, ep)
+        if not result or not result.get("stream_url"):
+            raise HTTPException(status_code=404, detail="Hindi stream not available for this episode")
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Hindi stream failed for al:%d ep%d: %s", anilist_id, ep, e)
+        raise HTTPException(status_code=503, detail="Hindi stream unavailable")
 
 
 @router.get("/wibu/stream")

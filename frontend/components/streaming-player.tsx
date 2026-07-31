@@ -47,7 +47,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [currentEp, setCurrentEp] = useState(1);
   const [totalEps, setTotalEps] = useState<number | null>(null);
-  const [audio, setAudio] = useState<"sub" | "dub">("sub");
+  const [audio, setAudio] = useState<"sub" | "dub" | "hindi">("sub");
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
   const [showEpisodes, setShowEpisodes] = useState(false);
@@ -152,6 +152,29 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
     return false;
   }, [animeTitle]);
 
+  const tryHindi = useCallback(async (ep: number): Promise<boolean> => {
+    setStatusText("Loading Hindi stream...");
+    try {
+      const aid = resolvedAnilistRef.current;
+      if (!aid) return false;
+      const streamRes = await api.hindiStream(aid, ep).catch(() => null);
+      const data = streamRes?.data;
+
+      if (data?.stream_url) {
+        subs.setSubs([]);
+        player.sourceRef.current = "hindi";
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(data.stream_url)}&referer=${encodeURIComponent(data.referer || "https://rubystm.com/")}`;
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
+        player.setMasterUrl(proxiedUrl);
+        player.setLoadingStream(false);
+        setStatusText("");
+        return true;
+      }
+    } catch { }
+    setStatusText("");
+    return false;
+  }, []);
+
   const onFatalError = useCallback(async (errorType: string) => {
     if (player.sourceRef.current === "gogoanime" || player.sourceRef.current === null) {
       player.sourceRef.current = null;
@@ -253,6 +276,13 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
     player.sourceRef.current = null;
     player.setPlayerStatus("idle");
 
+    // When Hindi is selected, try the ToonStream Hindi dub first, then fall back.
+    if (audio === "hindi") {
+      const hindiOk = await tryHindi(ep);
+      if (hindiOk) return;
+      setStatusText("");
+    }
+
     if (slug) {
       setStatusText("");
       const streamRes = await api.gogoanimeStream(slug, ep, audio).catch(() => null);
@@ -349,7 +379,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
     player.setLoadingStream(false);
     setStatusText("");
     player.setError("Streaming is temporarily unavailable. Try again later.");
-  }, [tryAnitsuFallback, animeTitle, audio]);
+  }, [tryAnitsuFallback, tryHindi, animeTitle, audio]);
 
   const fetchSubtitlesInBackground = useCallback((ep: number) => {
     const fetchEp = currentEpRef.current;
@@ -520,7 +550,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
 
       {selectedSlug && (
         <div className="mt-3 flex gap-2">
-          {(["sub", "dub"] as const).map((opt) => (
+          {(["sub", "dub", "hindi"] as const).map((opt) => (
             <button
               key={opt}
               onClick={() => {
@@ -535,7 +565,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
                   : "bg-white/5 text-mist hover:bg-white/10"
               )}
             >
-              {opt === "sub" ? "Sub" : "Dub"}
+              {opt === "sub" ? "Sub" : opt === "dub" ? "English" : "Hindi"}
             </button>
           ))}
           <button
@@ -544,7 +574,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
                 slug: selectedSlug || undefined,
                 anilist_id: resolvedAnilistRef.current || undefined,
                 ep: currentEp,
-                audio,
+                audio: audio === "hindi" ? "sub" : audio,
                 filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
               });
               window.open(dlUrl, "_blank");

@@ -55,7 +55,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isTheater, setIsTheater] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [audio, setAudio] = useState<"sub" | "dub">("sub");
+  const [audio, setAudio] = useState<"sub" | "dub" | "hindi">("sub");
   const audioRef = useRef(audio);
   audioRef.current = audio;
 
@@ -183,6 +183,29 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     return false;
   }, [title]);
 
+  const tryHindi = useCallback(async (ep: number): Promise<boolean> => {
+    setStatusText("Loading Hindi stream...");
+    try {
+      const aid = resolvedAnilistRef.current;
+      if (!aid) return false;
+      const streamRes = await api.hindiStream(aid, ep).catch(() => null);
+      const data = streamRes?.data;
+
+      if (data?.stream_url) {
+        subs.setSubs([]);
+        player.sourceRef.current = "hindi";
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(data.stream_url)}&referer=${encodeURIComponent(data.referer || "https://rubystm.com/")}`;
+        player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
+        player.setMasterUrl(proxiedUrl);
+        player.setLoadingStream(false);
+        setStatusText("");
+        return true;
+      }
+    } catch { }
+    setStatusText("");
+    return false;
+  }, []);
+
   const fetchSubtitlesInBackground = useCallback((ep: number) => {
     const fetchEp = currentEpRef.current;
     api.fetchSubtitles(title, fetchEp, resolvedAnilistRef.current || undefined)
@@ -287,6 +310,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   // Preload next episode in background
   useEffect(() => {
+    if (audio === "hindi") return;
     if (!currentEp || !totalEps || currentEp >= totalEps || preloadingRef.current) return;
     const nextEp = currentEp + 1;
     preloadingRef.current = true;
@@ -370,9 +394,18 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     }
 
     // Try Anivexa first (works from Vercel), then GogoAnime (Vercel-blocked)
-    const result =
-      (await tryAnitsu(ep).then((ok) => ok && "anitsu")) ||
-      (await tryGogoanime(ep).then((ok) => ok && "gogoanime"));
+    // When Hindi is selected, try the ToonStream Hindi dub first, then fall back.
+    let result: string | null = null;
+    if (audio === "hindi") {
+      result =
+        (await tryHindi(ep).then((ok) => ok && "hindi")) ||
+        (await tryAnitsu(ep).then((ok) => ok && "anitsu")) ||
+        (await tryGogoanime(ep).then((ok) => ok && "gogoanime"));
+    } else {
+      result =
+        (await tryAnitsu(ep).then((ok) => ok && "anitsu")) ||
+        (await tryGogoanime(ep).then((ok) => ok && "gogoanime"));
+    }
     if (!result) {
       // Try donghua endpoint as additional fallback (for Chinese anime not on GogoAnime)
       try {
@@ -410,7 +443,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       setStatusText("");
       player.setError("Streaming is temporarily unavailable. Try again later.");
     }
-  }, [tryGogoanime, tryAnitsu, fetchSubtitlesInBackground, audio]);
+  }, [tryGogoanime, tryAnitsu, tryHindi, fetchSubtitlesInBackground, audio]);
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
@@ -567,7 +600,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
             {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             {isFullscreen ? "Exit fullscreen" : "Fullscreen"}
           </button>
-          {(["sub", "dub"] as const).map((opt) => (
+          {(["sub", "dub", "hindi"] as const).map((opt) => (
             <button
               key={opt}
               onClick={() => { if (opt !== audio) { setAudio(opt); } }}
@@ -576,7 +609,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 audio === opt ? "bg-primary-600 text-white" : "bg-white/10 text-white/70 hover:bg-white/20"
               )}
             >
-              {opt === "sub" ? "Sub" : "Dub"}
+              {opt === "sub" ? "Sub" : opt === "dub" ? "English" : "Hindi"}
             </button>
           ))}
           {totalEps && totalEps > 1 && (
@@ -709,7 +742,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       )}
 
       <div className={clsx("mt-3 flex gap-2", isTheater && "hidden")}>
-        {(["sub", "dub"] as const).map((opt) => (
+        {(["sub", "dub", "hindi"] as const).map((opt) => (
           <button
             key={opt}
             onClick={() => {
@@ -724,7 +757,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 : "bg-white/5 text-mist hover:bg-white/10"
             )}
           >
-            {opt === "sub" ? "Sub" : "Dub"}
+            {opt === "sub" ? "Sub" : opt === "dub" ? "English" : "Hindi"}
           </button>
         ))}
         <button
@@ -734,7 +767,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
               slug,
               anilist_id: resolvedAnilistRef.current || undefined,
               ep: currentEp,
-              audio,
+              audio: audio === "hindi" ? "sub" : audio,
               filename: fname,
             });
             window.open(dlUrl, "_blank");

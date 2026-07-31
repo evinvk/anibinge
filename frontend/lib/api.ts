@@ -408,6 +408,12 @@ export const api = {
   anitsuStream: (q: string, ep: number) =>
     request<any>(`/api/v1/streaming/anitsu/stream?q=${encodeURIComponent(q)}&ep=${ep}`, 30),
 
+  // Hindi dub streaming (ToonStream)
+  hindiStream: (anilistId: number, ep: number) =>
+    request<{ stream_url: string; stream_type: string; referer: string; source: string }>(
+      `/api/v1/streaming/hindi/stream?anilist_id=${anilistId}&ep=${ep}`, 60
+    ),
+
   // Manhwa (MangaDex)
   manhwaTrending: (page = 1) =>
     fetchWithTimeout<{ data: ManhwaItem[]; page: number }>(`/api/v1/manhwa/trending?page=${page}`, 15000),
