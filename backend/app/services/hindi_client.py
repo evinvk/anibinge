@@ -155,9 +155,32 @@ def _best_title_match(query: str, candidates: list[str]) -> int:
     return best_i if best_score >= 40.0 else -1
 
 
+def _slugify(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+
+
+async def _series_exists(slug: str) -> bool:
+    try:
+        resp = await _get(f"{TOONSTREAM_BASE}/series/{slug}/")
+        if resp.status_code != 200:
+            return False
+        html = resp.text
+    except Exception:
+        return False
+    return bool(re.search(r'data-season="\d+"', html) or re.search(r'href="/episode/[^"]+"', html))
+
+
 @cached("hindi:search", ttl=86400)
 async def search_series(title: str) -> str | None:
-    """Search ToonStream for a series by title; return the series slug or None."""
+    """Find a ToonStream series slug for a title.
+
+    The search API is incomplete (e.g. plain "Naruto" is not surfaced) and can
+    match the wrong dub variant, so the direct slug is preferred first.
+    """
+    direct = _slugify(title)
+    if direct and await _series_exists(direct):
+        return direct
+
     try:
         resp = await _get(f"{TOONSTREAM_BASE}/search/all", params={"q": title})
         resp.raise_for_status()

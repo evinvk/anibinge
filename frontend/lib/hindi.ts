@@ -133,7 +133,27 @@ async function resolveAnilistTitle(anilistId: number): Promise<string | null> {
   }
 }
 
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+async function seriesExists(slug: string): Promise<boolean> {
+  const html = await getText(`${TOONSTREAM_BASE}/series/${slug}/`);
+  if (!html) return false;
+  return /data-season="\d+"/.test(html) || /href="\/episode\/[^"]+"/.test(html);
+}
+
 async function searchSeries(title: string): Promise<string | null> {
+  // The search API is incomplete (e.g. plain "Naruto" is not surfaced) and can
+  // match the wrong dub variant, so prefer the direct slug first.
+  const directSlug = slugify(title);
+  if (directSlug && (await seriesExists(directSlug))) {
+    return directSlug;
+  }
+
   const data = await getJson(`${TOONSTREAM_BASE}/search/all`, undefined);
   const items = (data?.data || []) as { title?: string; type?: string; url?: string }[];
   const series = items.filter((it) => it.type === "series" && it.url);
