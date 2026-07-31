@@ -48,7 +48,19 @@ interface MdManga {
 }
 
 function pickTitle(attrs: MdManga["attributes"]): string {
-  return attrs.title.en || Object.values(attrs.title)[0] || "Untitled";
+  if (attrs.title.en) return attrs.title.en;
+  const enAlt = attrs.altTitles?.find((t) => t.en);
+  if (enAlt?.en) return enAlt.en;
+  return (
+    attrs.title["ko-ro"] ||
+    attrs.title["ja-ro"] ||
+    attrs.title["zh-ro"] ||
+    attrs.title["ko"] ||
+    attrs.title["ja"] ||
+    attrs.title["zh"] ||
+    Object.values(attrs.title)[0] ||
+    "Untitled"
+  );
 }
 
 function pickDescription(attrs: MdManga["attributes"]): string {
