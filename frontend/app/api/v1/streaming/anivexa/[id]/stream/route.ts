@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-
-const ANIVEXA_API = "https://anivexa-api-eight.vercel.app";
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+import { getAnivexaStream } from "@/lib/anivexa";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -14,46 +12,9 @@ export async function GET(req: Request) {
   if (isNaN(anilistId)) return NextResponse.json({ error: "Invalid ID" }, { status: 400 });
 
   try {
-    const providers = ["anidbapp", "anikoto", "animegg", "anizone"];
-    let lastError: string | null = null;
-
-    for (const provider of providers) {
-      try {
-        const resp = await fetch(
-          `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
-          { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }
-        );
-        if (!resp.ok) continue;
-        const data = await resp.json();
-
-        const streams = data?.streams || [];
-        const hlsStream = streams.find((s: any) => s.type === "hls");
-        const embedStream = streams.find((s: any) => s.type === "embed");
-        const streamUrl = hlsStream?.url || streams[0]?.url || null;
-
-        if (streamUrl) {
-          const subtitles = (data.subtitles || []).map((s: any) => ({
-            file: s.url || s.file,
-            label: s.label || s.language || "English",
-            language: s.language || "en",
-            kind: "captions",
-            source: provider,
-            referer: `https://${provider}.app/`,
-          }));
-          return NextResponse.json({
-            source: "anivexa",
-            provider,
-            stream_url: streamUrl,
-            stream_type: streamUrl?.endsWith(".mp4") ? "mp4" : "hls",
-            referer: `https://${provider}.app/`,
-            embed_url: embedStream?.url || data.embed_url || null,
-            subtitles,
-          });
-        }
-      } catch { lastError = "Provider failed"; }
-    }
-
-    return NextResponse.json({ error: lastError || "No stream found" }, { status: 404 });
+    const stream = await getAnivexaStream(anilistId, ep, audio);
+    if (!stream) return NextResponse.json({ error: "No stream found" }, { status: 404 });
+    return NextResponse.json(stream);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 503 });
   }

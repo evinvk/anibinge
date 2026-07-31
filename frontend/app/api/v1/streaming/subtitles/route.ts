@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-
-const ANIVEXA_API = "https://anivexa-api-eight.vercel.app";
+import { ANIVEXA_API, ANIVEXA_PROVIDERS } from "@/lib/anivexa";
 const GRAPHQL = "https://graphql.anilist.co";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
@@ -32,8 +31,7 @@ export async function GET(req: Request) {
 
   try {
     // Try Anivexa providers for subtitles
-    const providers = ["anidbapp", "anikoto", "animegg"];
-    for (const provider of providers) {
+    for (const provider of ANIVEXA_PROVIDERS) {
       try {
         const resp = await fetch(
           `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,

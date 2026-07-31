@@ -4,29 +4,113 @@ import { fetchGogoApi } from "../gogoanime/_gogoanime";
 const GRAPHQL = "https://graphql.anilist.co";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const PAGE_SIZE = 30;
+const LIVE_SEARCH_CONCURRENCY = 8;
+const ENRICH_DEADLINE_MS = 8000;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const page = parseInt(url.searchParams.get("page") || "1");
-  const limit = parseInt(url.searchParams.get("limit") || String(PAGE_SIZE));
+  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
+  const limit = Math.min(60, Math.max(1, parseInt(url.searchParams.get("limit") || String(PAGE_SIZE))));
 
-  // Fetch recently aired episodes from AniList airing schedule
   const airing = await fetchAiringSchedule(page);
   if (airing.length === 0) {
     return NextResponse.json({ data: [], page, has_next: false });
   }
 
-  // Optionally enrich with GogoAnime slugs (best-effort)
-  const enriched = await enrichWithGogoSlugs(airing);
-
   const start = (page - 1) * limit;
-  const pageItems = enriched.slice(start, start + limit);
+  const target = airing.slice(start, start + limit);
+
+  const slugByTitle = await fetchGogoSlugMap(target.map((s: any) => s.title));
+
+  const items = target.map((s: any) => ({
+    title: s.title,
+    episode: s.episode,
+    poster: s.poster,
+    slug: slugByTitle.get(normalizeTitle(s.title)) || null,
+    aired_ago: s.aired_ago,
+    genres: s.genres,
+    anilist_id: s.anilist_id,
+  }));
 
   return NextResponse.json({
-    data: pageItems,
+    data: items,
     page,
-    has_next: enriched.length > start + limit,
+    has_next: airing.length > start + limit,
   });
+}
+
+async function fetchGogoSlugMap(titles: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+
+  // Cheap bulk pass: popular catalog (covers many ongoing/older shows)
+  try {
+    const data = await fetchGogoApi("/api/search?keyword=&page=1", 20000);
+    const items = Array.isArray(data) ? data : data.items || [];
+    for (const it of items) {
+      if (!it?.slug) continue;
+      for (const t of [it.title_english, it.title, it.title_japanese]) {
+        if (t) map.set(normalizeTitle(t), it.slug);
+      }
+    }
+  } catch {}
+
+  // Precision pass: live search for unmatched titles (parallel, deadline-bounded)
+  const missing = titles.filter((t) => t && !map.has(normalizeTitle(t)));
+  if (missing.length === 0) return map;
+
+  const deadline = Date.now() + ENRICH_DEADLINE_MS;
+  for (let i = 0; i < missing.length; i += LIVE_SEARCH_CONCURRENCY) {
+    if (Date.now() > deadline) break;
+    const chunk = missing.slice(i, i + LIVE_SEARCH_CONCURRENCY);
+    await Promise.all(
+      chunk.map(async (title) => {
+        const slug = await liveSearchSlug(title);
+        if (slug) map.set(normalizeTitle(title), slug);
+      })
+    );
+  }
+
+  return map;
+}
+
+async function liveSearchSlug(title: string): Promise<string | null> {
+  try {
+    const data = await fetchGogoApi(`/api/search/live?q=${encodeURIComponent(title)}`, 15000);
+    const items = Array.isArray(data) ? data : data.data || [];
+    const norm = normalizeTitle(title);
+    for (const x of items) {
+      if (!x?.slug) continue;
+      const candidates = [
+        x.title,
+        x.title_english,
+        x.title_japanese,
+        String(x.slug).replace(/-/g, " "),
+      ].filter(Boolean).map(normalizeTitle);
+      if (candidates.some((c) => similarity(norm, c) >= 0.4)) {
+        return x.slug;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function similarity(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.9;
+  const ta = a.split(" ");
+  const tb = b.split(" ");
+  const sa = new Set(ta);
+  const sb = new Set(tb);
+  let inter = 0;
+  for (const w of sa) if (sb.has(w)) inter++;
+  return inter / (sa.size + sb.size - inter);
+}
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim();
 }
 
 async function fetchAiringSchedule(page: number): Promise<any[]> {
@@ -64,41 +148,16 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
       .filter((s: any) => s.media && !s.media.isAdult)
       .map((s: any) => {
         const m = s.media;
-        const title = m.title?.english || m.title?.romaji || "";
         return {
-          title,
+          title: m.title?.english || m.title?.romaji || "",
           episode: s.episode,
-          poster: m.coverImage?.large || null,
-          slug: null,
           aired_ago: now - s.airingAt,
+          poster: m.coverImage?.large || null,
           genres: m.genres || [],
           anilist_id: m.id,
         };
       });
   } catch {
     return [];
-  }
-}
-
-async function enrichWithGogoSlugs(items: any[]): Promise<any[]> {
-  try {
-    const gogoData = await fetchGogoApi("/api/home");
-    const episodes: any[] = gogoData?.latest_episodes || gogoData?.recent_episodes || [];
-
-    // Build a slug map from GogoAnime data (normalized title -> slug)
-    const slugMap = new Map<string, string>();
-    for (const e of episodes) {
-      const id = e.id || e.slug || "";
-      const title = (e.title || "").toLowerCase().trim();
-      if (id && title) slugMap.set(title, id);
-    }
-
-    return items.map((item) => {
-      const gogoSlug = slugMap.get(item.title.toLowerCase().trim());
-      return { ...item, slug: gogoSlug || null };
-    });
-  } catch {
-    // GogoAnime unreachable — return items without slugs
-    return items;
   }
 }

@@ -154,7 +154,7 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
               <AddToWatchlistButton animeId={malId} source={source} />
               <DownloadButton
                 title={detail.title_english || detail.title}
-                anilistId={detail.mal_id}
+                anilistId={detail.anilist_id}
                 totalEpisodes={detail.episodes}
               />
             </div>

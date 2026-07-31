@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     const streamingUrl = data?.defaultStreamingUrl;
     if (!streamingUrl) return NextResponse.json({ error: "No stream URL" }, { status: 404 });
 
-    const m3u8Resp = await fetch(streamingUrl, {
+    const m3u8Resp = await fetch(new URL(streamingUrl, GOGO_BASE).href, {
       headers: { "User-Agent": UA, Referer: `${GOGO_BASE}/` },
       signal: AbortSignal.timeout(15000),
     });
