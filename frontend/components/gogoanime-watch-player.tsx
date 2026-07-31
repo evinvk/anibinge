@@ -398,13 +398,13 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     let result: string | null = null;
     if (audio === "hindi") {
       result =
-        (await tryHindi(ep).then((ok) => ok && "hindi")) ||
-        (await tryAnitsu(ep).then((ok) => ok && "anitsu")) ||
-        (await tryGogoanime(ep).then((ok) => ok && "gogoanime"));
+        (await tryHindi(ep).then((ok) => (ok ? "hindi" : null))) ||
+        (await tryAnitsu(ep).then((ok) => (ok ? "anitsu" : null))) ||
+        (await tryGogoanime(ep).then((ok) => (ok ? "gogoanime" : null)));
     } else {
       result =
-        (await tryAnitsu(ep).then((ok) => ok && "anitsu")) ||
-        (await tryGogoanime(ep).then((ok) => ok && "gogoanime"));
+        (await tryAnitsu(ep).then((ok) => (ok ? "anitsu" : null))) ||
+        (await tryGogoanime(ep).then((ok) => (ok ? "gogoanime" : null)));
     }
     if (!result) {
       // Try donghua endpoint as additional fallback (for Chinese anime not on GogoAnime)
