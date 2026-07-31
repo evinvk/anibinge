@@ -200,18 +200,39 @@ export async function searchManga(q: string): Promise<{ data: ManhwaItemData[] }
   return { data: items };
 }
 
+function normalizeTitle(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function getComicCoverByTitle(title: string): Promise<string | null> {
+  const q = normalizeTitle(title);
+  if (q.length < 4) return null;
   try {
     const json = await fetchComick(
-      `/v1.0/search?q=${encodeURIComponent(title)}&limit=1&lang=en`,
+      `/v1.0/search?q=${encodeURIComponent(title)}&limit=5&lang=en`,
       3600
     );
-    const b2key = Array.isArray(json) ? json[0]?.md_covers?.[0]?.b2key : null;
-    if (!b2key) return null;
-    const url = `${COVER_CDN}/${b2key}`;
-    const res = await fetch(url, { method: "HEAD", next: { revalidate: 86400 } });
-    if (!res.ok) return null;
-    return url;
+    const list = Array.isArray(json) ? json : [];
+    for (const item of list) {
+      const candidates = [
+        item?.title,
+        ...(Array.isArray(item?.md_titles)
+          ? item.md_titles.filter((t: any) => t?.lang === "en").map((t: any) => t?.title)
+          : []),
+      ].filter((c: any): c is string => typeof c === "string" && c.length > 0);
+      if (!candidates.some((c) => normalizeTitle(c).includes(q))) continue;
+      const b2key = item?.md_covers?.[0]?.b2key;
+      if (!b2key) return null;
+      const url = `${COVER_CDN}/${b2key}`;
+      const res = await fetch(url, { method: "HEAD", next: { revalidate: 86400 } });
+      if (!res.ok) return null;
+      return url;
+    }
+    return null;
   } catch {
     return null;
   }

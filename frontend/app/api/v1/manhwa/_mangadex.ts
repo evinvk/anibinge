@@ -129,7 +129,7 @@ async function enrichPosters(items: ManhwaItemData[]): Promise<ManhwaItemData[]>
     );
     await Promise.all(
       items.map(async (item, i) => {
-        if (item.poster || results[i]) return;
+        if (results[i]) return;
         const cover = await getComicCoverByTitle(item.title);
         if (cover) results[i] = cover;
       })
