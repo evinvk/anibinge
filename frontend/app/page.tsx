@@ -27,7 +27,7 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
 
 async function TrendingRow({ data }: { data: any[] }) {
   if (!data || data.length === 0) return null;
-  return <CarouselRow title="Trending Now" href="/browse?sort=trending" items={data} />;
+  return <CarouselRow title="Trending Now" href="/anime" items={data} />;
 }
 
 export default async function HomePage() {

@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { NotificationBell } from "@/components/notification-bell";
 
 const LINKS = [
+  { href: "/anime", label: "Anime" },
   { href: "/donghua", label: "Donghua" },
   { href: "/manhwa", label: "Manhwa" },
   { href: "/seasonal", label: "Seasonal" },
