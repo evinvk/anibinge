@@ -71,7 +71,6 @@ async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> 
     headers: { "Content-Type": "application/json", "User-Agent": UA },
     body: JSON.stringify({ query, variables: vars }),
     signal: AbortSignal.timeout(12000),
-    next: { revalidate: 86400 },
   });
   if (!resp.ok) throw new Error(`AniList ${resp.status}`);
   const json = await resp.json();
