@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, AlertTriangle, BookOpen } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, AlertTriangle, BookOpen, ExternalLink } from "lucide-react";
 import { api, type ChapterInfo, type ManhwaItem } from "@/lib/api";
 import { needsUnoptimized } from "@/lib/utils";
 
@@ -59,11 +59,26 @@ export default function ManhwaReaderClient({ chapterId, mangaId }: Props) {
   }
 
   if (error || (pages.length === 0 && !loading)) {
+    const externalUrl = chapters[currentIdx]?.externalUrl;
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-black px-4">
         <AlertTriangle className="h-8 w-8 text-amber-400" />
-        <p className="text-mist">{error || "No pages available for this chapter."}</p>
-        {mangaId && <Link href={`/manhwa/${mangaId}`} className="text-sm text-emerald-400 hover:underline">Back to details</Link>}
+        <p className="text-center text-mist">
+          {error || (externalUrl ? "This chapter is hosted externally." : "No pages available for this chapter.")}
+        </p>
+        {externalUrl ? (
+          <a
+            href={externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-1 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-400 transition-colors"
+          >
+            <ExternalLink className="h-4 w-4" />
+            Read on {new URL(externalUrl).hostname.replace("www.", "")}
+          </a>
+        ) : mangaId ? (
+          <Link href={`/manhwa/${mangaId}`} className="text-sm text-emerald-400 hover:underline">Back to details</Link>
+        ) : null}
       </div>
     );
   }

@@ -115,6 +115,7 @@ export interface ChapterData {
   volume: string | null;
   pages: number;
   createdAt: string;
+  externalUrl: string | null;
 }
 
 export async function getChapters(mangaId: string): Promise<{ data: ChapterData[] }> {
@@ -129,6 +130,7 @@ export async function getChapters(mangaId: string): Promise<{ data: ChapterData[
     volume: ch.attributes.volume || null,
     pages: ch.attributes.pages || 0,
     createdAt: ch.attributes.publishAt || "",
+    externalUrl: ch.attributes.externalUrl || null,
   }));
   return { data: chapters };
 }

@@ -96,6 +96,7 @@ export interface ChapterInfo {
   volume: string | null;
   pages: number;
   createdAt: string;
+  externalUrl: string | null;
 }
 
 export interface DonghuaStreamData {
