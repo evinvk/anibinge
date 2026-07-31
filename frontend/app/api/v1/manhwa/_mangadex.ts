@@ -60,38 +60,70 @@ function extractCover(manga: MdManga): string | null {
   return fn ? coverUrl(manga.id, fn) : null;
 }
 
-async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> {
+async function fetchAniListBatch(titles: string[]): Promise<(string | null)[]> {
   if (titles.length === 0) return [];
   const vars = Object.fromEntries(titles.map((t, i) => [`t${i}`, t]));
   const query = `query(${titles.map((_, i) => `$t${i}: String`).join(",")}) {
     ${titles.map((_, i) => `m${i}: Media(search: $t${i}, type: MANGA) { coverImage { extraLarge large } }`).join("\n")}
   }`;
-  const resp = await fetch(ANILIST_GRAPHQL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "User-Agent": UA },
-    body: JSON.stringify({ query, variables: vars }),
-    signal: AbortSignal.timeout(12000),
-  });
-  if (!resp.ok) throw new Error(`AniList ${resp.status}`);
-  const json = await resp.json();
-  if (json?.errors) throw new Error("AniList query errors");
-  const data = json?.data || {};
-  return titles.map((_, i) => data[`m${i}`]?.coverImage?.extraLarge || data[`m${i}`]?.coverImage?.large || null);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const resp = await fetch(ANILIST_GRAPHQL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": UA },
+      body: JSON.stringify({ query, variables: vars }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) throw new Error(`AniList ${resp.status}`);
+    const json = await resp.json();
+    if (json?.errors) throw new Error("AniList query errors");
+    const data = json?.data || {};
+    return titles.map((_, i) => data[`m${i}`]?.coverImage?.extraLarge || data[`m${i}`]?.coverImage?.large || null);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchAniListCovers(titles: string[]): Promise<(string | null)[]> {
+  if (titles.length === 0) return [];
+  if (titles.length === 1) {
+    try {
+      return await fetchAniListBatch(titles);
+    } catch {
+      return [null];
+    }
+  }
+  try {
+    return await fetchAniListBatch(titles);
+  } catch {
+    const mid = Math.ceil(titles.length / 2);
+    const [left, right] = await Promise.all([
+      fetchAniListCovers(titles.slice(0, mid)),
+      fetchAniListCovers(titles.slice(mid)),
+    ]);
+    return [...left, ...right];
+  }
 }
 
 async function enrichPosters(items: ManhwaItemData[]): Promise<ManhwaItemData[]> {
   if (items.length === 0) return items;
-  const results: (string | null)[] = new Array(items.length).fill(null);
-  const CHUNK = 10;
-  await Promise.all(
-    Array.from({ length: Math.ceil(items.length / CHUNK) }, async (_, c) => {
-      const start = c * CHUNK;
-      const chunk = items.slice(start, start + CHUNK);
-      const covers = await fetchAniListCovers(chunk.map((i) => i.title));
-      covers.forEach((cover, k) => { if (cover) results[start + k] = cover; });
-    })
-  );
-  return items.map((item, i) => (results[i] ? { ...item, poster: results[i] } : item));
+  try {
+    const results: (string | null)[] = new Array(items.length).fill(null);
+    const CHUNK = 10;
+    await Promise.all(
+      Array.from({ length: Math.ceil(items.length / CHUNK) }, async (_, c) => {
+        const start = c * CHUNK;
+        const chunk = items.slice(start, start + CHUNK);
+        const covers = await fetchAniListCovers(chunk.map((i) => i.title));
+        covers.forEach((cover, k) => { if (cover) results[start + k] = cover; });
+      })
+    );
+    return items.map((item, i) => (results[i] ? { ...item, poster: results[i] } : item));
+  } catch (e: any) {
+    console.error("AniList poster enrichment failed:", e?.message || e);
+    return items;
+  }
 }
 
 export function parseMangaItem(manga: MdManga): ManhwaItemData {
