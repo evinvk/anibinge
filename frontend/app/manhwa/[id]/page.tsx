@@ -110,13 +110,25 @@ export default function ManhwaDetailPage({ params }: { params: Promise<{ id: str
             )}
 
             {chapters.length > 0 && firstReadable && (
-              <Link
-                href={`/manhwa/read/${firstReadable.id}?manga=${id}`}
-                className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-emerald-400"
-              >
-                <BookOpen className="h-4 w-4" />
-                Read Chapter {firstReadable.chapter}
-              </Link>
+              readableChapters.length > 0 ? (
+                <Link
+                  href={`/manhwa/read/${firstReadable.id}?manga=${id}`}
+                  className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-emerald-400"
+                >
+                  <BookOpen className="h-4 w-4" />
+                  Read Chapter {firstReadable.chapter}
+                </Link>
+              ) : (
+                <a
+                  href={firstReadable.externalUrl || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:bg-emerald-400"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Read Chapter {firstReadable.chapter}
+                </a>
+              )
             )}
           </div>
         </div>
