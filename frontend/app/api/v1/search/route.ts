@@ -28,17 +28,6 @@ function normalizeMedia(m: any) {
   };
 }
 
-const SEARCH_QUERY = `query($q:String,$page:Int,$perPage:Int,$genres:[String],$status:MediaStatus,$format:[MediaFormat],$sort:[MediaSort]){
-  Page(page:$page,perPage:$perPage){
-    media(search:$q,type:ANIME,isAdult:false,sort:$sort,genre_in:$genres,status:$status,format_in:$format){
-      id idMal title{english romaji native}
-      coverImage{large} bannerImage
-      averageScore popularity episodes status genres description
-      startDate{year month day} season format
-    }
-  }
-}`;
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = url.searchParams.get("q") || "";
@@ -64,16 +53,34 @@ export async function GET(req: Request) {
   const status = rawStatus && STATUS_MAP[rawStatus] ? STATUS_MAP[rawStatus] : null;
   const format = rawType && FORMAT_MAP[rawType] ? [FORMAT_MAP[rawType]] : null;
 
+  const varDecls = ["$q:String", "$page:Int", "$perPage:Int", "$sort:[MediaSort]"];
+  const mediaArgs = ["search:$q", "type:ANIME", "isAdult:false", "sort:$sort"];
+  if (genres?.length) { varDecls.push("$genres:[String]"); mediaArgs.push("genre_in:$genres"); }
+  if (status) { varDecls.push("$status:MediaStatus"); mediaArgs.push("status:$status"); }
+  if (format?.length) { varDecls.push("$format:[MediaFormat]"); mediaArgs.push("format_in:$format"); }
+
+  const SEARCH_QUERY = `query(${varDecls.join(",")}){
+  Page(page:$page,perPage:$perPage){
+    media(${mediaArgs.join(",")}){
+      id idMal title{english romaji native}
+      coverImage{large} bannerImage
+      averageScore popularity episodes status genres description
+      startDate{year month day} season format
+    }
+  }
+}`;
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
+    const variables: Record<string, any> = { q, page, perPage: 20, sort: [sortVal] };
+    if (genres?.length) variables.genres = genres;
+    if (status) variables.status = status;
+    if (format?.length) variables.format = format;
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({
-        query: SEARCH_QUERY,
-        variables: { q, page, perPage: 20, genres, status, format, sort: [sortVal] },
-      }),
+      body: JSON.stringify({ query: SEARCH_QUERY, variables }),
       signal: controller.signal,
     });
     clearTimeout(timeout);
