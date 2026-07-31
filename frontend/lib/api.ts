@@ -410,8 +410,8 @@ export const api = {
 
   // Hindi dub streaming (ToonStream)
   hindiStream: (anilistId: number, ep: number) =>
-    request<{ stream_url: string; stream_type: string; referer: string; source: string }>(
-      `/api/v1/streaming/hindi/stream?anilist_id=${anilistId}&ep=${ep}`, 60
+    fetchWithTimeout<{ stream_url: string; stream_type: string; referer: string; source: string; title?: string; season?: number; ep?: number; langs?: string[] }>(
+      `${API_BASE}/api/v1/streaming/hindi/stream?anilist_id=${anilistId}&ep=${ep}`, 60000
     ),
 
   // Manhwa (MangaDex)

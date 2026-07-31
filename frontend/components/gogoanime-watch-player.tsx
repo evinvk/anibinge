@@ -189,7 +189,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       const aid = resolvedAnilistRef.current;
       if (!aid) return false;
       const streamRes = await api.hindiStream(aid, ep).catch(() => null);
-      const data = streamRes?.data;
+      const data = streamRes;
 
       if (data?.stream_url) {
         subs.setSubs([]);
