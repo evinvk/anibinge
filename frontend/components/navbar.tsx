@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X, Sparkles, User, Bookmark } from "lucide-react";
+import { Menu, X, Sparkles, User, Bookmark, LogIn } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { NotificationBell } from "@/components/notification-bell";
@@ -60,9 +60,10 @@ export function Navbar() {
               ) : (
                 <Link
                   href="/login"
-                  className="rounded-full border border-white/10 px-3 py-2 text-sm text-mist transition-colors hover:text-paper sm:px-4"
+                  aria-label="Sign in"
+                  className="rounded-full border border-white/10 p-2.5 text-mist transition-colors hover:text-paper"
                 >
-                  Sign in
+                  <LogIn className="h-4 w-4" />
                 </Link>
               )}
             </>
