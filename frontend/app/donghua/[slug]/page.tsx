@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Play, Star, Globe, ArrowLeft, ChevronDown } from "lucide-react";
-import { fetchHtml, parseDetailAuto } from "@/app/api/v1/donghua/_animexin";
+import { fetchHtml, parseDetailAuto, resolveAnimeXinSeriesUrl } from "@/app/api/v1/donghua/_animexin";
 import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 import { findGenreByName } from "@/lib/genre-seo";
@@ -24,7 +24,8 @@ interface PageProps {
 }
 
 async function getDetail(slug: string) {
-  const html = await fetchHtml(`/${slug}/`);
+  const path = (await resolveAnimeXinSeriesUrl(slug)) || `/${slug}/`;
+  const html = await fetchHtml(path);
   return parseDetailAuto(html, slug);
 }
 
