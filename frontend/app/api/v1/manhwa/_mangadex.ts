@@ -1,3 +1,5 @@
+import { getComicCoverByTitle } from "./_comick";
+
 const API = "https://api.mangadex.org";
 const CDN = "https://uploads.mangadex.org";
 const ANILIST_GRAPHQL = "https://graphql.anilist.co";
@@ -113,9 +115,16 @@ async function enrichPosters(items: ManhwaItemData[]): Promise<ManhwaItemData[]>
         covers.forEach((cover, k) => { if (cover) results[start + k] = cover; });
       })
     );
+    await Promise.all(
+      items.map(async (item, i) => {
+        if (item.poster || results[i]) return;
+        const cover = await getComicCoverByTitle(item.title);
+        if (cover) results[i] = cover;
+      })
+    );
     return items.map((item, i) => (results[i] ? { ...item, poster: results[i] } : item));
   } catch (e: any) {
-    console.error("AniList poster enrichment failed:", e?.message || e);
+    console.error("Poster enrichment failed:", e?.message || e);
     return items;
   }
 }

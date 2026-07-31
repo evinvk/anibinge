@@ -200,6 +200,23 @@ export async function searchManga(q: string): Promise<{ data: ManhwaItemData[] }
   return { data: items };
 }
 
+export async function getComicCoverByTitle(title: string): Promise<string | null> {
+  try {
+    const json = await fetchComick(
+      `/v1.0/search?q=${encodeURIComponent(title)}&limit=1&lang=en`,
+      3600
+    );
+    const b2key = Array.isArray(json) ? json[0]?.md_covers?.[0]?.b2key : null;
+    if (!b2key) return null;
+    const url = `${COVER_CDN}/${b2key}`;
+    const res = await fetch(url, { method: "HEAD", next: { revalidate: 86400 } });
+    if (!res.ok) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
 async function getComicDetailRaw(hid: string, revalidate = 300): Promise<any> {
   const json = await fetchComick(`/v1.0/comic/${encodeURIComponent(hid)}`, revalidate);
   return json?.comic;
