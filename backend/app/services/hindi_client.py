@@ -183,8 +183,12 @@ async def search_series(title: str) -> str | None:
     if direct and await _series_exists(direct):
         return direct
 
+    # Parenthetical suffixes (e.g. "Hunter x Hunter (2011)") break ToonStream's
+    # search — strip them from the query, but keep them for the direct slug.
+    search_title = re.sub(r"\s+", " ", re.sub(r"\([^)]*\)", " ", title)).strip()
+
     try:
-        resp = await _get(f"{TOONSTREAM_BASE}/search/all", params={"q": _normalize(title)})
+        resp = await _get(f"{TOONSTREAM_BASE}/search/all", params={"q": _normalize(search_title)})
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -197,7 +201,7 @@ async def search_series(title: str) -> str | None:
         return None
 
     titles = [it.get("title", "") for it in series]
-    best = _best_title_match(title, titles)
+    best = _best_title_match(search_title, titles)
     # ToonStream names Hindi variants with "-hindi" in the slug/title — prefer
     # those over English/Japanese dub variants since we're resolving Hindi audio.
     hindi_idx = next(

@@ -156,13 +156,16 @@ async function searchSeries(title: string): Promise<string | null> {
     return directSlug;
   }
 
-  const data = await getJson(`${TOONSTREAM_BASE}/search/all?q=${encodeURIComponent(normalize(title))}`, undefined);
+  // Parenthetical suffixes (e.g. "Hunter x Hunter (2011)") break ToonStream's
+  // search — strip them from the query, but keep them for the direct slug.
+  const searchTitle = title.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  const data = await getJson(`${TOONSTREAM_BASE}/search/all?q=${encodeURIComponent(normalize(searchTitle))}`, undefined);
   const items = (data?.data || []) as { title?: string; type?: string; url?: string }[];
   const series = items.filter((it) => it.type === "series" && it.url);
   if (!series.length) return null;
 
   const titles = series.map((it) => it.title || "");
-  let best = bestTitleMatch(title, titles);
+  let best = bestTitleMatch(searchTitle, titles);
   // ToonStream names Hindi variants with "-hindi" in the slug/title — prefer
   // those over English/Japanese dub variants since we're resolving Hindi audio.
   const hindiIdx = series.findIndex((it) => /hindi/i.test(`${it.title || ""} ${it.url || ""}`));
