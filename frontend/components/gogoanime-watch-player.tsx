@@ -5,6 +5,7 @@ import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
+import { InjectedAdScript } from "@/components/injected-ad-script";
 import clsx from "clsx";
 
 interface StreamSource {
@@ -871,6 +872,11 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </button>
         </div>
       )}
+
+      <InjectedAdScript
+        id="anibinge-ad-player"
+        src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+      />
     </div>
   );
 }
