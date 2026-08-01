@@ -1,4 +1,6 @@
 import { fetchViaCfProxy, hasCfProxy } from "@/lib/cf-proxy";
+import http from "node:http";
+import https from "node:https";
 
 const API = "https://api.comick.dev";
 const COVER_CDN = "https://meo.comick.pictures";
@@ -121,13 +123,49 @@ export interface ChapterData {
   externalUrl: string | null;
 }
 
-async function fetchComick(path: string, revalidate = 60): Promise<any> {
-  const res = await fetch(`${API}${path}`, {
-    headers: HEADERS,
-    next: { revalidate },
+function fetchHttp1(path: string, timeoutMs = 20000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${API}${path}`);
+    const lib = url.protocol === "https:" ? https : http;
+    const req = lib.request(
+      {
+        host: url.hostname,
+        port: url.port || undefined,
+        path: url.pathname + url.search,
+        method: "GET",
+        servername: url.hostname,
+        headers: { ...HEADERS, "Accept-Encoding": "identity" },
+      },
+      (res) => {
+        if (res.statusCode && res.statusCode >= 400) {
+          res.resume();
+          reject(new Error(`ComicK HTTP ${res.statusCode}: ${path}`));
+          return;
+        }
+        let body = "";
+        res.setEncoding("utf8");
+        res.on("data", (d) => (body += d));
+        res.on("end", () => resolve(body));
+      }
+    );
+    req.setTimeout(timeoutMs, () => req.destroy(new Error(`ComicK timeout: ${path}`)));
+    req.on("error", reject);
+    req.end();
   });
-  if (!res.ok) throw new Error(`ComicK ${res.status}: ${path}`);
-  return res.json();
+}
+
+async function fetchComick(path: string, revalidate = 60): Promise<any> {
+  try {
+    return JSON.parse(await fetchHttp1(path));
+  } catch {
+    // fall back to undici (may be CF-challenged; callers handle failures)
+    const res = await fetch(`${API}${path}`, {
+      headers: HEADERS,
+      next: { revalidate },
+    });
+    if (!res.ok) throw new Error(`ComicK ${res.status}: ${path}`);
+    return res.json();
+  }
 }
 
 function coverUrl(b2key?: string | null): string | null {
@@ -206,6 +244,33 @@ function normalizeTitle(s: string): string {
     .replace(/[^a-z0-9 ]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+export async function resolveHidByTitle(title: string): Promise<string | null> {
+  const q = normalizeTitle(title);
+  if (q.length < 4) return null;
+  try {
+    const json = await fetchComick(
+      `/v1.0/search?q=${encodeURIComponent(title)}&limit=10&lang=en&country=kr`,
+      3600
+    );
+    const list = Array.isArray(json) ? json : [];
+    let inclusive: string | null = null;
+    for (const item of list) {
+      const candidates = [
+        item?.title,
+        ...(Array.isArray(item?.md_titles)
+          ? item.md_titles.filter((t: any) => t?.lang === "en").map((t: any) => t?.title)
+          : []),
+      ].filter((c: any): c is string => typeof c === "string" && c.length > 0);
+      const norm = candidates.map(normalizeTitle).filter((c) => c.length > 0);
+      if (norm.some((c) => c === q)) return item.hid;
+      if (!inclusive && norm.some((c) => c.includes(q))) inclusive = item.hid;
+    }
+    return inclusive;
+  } catch {
+    return null;
+  }
 }
 
 export async function getComicCoverByTitle(title: string): Promise<string | null> {
