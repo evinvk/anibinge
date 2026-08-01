@@ -129,11 +129,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             }),
           }}
         />
-        <Script
-          id="ad-script-site"
-          strategy="afterInteractive"
-          src="https://pl30495366.effectivecpmnetwork.com/1d/6b/a5/1d6ba5bb70bb38e1412d4a6f5c1da23f.js"
-        />
       </body>
     </html>
   );
