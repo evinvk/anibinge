@@ -118,6 +118,12 @@ export default async function GenrePage({ params }: PageProps) {
       <div className="mt-8 flex items-center gap-2">
         <Sparkles className="h-4 w-4 text-primary-400" />
         <h2 className="font-display text-lg font-bold">Popular {g.name} Titles</h2>
+        <Link
+          href={`/browse?genres=${encodeURIComponent(g.name)}`}
+          className="ml-auto inline-flex items-center gap-1 text-sm text-primary-400 hover:text-primary-300"
+        >
+          Browse all {g.name}
+        </Link>
       </div>
 
       {items.length > 0 ? (

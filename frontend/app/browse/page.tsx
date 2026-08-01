@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { BrowseFilters } from "@/components/browse-filters";
 import { InfiniteAnimeGrid } from "@/components/infinite-anime-grid";
 import { CatalogCard, CatalogGrid } from "@/components/catalog-card";
 import { Pagination } from "@/components/pagination";
 import { SITE_URL } from "@/lib/seo";
+import { GENRE_PAGES } from "@/lib/genre-seo";
 import type { GogoAnimeItem } from "@/lib/api";
 
 const API_BASE = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL;
@@ -111,6 +113,21 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
       ) : (
         <InfiniteAnimeGrid initialItems={[]} query={query} filters={filters} />
       )}
+
+      <section className="mt-12">
+        <h2 className="font-display text-lg font-bold">Browse by Genre</h2>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {GENRE_PAGES.map((g) => (
+            <Link
+              key={g.slug}
+              href={`/genres/${g.slug}`}
+              className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper"
+            >
+              {g.name}
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

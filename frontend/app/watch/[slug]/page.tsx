@@ -88,7 +88,7 @@ export default async function WatchPage({ params, searchParams }: PageProps) {
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <Breadcrumbs
           siteUrl={process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}
-          items={[{ label: title, href: "/" }, { label: `Episode ${episodeNumber}` }]}
+          items={[{ label: title, href: `/search?q=${encodeURIComponent(title)}` }, { label: `Episode ${episodeNumber}` }]}
         />
       </div>
       <WatchPageClient params={params} />

@@ -13,7 +13,7 @@ import { LazyStreamingPlayer } from "@/components/lazy-streaming-player";
 import { FaqSection } from "@/components/faq-section";
 import { ShareButtons } from "@/components/share-buttons";
 import { findGenreByName } from "@/lib/genre-seo";
-import { slugifyStudio } from "@/lib/seo";
+import { slugifyStudio, buildSeasonSlug } from "@/lib/seo";
 
 export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?: string }) {
   const [detail, setDetail] = useState<any>(null);
@@ -189,6 +189,21 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
               <Field label="Status" value={detail.status} />
               <Field label="Episodes" value={detail.episodes ?? (detail.status === "currently_airing" ? "Ongoing" : "—")} />
               <Field label="Rating" value={detail.rating} />
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-mist">Season</dt>
+                <dd className="mt-1 font-medium">
+                  {detail.season && detail.year ? (
+                    <Link
+                      href={`/season/${buildSeasonSlug(detail.season.toLowerCase(), detail.year)}`}
+                      className="text-primary-400 hover:underline"
+                    >
+                      {`${detail.season.charAt(0).toUpperCase()}${detail.season.slice(1).toLowerCase()} ${detail.year}`}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
             </dl>
           </div>
         </div>
