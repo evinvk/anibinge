@@ -1,5 +1,8 @@
 import { AnimeDetailClient } from "./client";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { permanentRedirect, notFound } from "next/navigation";
+import { cache } from "react";
+import { resolveAnimeSlug } from "@/lib/resolve-anime-slug";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -8,9 +11,24 @@ interface PageProps {
 
 const SITE_URL = "https://anibinge.fun";
 
+const resolveSlugCached = cache((slug: string) => resolveAnimeSlug(slug));
+
+function isNumericId(id: string): boolean {
+  return /^\d+$/.test(id);
+}
+
+async function resolveIfSlug(id: string): Promise<string> {
+  if (isNumericId(id)) return id;
+  const resolution = await resolveSlugCached(id);
+  if (!resolution) notFound();
+  permanentRedirect(`/anime/${resolution.id}${resolution.source === "anilist" ? "?source=anilist" : ""}`);
+  return "";
+}
+
 export async function generateMetadata({ params, searchParams }: PageProps) {
-  const { id } = await params;
+  const { id: rawId } = await params;
   const { source } = await searchParams;
+  const id = await resolveIfSlug(rawId);
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`);
     const { data } = await res.json();
@@ -41,8 +59,9 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
 }
 
 export default async function AnimeDetailPage({ params, searchParams }: PageProps) {
-  const { id } = await params;
+  const { id: rawId } = await params;
   const { source } = await searchParams;
+  const id = await resolveIfSlug(rawId);
 
   let jsonld: Record<string, any> | null = null;
   let detailTitle: string | null = null;
