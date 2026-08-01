@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
 import { EpisodeComments } from "@/components/episode-comments";
+import { InjectedAdScript } from "@/components/injected-ad-script";
 import clsx from "clsx";
 
 interface SearchResult {
@@ -720,6 +721,11 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
       {(selectedSlug || resolvedAnilistRef.current) && (
         <EpisodeComments slug={selectedSlug || String(resolvedAnilistRef.current)} episodeNumber={currentEp} />
       )}
+
+      <InjectedAdScript
+        id="anibinge-ad-player"
+        src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+      />
     </section>
   );
 }
