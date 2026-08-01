@@ -4,12 +4,13 @@ import { SITE_URL } from "@/lib/seo";
 
 async function collectAnimeIds(): Promise<string[]> {
   const ids = new Set<string>();
-  const sources: Promise<{ data: any[] }>[] = [
-    api.trending(1),
-    api.airing(1),
-    api.topRated(1),
-    api.currentSeason(1),
-  ];
+  const sources: Promise<{ data: any[] }>[] = [];
+  for (let p = 1; p <= 3; p++) {
+    sources.push(api.trending(p));
+    sources.push(api.airing(p));
+    sources.push(api.topRated(p));
+    sources.push(api.currentSeason(p));
+  }
   const results = await Promise.allSettled(sources);
   for (const r of results) {
     if (r.status !== "fulfilled") continue;

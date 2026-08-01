@@ -1,19 +1,62 @@
+import type { Metadata } from "next";
 import { BrowseFilters } from "@/components/browse-filters";
 import { InfiniteAnimeGrid } from "@/components/infinite-anime-grid";
+import { CatalogCard, CatalogGrid } from "@/components/catalog-card";
+import { Pagination } from "@/components/pagination";
+import { SITE_URL } from "@/lib/seo";
+import type { GogoAnimeItem } from "@/lib/api";
 
-export const metadata = {
-  title: "Browse Anime by Genre, Season & Studio",
-  description:
-    "Browse thousands of anime to watch online free. Filter by genre, season, studio, status, and more. Find your next favorite show to stream.",
-};
+const API_BASE = process.env.NEXT_PUBLIC_SITE_URL || SITE_URL;
+const CATALOG_TOTAL_PAGES = 297;
 
 interface BrowsePageProps {
   searchParams: Promise<{ [key: string]: string | undefined }>;
 }
 
+function buildBrowseHref(page: number, params: URLSearchParams): string {
+  const qs = new URLSearchParams(params);
+  if (page > 1) qs.set("page", String(page));
+  else qs.delete("page");
+  const s = qs.toString();
+  return s ? `/browse?${s}` : "/browse";
+}
+
+export async function generateMetadata({ searchParams }: BrowsePageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page || "1"));
+  const isCatalog = !(params.q || params.genres || params.status || params.type || params.order_by || params.sort);
+
+  if (isCatalog) {
+    const canonical = new URLSearchParams();
+    if (page > 1) canonical.set("page", String(page));
+    const url = `${SITE_URL}/browse${canonical.size ? `?${canonical.toString()}` : ""}`;
+    return {
+      title: page === 1 ? "Browse Anime by Genre, Season & Studio" : `Browse Anime — Page ${page} of ${CATALOG_TOTAL_PAGES}`,
+      description:
+        page === 1
+          ? "Browse thousands of anime to watch online free. Filter by genre, season, studio, status, and more. Find your next favorite show to stream."
+          : `Browse the full anime catalog — page ${page} of ${CATALOG_TOTAL_PAGES}. Watch popular and latest anime online free in HD on Anibinge.`,
+      alternates: { canonical: url },
+    };
+  }
+
+  const canonicalParams = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v) canonicalParams.set(k, v);
+  }
+  return {
+    title: params.status === "upcoming" ? "Upcoming Anime" : "Browse Anime",
+    alternates: {
+      canonical: `${SITE_URL}/browse${canonicalParams.size ? `?${canonicalParams.toString()}` : ""}`,
+    },
+  };
+}
+
 export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const params = await searchParams;
+  const page = Math.max(1, parseInt(params.page || "1"));
   const query = params.q || "anime";
+  const hasSearchOrFilter = !!(params.q || params.genres || params.status || params.type || params.order_by || params.sort);
 
   const filters: Record<string, string> = {
     ...(params.genres ? { genres: params.genres } : {}),
@@ -23,10 +66,21 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
     ...(params.sort ? { sort: params.sort } : {}),
   };
 
-  // The InfiniteAnimeGrid loads data client-side.
-  // Return empty initialItems so it always fetches on the client
-  // (avoids SSR fetch timing out or failing for filtered queries).
-  const data: any[] = [];
+  let catalogItems: GogoAnimeItem[] = [];
+  let catalogLoaded = false;
+
+  if (!hasSearchOrFilter) {
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/streaming/gogoanime/latest?page=${page}`, {
+        next: { revalidate: 300 },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        catalogItems = json.data || [];
+        catalogLoaded = true;
+      }
+    } catch {}
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -41,7 +95,22 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
       <BrowseFilters />
 
-      <InfiniteAnimeGrid initialItems={data} query={query} filters={filters} />
+      {!hasSearchOrFilter && catalogLoaded ? (
+        <>
+          <CatalogGrid className="mt-8">
+            {catalogItems.map((item, i) => (
+              <CatalogCard key={`${item.slug}-${i}`} item={item} priority={page === 1 && i < 6} />
+            ))}
+          </CatalogGrid>
+          <Pagination
+            currentPage={page}
+            totalPages={CATALOG_TOTAL_PAGES}
+            buildHref={(p) => buildBrowseHref(p, new URLSearchParams())}
+          />
+        </>
+      ) : (
+        <InfiniteAnimeGrid initialItems={[]} query={query} filters={filters} />
+      )}
     </div>
   );
 }

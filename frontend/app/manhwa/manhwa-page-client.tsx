@@ -1,30 +1,22 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Search, Loader2, Flame, Clock } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Search, Loader2 } from "lucide-react";
 import { api, type ManhwaItem } from "@/lib/api";
-import { ManhwaCard, ManhwaCardSkeleton } from "@/components/manhwa-card";
+import { ManhwaCard } from "@/components/manhwa-card";
+import { Pagination } from "@/components/pagination";
 
-export default function ManhwaPageClient() {
-  const [trending, setTrending] = useState<ManhwaItem[]>([]);
-  const [latest, setLatest] = useState<ManhwaItem[]>([]);
+interface ManhwaPageClientProps {
+  initialItems: ManhwaItem[];
+  currentPage: number;
+  totalPages: number;
+}
+
+export default function ManhwaPageClient({ initialItems, currentPage, totalPages }: ManhwaPageClientProps) {
   const [searchResults, setSearchResults] = useState<ManhwaItem[] | null>(null);
   const [query, setQuery] = useState("");
-  const [loadingTrending, setLoadingTrending] = useState(true);
-  const [loadingLatest, setLoadingLatest] = useState(true);
   const [searching, setSearching] = useState(false);
-
-  useEffect(() => {
-    api.manhwaTrending().then((r) => {
-      setTrending(r.data || []);
-      setLoadingTrending(false);
-    }).catch(() => setLoadingTrending(false));
-
-    api.manhwaLatest(1).then((r) => {
-      setLatest(r.data || []);
-      setLoadingLatest(false);
-    }).catch(() => setLoadingLatest(false));
-  }, []);
+  const [searchedFor, setSearchedFor] = useState("");
 
   const handleSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults(null); return; }
@@ -32,11 +24,15 @@ export default function ManhwaPageClient() {
     try {
       const r = await api.manhwaSearch(q);
       setSearchResults(r.data || []);
+      setSearchedFor(q.trim());
     } catch {
       setSearchResults([]);
+      setSearchedFor(q.trim());
     }
     setSearching(false);
   }, []);
+
+  const items = searchResults ?? initialItems;
 
   return (
     <div className="min-h-screen bg-void">
@@ -69,7 +65,7 @@ export default function ManhwaPageClient() {
         {searchResults !== null && (
           <section className="mb-12">
             <h2 className="mb-4 font-display text-xl font-bold text-paper">
-              Search Results {query && `for "${query}"`}
+              Search Results {searchedFor && `for "${searchedFor}"`}
             </h2>
             {searchResults.length === 0 ? (
               <p className="text-mist">No results found.</p>
@@ -86,59 +82,33 @@ export default function ManhwaPageClient() {
         )}
 
         {searchResults === null && (
-          <>
-            <section className="mb-12">
-              <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
-                    <Flame className="h-4 w-4 text-emerald-400" />
-                  </div>
-                  <h2 className="font-display text-xl font-bold text-paper">Popular Manhwa</h2>
+          <section className="mb-12">
+            <div className="mb-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
+                  <Search className="h-4 w-4 text-emerald-400" />
                 </div>
+                <h2 className="font-display text-xl font-bold text-paper">All Manhwa</h2>
               </div>
-              {loadingTrending ? (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {Array.from({ length: 6 }).map((_, i) => <ManhwaCardSkeleton key={i} />)}
-                </div>
-              ) : trending.length === 0 ? (
-                <p className="text-mist">No trending manhwa available.</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {trending.map((item) => (
-                    <div key={item.id} className="w-full">
-                      <ManhwaCard item={item} priority />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="mb-12">
-              <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
-                    <Clock className="h-4 w-4 text-emerald-400" />
+              <span className="text-xs text-mist">Page {currentPage} of {totalPages}</span>
+            </div>
+            {items.length === 0 ? (
+              <p className="text-mist">No manhwa available.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {items.map((item) => (
+                  <div key={item.id} className="w-full">
+                    <ManhwaCard item={item} />
                   </div>
-                  <h2 className="font-display text-xl font-bold text-paper">Latest Updates</h2>
-                </div>
+                ))}
               </div>
-              {loadingLatest ? (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {Array.from({ length: 12 }).map((_, i) => <ManhwaCardSkeleton key={i} />)}
-                </div>
-              ) : latest.length === 0 ? (
-                <p className="text-mist">No latest updates available.</p>
-              ) : (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {latest.map((item) => (
-                    <div key={item.id} className="w-full">
-                      <ManhwaCard item={item} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
+            )}
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              buildHref={(p) => (p === 1 ? "/manhwa" : `/manhwa?page=${p}`)}
+            />
+          </section>
         )}
       </div>
     </div>
