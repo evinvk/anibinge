@@ -53,6 +53,8 @@ function extractFileUrl(decoded: string): string | null {
 function normalize(title: string): string {
   return title
     .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/['`]/g, "")
     .replace(/[^\w\s]/g, " ")
     .replace(/\s+/g, " ")
@@ -154,13 +156,19 @@ async function searchSeries(title: string): Promise<string | null> {
     return directSlug;
   }
 
-  const data = await getJson(`${TOONSTREAM_BASE}/search/all`, undefined);
+  const data = await getJson(`${TOONSTREAM_BASE}/search/all?q=${encodeURIComponent(normalize(title))}`, undefined);
   const items = (data?.data || []) as { title?: string; type?: string; url?: string }[];
   const series = items.filter((it) => it.type === "series" && it.url);
   if (!series.length) return null;
 
   const titles = series.map((it) => it.title || "");
   let best = bestTitleMatch(title, titles);
+  // ToonStream names Hindi variants with "-hindi" in the slug/title — prefer
+  // those over English/Japanese dub variants since we're resolving Hindi audio.
+  const hindiIdx = series.findIndex((it) => /hindi/i.test(`${it.title || ""} ${it.url || ""}`));
+  if (hindiIdx >= 0 && (best < 0 || best === hindiIdx || !/hindi/i.test(titles[best] || ""))) {
+    best = hindiIdx;
+  }
   if (best < 0) best = 0;
   const url = series[best]?.url || "";
   const slug = url.replace(/\/+$/, "").split("/").pop();
@@ -204,7 +212,17 @@ async function mapEpisode(slug: string, episode: number): Promise<{ season: numb
 }
 
 async function getEpisodeEmbeds(slug: string, season: number, episode: number): Promise<string[]> {
-  const html = await getText(`${TOONSTREAM_BASE}/episode/${slug}-${season}x${episode}/`);
+  // The episode slug can differ from the series slug (e.g. series
+  // "naruto-shippuden-hindi-dub" uses episodes like "naruto-shippuden-1x1"),
+  // so derive the episode page URL from the season page's own links.
+  const seasonHtml = await getText(`${TOONSTREAM_BASE}/series/${slug}/season/${season}/`);
+  const epRe = new RegExp(`href="(/episode/[^"]*-${season}x${episode}/)"`);
+  const epPath = seasonHtml ? seasonHtml.match(epRe)?.[1] : null;
+  const pageUrl = epPath
+    ? `${TOONSTREAM_BASE}${epPath}`
+    : `${TOONSTREAM_BASE}/episode/${slug}-${season}x${episode}/`;
+
+  const html = await getText(pageUrl);
   if (!html) return [];
   const embeds: string[] = [];
   for (const tagMatch of html.matchAll(/<iframe\b[^>]*>/gi)) {

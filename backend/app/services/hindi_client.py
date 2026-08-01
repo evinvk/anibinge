@@ -15,6 +15,7 @@ which rewrites every variant/audio/segment URL with the proper Referer.
 """
 import logging
 import re
+import unicodedata
 from typing import Any
 
 import httpx
@@ -116,7 +117,8 @@ async def _post(url: str, data: dict, headers: dict | None = None) -> httpx.Resp
 
 
 def _normalize(title: str) -> str:
-    t = title.lower().strip()
+    t = unicodedata.normalize("NFD", title.lower().strip())
+    t = "".join(ch for ch in t if unicodedata.category(ch) != "Mn")
     t = re.sub(r"['`]", "", t)
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
@@ -182,7 +184,7 @@ async def search_series(title: str) -> str | None:
         return direct
 
     try:
-        resp = await _get(f"{TOONSTREAM_BASE}/search/all", params={"q": title})
+        resp = await _get(f"{TOONSTREAM_BASE}/search/all", params={"q": _normalize(title)})
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
@@ -196,6 +198,18 @@ async def search_series(title: str) -> str | None:
 
     titles = [it.get("title", "") for it in series]
     best = _best_title_match(title, titles)
+    # ToonStream names Hindi variants with "-hindi" in the slug/title — prefer
+    # those over English/Japanese dub variants since we're resolving Hindi audio.
+    hindi_idx = next(
+        (
+            i
+            for i, it in enumerate(series)
+            if "hindi" in f"{it.get('title', '')} {it.get('url', '')}".lower()
+        ),
+        -1,
+    )
+    if hindi_idx >= 0 and (best < 0 or best == hindi_idx or "hindi" not in titles[best].lower()):
+        best = hindi_idx
     if best < 0:
         best = 0
     url = series[best].get("url", "")
@@ -269,9 +283,29 @@ async def map_episode(slug: str, episode: int) -> tuple[int, int] | None:
 
 @cached("hindi:episode_embeds", ttl=3600)
 async def get_episode_embeds(slug: str, season: int, episode: int) -> list[str]:
-    """Get the embed paths for an episode page, active player first."""
+    """Get the embed paths for an episode page, active player first.
+
+    The episode slug can differ from the series slug (e.g. series
+    "naruto-shippuden-hindi-dub" uses episodes like "naruto-shippuden-1x1"),
+    so the episode page URL is derived from the season page's own links.
+    """
     try:
-        resp = await _get(f"{TOONSTREAM_BASE}/episode/{slug}-{season}x{episode}/")
+        season_resp = await _get(f"{TOONSTREAM_BASE}/series/{slug}/season/{season}/")
+        season_resp.raise_for_status()
+        season_html = season_resp.text
+    except Exception as e:
+        logger.warning("ToonStream season page failed for %r s%d: %s", slug, season, e)
+        season_html = ""
+
+    ep_match = re.search(rf'href="(/episode/[^"]*-{season}x{episode}/)"', season_html)
+    page_url = (
+        f"{TOONSTREAM_BASE}{ep_match.group(1)}"
+        if ep_match
+        else f"{TOONSTREAM_BASE}/episode/{slug}-{season}x{episode}/"
+    )
+
+    try:
+        resp = await _get(page_url)
         resp.raise_for_status()
         html = resp.text
     except Exception as e:
@@ -279,7 +313,7 @@ async def get_episode_embeds(slug: str, season: int, episode: int) -> list[str]:
         return []
 
     embeds = []
-    for m in re.finditer(r'<iframe\b[^>]*>', html, re.IGNORECASE):
+    for m in re.finditer(r"<iframe\b[^>]*>", html, re.IGNORECASE):
         tag = m.group(0)
         attr = re.search(r'\b(?:src|data-src)="(/embed/[^"]+)"', tag)
         if attr:
