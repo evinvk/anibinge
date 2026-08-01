@@ -8,6 +8,8 @@ import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
 import { InjectedAdScript } from "@/components/injected-ad-script";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+
 interface Props {
   slug: string;
 }
@@ -36,12 +38,27 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
 
+  const [audio, setAudio] = useState<"sub" | "hindi">("sub");
+  const [isHindiStream, setIsHindiStream] = useState(false);
+  const resolvedAnilistRef = useRef<number | null>(null);
+
   useEffect(() => {
     api.donghuaDetail(slug).then((r) => {
       setTitle(r.data.title);
       setTotalEps(r.data.episodes || r.data.episode_list?.length || null);
     }).catch(() => {});
   }, [slug]);
+
+  useEffect(() => {
+    if (!resolvedAnilistRef.current && title) {
+      fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`)
+        .then(r => r.json())
+        .then(data => {
+          if (data.anilist_id) resolvedAnilistRef.current = data.anilist_id;
+        })
+        .catch(() => {});
+    }
+  }, [title]);
 
   const tryResolveEmbed = useCallback(async (url: string): Promise<string | null> => {
     if (/dailymotion\.com|dai\.ly/i.test(url)) return url;
@@ -55,11 +72,38 @@ export default function DonghuaWatchPage({ slug }: Props) {
     }
   }, []);
 
+  const tryHindi = useCallback(async (ep: number): Promise<boolean> => {
+    setError(null);
+    setLoadingStream(true);
+    setStreamUrl(null);
+    try {
+      const aid = resolvedAnilistRef.current;
+      if (!aid) return false;
+      const data = await api.hindiStream(aid, ep).catch(() => null);
+      if (data?.stream_url) {
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(data.stream_url)}&referer=${encodeURIComponent(data.referer || "https://rubystm.com/")}`;
+        setIsHindiStream(true);
+        setStreamUrl(proxiedUrl);
+        setLoadingStream(false);
+        return true;
+      }
+    } catch {}
+    setIsHindiStream(false);
+    setLoadingStream(false);
+    return false;
+  }, []);
+
   const fetchStream = useCallback(async (ep: number) => {
     setLoadingStream(true);
     setError(null);
     setServers([]);
     setStreamUrl(null);
+    setIsHindiStream(false);
+
+    if (audio === "hindi") {
+      const ok = await tryHindi(ep);
+      if (ok) return;
+    }
 
     const streamData = await api.donghuaStream(slug, ep).then(r => r.data).catch(() => null);
 
@@ -82,7 +126,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
       setLoadingStream(false);
       setError("No streaming sources found for this episode.");
     }
-  }, [slug, tryResolveEmbed]);
+  }, [slug, tryResolveEmbed, tryHindi, audio]);
 
   useEffect(() => {
     fetchStream(currentEp);
@@ -111,8 +155,8 @@ export default function DonghuaWatchPage({ slug }: Props) {
     return streamUrl;
   })();
 
-  const isDirectVideo = resolvedUrl ? /\.(m3u8|mp4|webm)(\?|$)/i.test(resolvedUrl) || resolvedUrl.includes("video-proxy") : false;
-  const isHls = resolvedUrl ? /\.m3u8/i.test(resolvedUrl) : false;
+  const isHls = isHindiStream || (resolvedUrl ? /\.m3u8/i.test(resolvedUrl) : false);
+  const isDirectVideo = resolvedUrl ? isHls || /\.(mp4|webm)(\?|$)/i.test(resolvedUrl) || resolvedUrl.includes("video-proxy") || resolvedUrl.startsWith("/api/proxy") : false;
 
   useEffect(() => {
     if (!resolvedUrl || !isHls || !videoRef.current) return;
@@ -143,6 +187,24 @@ export default function DonghuaWatchPage({ slug }: Props) {
             {title}
           </Link>
         )}
+
+        {/* Audio selector */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-mist">Audio</span>
+          <div className="flex gap-1 rounded-lg bg-white/5 p-1">
+            {(["sub", "hindi"] as const).map((opt) => (
+              <button
+                key={opt}
+                onClick={() => { if (opt !== audio) setAudio(opt); }}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-all ${
+                  audio === opt ? "bg-red-500 text-white" : "text-mist hover:text-paper"
+                }`}
+              >
+                {opt === "sub" ? "Sub" : "Hindi"}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* Player */}
         <div className="relative w-full overflow-hidden rounded-xl2 bg-black" style={{ aspectRatio: "16/9" }}>
@@ -195,7 +257,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
         </div>
 
         {/* Server selector */}
-        {servers.length > 1 && (
+        {servers.length > 1 && audio !== "hindi" && (
           <div className="mt-4">
             <div className="flex items-center gap-2 mb-2">
               <Server className="h-4 w-4 text-mist" />
