@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server } from "lucide-react";
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
-import { AdsterraPopunder } from "@/components/adsterra-popunder";
+import { InjectedAdScript } from "@/components/injected-ad-script";
 
 interface Props {
   slug: string;
@@ -129,7 +129,6 @@ export default function DonghuaWatchPage({ slug }: Props) {
 
   return (
     <div className="min-h-screen bg-void">
-      <AdsterraPopunder />
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <Link
           href={`/donghua/${slug}`}
@@ -283,6 +282,11 @@ export default function DonghuaWatchPage({ slug }: Props) {
           <EpisodeComments slug={slug} episodeNumber={currentEp} />
         )}
       </div>
+
+      <InjectedAdScript
+        id="anibinge-ad-player"
+        src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+      />
     </div>
   );
 }
