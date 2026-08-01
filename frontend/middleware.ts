@@ -42,7 +42,7 @@ export default async function middleware(request: NextRequest) {
     if (segment && !/^\d+$/.test(segment)) {
       const resolution = await resolveAnimeSlug(segment);
       if (!resolution) {
-        return NextResponse.rewrite(new URL("/404", request.nextUrl));
+        return NextResponse.next();
       }
 
       const url = request.nextUrl.clone();

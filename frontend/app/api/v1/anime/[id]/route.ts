@@ -8,6 +8,7 @@ const DETAIL_BY_ID = `query($id:Int){Media(id:$id,type:ANIME){
   coverImage{large extraLarge} bannerImage
   averageScore popularity favourites
   genres status episodes description
+  nextAiringEpisode{episode}
   startDate{year month day} season format
   trailer{id site}
   studios{edges{isMain node{name}}}
@@ -17,6 +18,7 @@ const DETAIL_BY_MAL = `query($idMal:Int){Media(idMal:$idMal,type:ANIME){
   coverImage{large extraLarge} bannerImage
   averageScore popularity favourites
   genres status episodes description
+  nextAiringEpisode{episode}
   startDate{year month day} season format
   trailer{id site}
   studios{edges{isMain node{name}}}
@@ -51,7 +53,7 @@ function denormalizeAnilist(m: any) {
       .filter((e: any) => e.isMain)
       .map((e: any) => ({ name: e.node.name })),
     status: m.status || null,
-    episodes: m.episodes || null,
+    episodes: m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : null),
     rating: null,
     year: m.startDate?.year || null,
     season: m.season || null,

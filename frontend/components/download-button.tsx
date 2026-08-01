@@ -35,7 +35,7 @@ export function DownloadButton({ title, anilistId, totalEpisodes, slug }: Props)
         }
       }
 
-      const epCount = totalEpisodes && totalEpisodes > 0 ? totalEpisodes : 1;
+      const epCount = totalEpisodes && totalEpisodes > 0 ? Math.min(totalEpisodes, 100) : 1;
       const cleanTitle = title.replace(/[^a-zA-Z0-9 ]/g, "").trim();
 
       if (epCount === 1) {
