@@ -6,6 +6,7 @@ import {
   parseEpisodeServersAuto,
   parseDetailAuto,
   resolveAnimeXinSeriesUrl,
+  filterLiveServers,
   BASE,
 } from "../../../donghua/_animexin";
 
@@ -42,10 +43,11 @@ export async function GET(req: Request) {
       if (epEntry?.url) {
         const epPage = await fetchHtml(epEntry.url.replace(BASE, ""));
         const parsed = parseEpisodeServersAuto(epPage);
-        if (parsed.servers?.length) {
+        const servers = await filterLiveServers(parsed.servers || []);
+        if (servers.length) {
           return NextResponse.json({
             data: {
-              servers: parsed.servers.map((s: any) => ({
+              servers: servers.map((s: any) => ({
                 label: s.label || "Server",
                 stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
               })),
@@ -54,22 +56,23 @@ export async function GET(req: Request) {
         }
       }
     }
-
-    const epPage = await tryFetchEpPage(slug, ep);
-    if (epPage) {
-      const parsed = parseEpisodeServersAuto(epPage);
-      if (parsed.servers?.length) {
-        return NextResponse.json({
-          data: {
-            servers: parsed.servers.map((s: any) => ({
-              label: s.label || "Server",
-              stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
-            })),
-          },
-        });
-      }
-    }
   } catch {}
+
+  const epPage = await tryFetchEpPage(slug, ep);
+  if (epPage) {
+    const parsed = parseEpisodeServersAuto(epPage);
+    const servers = await filterLiveServers(parsed.servers || []);
+    if (servers.length) {
+      return NextResponse.json({
+        data: {
+          servers: servers.map((s: any) => ({
+            label: s.label || "Server",
+            stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
+          })),
+        },
+      });
+    }
+  }
 
   return NextResponse.json({ error: "No stream found" }, { status: 404 });
 }

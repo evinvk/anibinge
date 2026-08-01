@@ -1,7 +1,7 @@
 export const runtime = "edge";
 
 import { NextResponse } from "next/server";
-import { fetchHtml, parseEpisodeServersAuto, parseDetailAuto, BASE } from "../../../../_animexin";
+import { fetchHtml, parseEpisodeServersAuto, parseDetailAuto, filterLiveServers, BASE } from "../../../../_animexin";
 
 export async function GET(
   req: Request,
@@ -18,9 +18,10 @@ export async function GET(
     const epUrl = epEntry?.url?.replace(BASE, "") || `/${slug}-episode-${epNum}-indonesia-english-sub/`;
 
     const html = await fetchHtml(epUrl);
-    const { servers, prev_url, next_url } = parseEpisodeServersAuto(html);
+    const parsed = parseEpisodeServersAuto(html);
+    const servers = await filterLiveServers(parsed.servers || []);
 
-    if (servers?.length) {
+    if (servers.length) {
       const prevEntry = epNum > 1 ? detail.episode_list?.find((e: any) => e.number === epNum - 1) : null;
       return NextResponse.json({
         data: {
@@ -30,7 +31,7 @@ export async function GET(
             stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
           })),
           prev_url: prevEntry?.url ? `/donghua/watch/${slug}?ep=${epNum - 1}` : epNum > 1 ? `/donghua/watch/${slug}?ep=${epNum - 1}` : null,
-          next_url: next_url ? `/donghua/watch/${slug}?ep=${epNum + 1}` : null,
+          next_url: `/donghua/watch/${slug}?ep=${epNum + 1}`,
         },
       });
     }

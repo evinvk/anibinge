@@ -630,9 +630,68 @@ export function parseEpisodeServers(html: string): {
       }
     });
   }
+
+  // Parse <select><option value="base64">Label</option></select> server lists
+  // (common on AnimeXin: each option value is base64-encoded iframe HTML)
+  $("select option").each((_: any, el: any) => {
+    const raw = $(el).attr("value") || "";
+    if (!raw) return;
+    let decoded = "";
+    try {
+      const bin = atob(raw);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      decoded = new TextDecoder().decode(bytes);
+    } catch {
+      return;
+    }
+    if (!decoded.toLowerCase().includes("<iframe")) return;
+    const srcMatch = decoded.match(/src="([^"]+)"/i);
+    if (!srcMatch) return;
+    const src = srcMatch[1];
+    if (src && !servers.some((s) => s.stream_url === src)) {
+      const label = $(el).text().trim() || "Server " + (servers.length + 1);
+      servers.push({ label, stream_url: src });
+    }
+  });
+
   const prevLink = $("a.prev, .prev_link, .navigation a:contains('Prev')").attr("href") || null;
   const nextLink = $("a.next, .next_link, .navigation a:contains('Next')").attr("href") || null;
   return { servers, prev_url: prevLink, next_url: nextLink };
+}
+
+const dmCache = new Map<string, boolean>();
+
+// Check whether a Dailymotion embed URL still points to a live (non-deleted) video
+export async function isDailymotionVideoAlive(url: string): Promise<boolean> {
+  const m = url.match(/dailymotion\.com\/(?:embed|video)\/([a-zA-Z0-9]+)/);
+  if (!m) return true;
+  const id = m[1];
+  if (dmCache.has(id)) return dmCache.get(id)!;
+  try {
+    const r = await fetch(`https://api.dailymotion.com/video/${id}`, {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!r.ok) {
+      dmCache.set(id, false);
+      return false;
+    }
+    const j: any = await r.json();
+    const alive = !!j?.id && !j?.error;
+    dmCache.set(id, alive);
+    return alive;
+  } catch {
+    return true; // assume alive on network error so we never block streaming
+  }
+}
+
+// Drop dead Dailymotion servers (keeps ordering, non-Dailymotion servers untouched)
+export async function filterLiveServers(servers: { label: string; stream_url: string }[]): Promise<{ label: string; stream_url: string }[]> {
+  const results = await Promise.all(
+    servers.map(async (s) => ({ s, alive: await isDailymotionVideoAlive(s.stream_url) }))
+  );
+  return results.filter((r) => r.alive).map((r) => r.s);
 }
 
 // Search AnimeXin and return parsed items
