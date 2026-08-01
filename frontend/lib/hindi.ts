@@ -199,16 +199,20 @@ async function getSeasonEpisodeCount(slug: string, season: number): Promise<numb
 async function mapEpisode(slug: string, episode: number): Promise<{ season: number; ep: number } | null> {
   const seasons = await getSeasons(slug);
   if (!seasons.length) return null;
-  let remaining = episode;
+  // ToonStream numbers episodes globally across seasons and slugs them
+  // `{slug}-{S}x{globalEp}` (e.g. "naruto-2x53", "naruto-shippuden-3x54"), so
+  // the requested global episode number is matched directly against each
+  // season page's links instead of deriving it from cumulative counts.
   for (const season of seasons) {
-    const count = await getSeasonEpisodeCount(slug, season);
-    if (count <= 0) continue;
-    if (remaining <= count) return { season, ep: remaining };
-    remaining -= count;
+    const html = await getText(`${TOONSTREAM_BASE}/series/${slug}/season/${season}/`);
+    if (!html) continue;
+    if (new RegExp(`href="(/episode/[^"]*-${season}x${episode}/)"`).test(html)) {
+      return { season, ep: episode };
+    }
   }
   const last = seasons[seasons.length - 1];
   const count = await getSeasonEpisodeCount(slug, last);
-  return { season: last, ep: count > 0 ? Math.min(remaining, count) : remaining };
+  return { season: last, ep: count > 0 ? Math.min(episode, count) : episode };
 }
 
 async function getEpisodeEmbeds(slug: string, season: number, episode: number): Promise<string[]> {

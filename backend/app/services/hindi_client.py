@@ -260,25 +260,32 @@ async def get_season_episode_count(slug: str, season: int) -> int:
 @cached("hindi:episode_map", ttl=86400)
 async def map_episode(slug: str, episode: int) -> tuple[int, int] | None:
     """
-    Map a global (AniList-style) episode number to (season, ep) on ToonStream,
-    using cumulative per-season episode counts.
+    Map a global (AniList-style) episode number to (season, ep) on ToonStream.
+
+    ToonStream numbers episodes globally across seasons and slugs them
+    `{slug}-{S}x{globalEp}` (e.g. "naruto-2x53", "naruto-shippuden-3x54"), so
+    the requested global episode number is matched directly against each
+    season page's links instead of deriving it from cumulative per-season
+    counts (which produced wrong seasons / missing episodes past S1).
     """
     seasons = await get_seasons(slug)
     if not seasons:
         return None
-    remaining = episode
     for season in seasons:
-        count = await get_season_episode_count(slug, season)
-        if count <= 0:
+        try:
+            resp = await _get(f"{TOONSTREAM_BASE}/series/{slug}/season/{season}/")
+            resp.raise_for_status()
+            html = resp.text
+        except Exception as e:
+            logger.warning("ToonStream season page failed for %r s%d: %s", slug, season, e)
             continue
-        if remaining <= count:
-            return season, remaining
-        remaining -= count
+        if re.search(rf'href="(/episode/[^"]*-{season}x{episode}/)"', html):
+            return season, episode
     last = seasons[-1]
     count = await get_season_episode_count(slug, last)
     if count <= 0:
-        count = remaining
-    return last, min(remaining, count)
+        count = episode
+    return last, min(episode, count)
 
 
 @cached("hindi:episode_embeds", ttl=3600)
