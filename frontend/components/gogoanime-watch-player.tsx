@@ -147,30 +147,32 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         let qualities = [{ quality: "Auto", url: hlsUrl }];
         try {
           const m3u8Resp = await fetch(hlsUrl);
-          if (m3u8Resp.ok) {
-            const m3u8Text = await m3u8Resp.text();
-            const parsed: { quality: string; url: string }[] = [];
-            const lines = m3u8Text.split("\n");
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
-              if (line.startsWith("#EXT-X-STREAM-INF:")) {
-                const bwMatch = line.match(/BANDWIDTH=(\d+)/);
-                const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
-                const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
-                if (bwMatch && nextLine && !nextLine.startsWith("#")) {
-                  const bw = parseInt(bwMatch[1]);
-                  let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
-                  if (resMatch) label += ` (${resMatch[1]})`;
-                  const variantUrl = nextLine.startsWith("http")
-                    ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
-                    : nextLine.startsWith("/") ? nextLine : hlsUrl;
-                  parsed.push({ quality: label, url: variantUrl });
-                }
+          if (!m3u8Resp.ok) throw new Error("unplayable playlist");
+          const m3u8Text = await m3u8Resp.text();
+          if (!m3u8Text.startsWith("#EXT")) throw new Error("unplayable playlist");
+          const parsed: { quality: string; url: string }[] = [];
+          const lines = m3u8Text.split("\n");
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith("#EXT-X-STREAM-INF:")) {
+              const bwMatch = line.match(/BANDWIDTH=(\d+)/);
+              const resMatch = line.match(/RESOLUTION=(\d+x\d+)/);
+              const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : null;
+              if (bwMatch && nextLine && !nextLine.startsWith("#")) {
+                const bw = parseInt(bwMatch[1]);
+                let label = bw >= 5000000 ? "1080p" : bw >= 2500000 ? "720p" : bw >= 1000000 ? "480p" : "360p";
+                if (resMatch) label += ` (${resMatch[1]})`;
+                const variantUrl = nextLine.startsWith("http")
+                  ? `/api/proxy?url=${encodeURIComponent(nextLine)}&referer=${encodeURIComponent(res.referer || "")}`
+                  : nextLine.startsWith("/") ? nextLine : hlsUrl;
+                parsed.push({ quality: label, url: variantUrl });
               }
             }
-            if (parsed.length > 1) qualities = parsed;
           }
-        } catch { }
+          if (parsed.length > 1) qualities = parsed;
+        } catch (e) {
+          throw e;
+        }
 
         player.setMasterUrl(hlsUrl);
         player.setStreamData({ qualities });
@@ -414,24 +416,40 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           const res = await fetch(
             `${API_BASE}/api/v1/streaming/donghua/stream?q=${encodeURIComponent(title)}&ep=${ep}&audio=${audio}&anilist_id=${aid}`
           ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+          const servers = res?.data?.servers || [];
+          let s: any = null;
           if (res?.data?.stream_url) {
-            const s = res.data;
+            s = res.data;
+          } else {
+            for (const server of servers) {
+              if (!server?.stream_url) continue;
+              try {
+                const resolved = await fetch(
+                  `${API_BASE}/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(server.stream_url)}`
+                ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+                const d = resolved?.data;
+                if (d?.stream_url && d.type !== "embed") {
+                  s = { stream_url: d.stream_url, stream_type: d.type === "mp4" ? "mp4" : "hls" };
+                  break;
+                }
+              } catch {}
+            }
+          }
+          if (s?.stream_url) {
             player.sourceRef.current = "anitsu";
             if (s.stream_type === "mp4") {
-              const mp4Url = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
-              player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+              player.setStreamData({ qualities: [{ quality: "Auto", url: s.stream_url }] });
               player.setLoadingStream(false);
               setStatusText("");
               await new Promise(r => setTimeout(r, 100));
               if (videoRef.current) {
-                videoRef.current.src = mp4Url;
+                videoRef.current.src = s.stream_url;
                 videoRef.current.play().catch(() => {});
               }
               return;
             }
-            const hlsUrl = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
-            player.setMasterUrl(hlsUrl);
-            player.setStreamData({ qualities: [{ quality: "Auto", url: hlsUrl }] });
+            player.setMasterUrl(s.stream_url);
+            player.setStreamData({ qualities: [{ quality: "Auto", url: s.stream_url }] });
             player.setLoadingStream(false);
             setStatusText("");
             return;

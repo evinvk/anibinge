@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAnivexaStream } from "@/lib/anivexa";
 
+export const maxDuration = 30;
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const segments = url.pathname.split("/").filter(Boolean);

@@ -115,8 +115,9 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
           let qualities = [{ quality: "Auto", url: hlsUrl }];
           try {
             const m3u8Resp = await fetch(hlsUrl);
-            if (m3u8Resp.ok) {
-              const m3u8Text = await m3u8Resp.text();
+            if (!m3u8Resp.ok) throw new Error("unplayable playlist");
+            const m3u8Text = await m3u8Resp.text();
+            if (!m3u8Text.startsWith("#EXT")) throw new Error("unplayable playlist");
               const parsed: { quality: string; url: string }[] = [];
               const lines = m3u8Text.split("\n");
               for (let i = 0; i < lines.length; i++) {
@@ -137,8 +138,9 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
                 }
               }
               if (parsed.length > 1) qualities = parsed;
-            }
-          } catch { }
+          } catch (e) {
+            throw e;
+          }
 
           player.setMasterUrl(hlsUrl);
           player.setStreamData({ qualities });
@@ -344,31 +346,41 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
         const res = await fetch(
           `${apiBase}/api/v1/streaming/donghua/stream?q=${encodeURIComponent(animeTitle)}&ep=${ep}&audio=${audio}&anilist_id=${resolvedAnilistRef.current}`
         ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+        const servers = res?.data?.servers || [];
+        let s: any = null;
         if (res?.data?.stream_url) {
-          const s = res.data;
-          player.sourceRef.current = "anitsu";
-          if (s.subtitles?.length > 0) {
-            subs.setSubs(s.subtitles.map((sub: any) => ({
-              ...sub,
-              file: `/api/proxy?url=${encodeURIComponent(sub.file)}&referer=${encodeURIComponent(sub.referer || "")}`,
-            })));
-            subs.loadSubtitles();
+          s = res.data;
+        } else {
+          for (const server of servers) {
+            if (!server?.stream_url) continue;
+            try {
+              const resolved = await fetch(
+                `${apiBase}/api/v1/streaming/donghua/resolve-embed?url=${encodeURIComponent(server.stream_url)}`
+              ).then(r => { if (!r.ok) throw new Error("not ok"); return r.json(); });
+              const d = resolved?.data;
+              if (d?.stream_url && d.type !== "embed") {
+                s = { stream_url: d.stream_url, stream_type: d.type === "mp4" ? "mp4" : "hls" };
+                break;
+              }
+            } catch {}
           }
+        }
+
+        if (s?.stream_url) {
+          player.sourceRef.current = "anitsu";
           if (s.stream_type === "mp4") {
-            const mp4Url = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
-            player.setStreamData({ qualities: [{ quality: "Auto", url: mp4Url }] });
+            player.setStreamData({ qualities: [{ quality: "Auto", url: s.stream_url }] });
             player.setLoadingStream(false);
             setStatusText("");
             await new Promise(r => setTimeout(r, 100));
             if (videoRef.current) {
-              videoRef.current.src = mp4Url;
+              videoRef.current.src = s.stream_url;
               videoRef.current.play().catch(() => {});
             }
             return;
           }
-          const hlsUrl = `/api/proxy?url=${encodeURIComponent(s.stream_url)}&referer=${encodeURIComponent(s.referer || "")}`;
-          player.setMasterUrl(hlsUrl);
-          player.setStreamData({ qualities: [{ quality: "Auto", url: hlsUrl }] });
+          player.setMasterUrl(s.stream_url);
+          player.setStreamData({ qualities: [{ quality: "Auto", url: s.stream_url }] });
           player.setLoadingStream(false);
           setStatusText("");
           return;
