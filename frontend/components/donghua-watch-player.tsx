@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server } from "lucide-react";
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
+import { AdsterraPopunder } from "@/components/adsterra-popunder";
 
 interface Props {
   slug: string;
@@ -128,6 +129,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
 
   return (
     <div className="min-h-screen bg-void">
+      <AdsterraPopunder />
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <Link
           href={`/donghua/${slug}`}
