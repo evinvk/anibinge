@@ -5,6 +5,7 @@ import { ArrowLeft, Sparkles } from "lucide-react";
 import { GENRE_PAGES, findGenreBySlug } from "@/lib/genre-seo";
 import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
 
@@ -85,6 +86,13 @@ export default async function GenrePage({ params }: PageProps) {
         <ArrowLeft className="h-4 w-4" />
         Browse Anime
       </Link>
+
+      <div className="mt-4">
+        <Breadcrumbs
+          siteUrl={SITE_URL}
+          items={[{ label: "Browse", href: "/browse" }, { label: `${g.name} Anime` }]}
+        />
+      </div>
 
       <div className="mt-6 max-w-3xl">
         <h1 className="font-display text-3xl font-bold sm:text-4xl">{g.name} Anime</h1>

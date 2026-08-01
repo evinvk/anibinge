@@ -116,6 +116,27 @@ function WatchPageInner({ slug }: { slug: string }) {
         )}
         <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} />
 
+        <div className="mt-4 flex items-center justify-between gap-2">
+          {currentEp > 1 ? (
+            <Link
+              href={`/watch/${slug}?ep=${currentEp - 1}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-mist transition hover:border-primary-400/40 hover:text-paper"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Episode {currentEp - 1}
+            </Link>
+          ) : <span />}
+          {(!totalEps || currentEp < totalEps) ? (
+            <Link
+              href={`/watch/${slug}?ep=${currentEp + 1}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-mist transition hover:border-primary-400/40 hover:text-paper"
+            >
+              Episode {currentEp + 1}
+              <ArrowLeft className="h-4 w-4 rotate-180" />
+            </Link>
+          ) : <span />}
+        </div>
+
         {title && (
           <EpisodeComments slug={slug} episodeNumber={currentEp} />
         )}

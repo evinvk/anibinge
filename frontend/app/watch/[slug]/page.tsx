@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import WatchPageClient from "./page-client";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -27,15 +28,27 @@ const fetchAnimeTitle = cache(async (slug: string): Promise<string> => {
   return slug.replace(/-/g, " ");
 });
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const { ep } = await searchParams;
+  const episodeNumber = parseInt(ep || "1", 10) || 1;
   const title = await fetchAnimeTitle(slug);
+  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+  const pageUrl = episodeNumber === 1 ? `${site}/watch/${slug}` : `${site}/watch/${slug}?ep=${episodeNumber}`;
 
   return {
-    title: `Watch ${title} Episodes Online Free — Sub & Dub`,
-    description: `Watch ${title} online free. Stream all episodes in sub and dub. HD quality.`,
+    title: `Watch ${title} Episode ${episodeNumber} Online Free — Sub & Dub`,
+    description: `Watch ${title} episode ${episodeNumber} online free. Stream all episodes in sub and dub. HD quality.`,
+    alternates: { canonical: pageUrl },
     openGraph: {
-      title: `Watch ${title} Episodes Online Free — Sub & Dub`,
+      title: `Watch ${title} Episode ${episodeNumber} Online Free — Sub & Dub`,
+      description: `Stream ${title} episode ${episodeNumber} online free. HD quality, sub & dub available.`,
+      url: pageUrl,
+      type: "video.tv_show",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `Watch ${title} Episode ${episodeNumber} Online Free`,
       description: `Stream ${title} online free. HD quality, sub & dub available.`,
     },
   };
@@ -72,6 +85,12 @@ export default async function WatchPage({ params, searchParams }: PageProps) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }} />
+      <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
+        <Breadcrumbs
+          siteUrl={process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}
+          items={[{ label: title, href: "/" }, { label: `Episode ${episodeNumber}` }]}
+        />
+      </div>
       <WatchPageClient params={params} />
     </>
   );

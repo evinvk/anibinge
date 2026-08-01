@@ -17,7 +17,7 @@ export function SeasonTabs({ currentYear, currentSeason, seasons }: SeasonTabsPr
     <div className="mt-6 flex flex-wrap items-center gap-3">
       <select
         value={currentYear}
-        onChange={(e) => router.push(`/seasonal?year=${e.target.value}&season=${currentSeason}`)}
+        onChange={(e) => router.push(`/season/${currentSeason}-${e.target.value}`)}
         className="rounded-full bg-surface-hi px-4 py-2 text-sm"
       >
         {years.map((y) => (
@@ -29,7 +29,7 @@ export function SeasonTabs({ currentYear, currentSeason, seasons }: SeasonTabsPr
         {seasons.map((s) => (
           <button
             key={s}
-            onClick={() => router.push(`/seasonal?year=${currentYear}&season=${s}`)}
+            onClick={() => router.push(`/season/${s}-${currentYear}`)}
             className={cn(
               "rounded-full px-4 py-1.5 text-sm capitalize transition-colors",
               s === currentSeason ? "bg-primary-600 text-white" : "text-mist hover:text-paper"

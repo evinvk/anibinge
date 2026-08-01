@@ -47,7 +47,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
   function goToBrowse(term: string) {
     saveRecent(term);
     onClose();
-    router.push(`/browse?q=${encodeURIComponent(term)}`);
+    router.push(`/search?q=${encodeURIComponent(term)}`);
   }
 
   function startVoiceSearch() {

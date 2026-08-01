@@ -1,4 +1,5 @@
 import { SeasonalContent } from "./seasonal-content";
+import { SITE_URL } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +7,8 @@ export const metadata = {
   title: "Seasonal Anime — What's New This Season",
   description:
     "See what's airing this anime season. Browse winter, spring, summer, and fall lineups. never miss a new release.",
+  alternates: { canonical: `${SITE_URL}/seasonal` },
+  robots: { index: true, follow: true },
 };
 
 interface Props {

@@ -11,7 +11,9 @@ import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 import { DownloadButton } from "@/components/download-button";
 import { LazyStreamingPlayer } from "@/components/lazy-streaming-player";
 import { FaqSection } from "@/components/faq-section";
+import { ShareButtons } from "@/components/share-buttons";
 import { findGenreByName } from "@/lib/genre-seo";
+import { slugifyStudio } from "@/lib/seo";
 
 export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?: string }) {
   const [detail, setDetail] = useState<any>(null);
@@ -159,10 +161,31 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
               />
             </div>
 
+            <div className="mt-3">
+              <ShareButtons title={displayTitle} />
+            </div>
+
             <p className="mt-4 max-w-3xl text-sm leading-relaxed text-mist">{detail.synopsis}</p>
 
             <dl className="mt-6 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
-              <Field label="Studios" value={detail.studios?.map((s: any) => s.name).join(", ")} />
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-mist">Studios</dt>
+                <dd className="mt-1 font-medium">
+                  {detail.studios?.length ? (
+                    <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                      {detail.studios.map((s: any) => (
+                        <Link
+                          key={s.name}
+                          href={`/studios/${slugifyStudio(s.name)}`}
+                          className="text-primary-400 hover:underline"
+                        >
+                          {s.name}
+                        </Link>
+                      ))}
+                    </span>
+                  ) : "—"}
+                </dd>
+              </div>
               <Field label="Status" value={detail.status} />
               <Field label="Episodes" value={detail.episodes ?? (detail.status === "currently_airing" ? "Ongoing" : "—")} />
               <Field label="Rating" value={detail.rating} />
