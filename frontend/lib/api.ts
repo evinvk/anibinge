@@ -1,7 +1,9 @@
 import { SITE_URL } from "@/lib/seo";
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SITE_URL || SITE_URL;
+  typeof window === "undefined"
+    ? process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SITE_URL || SITE_URL
+    : "";
 
 function userIdFromToken(token: string): string | null {
   try {
