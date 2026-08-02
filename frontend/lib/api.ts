@@ -139,11 +139,11 @@ async function fetchWithTimeout<T>(url: string, timeoutMs = 10000): Promise<T> {
   }
 }
 
-async function request<T>(path: string, revalidateSeconds = 60, retries = 0): Promise<T> {
+async function request<T>(path: string, revalidateSeconds = 60, retries = 0, timeoutMs = 5000): Promise<T> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
       const res = await fetch(`${API_BASE}${path}`, {
         next: { revalidate: revalidateSeconds },
         signal: controller.signal,
@@ -358,7 +358,7 @@ export const api = {
 
   // GogoAnime streaming
   gogoanimeSearch: (q: string) =>
-    request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300),
+    request<{ data: any[] }>(`/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(q)}`, 300, 1, 15000),
   gogoanimeStream: (slug: string, ep: number, audio: string = "sub") =>
     request<{ data: { master_m3u8: string | null; qualities: { quality: string; url: string }[]; embed_url?: string | null; direct_stream?: { stream_url: string; referer: string } | null } | null }>(`/api/v1/streaming/gogoanime/${slug}/stream?ep=${ep}&audio=${audio}`, 60),
   gogoanimeMaster: (slug: string, ep: number, audio: string = "sub") =>
@@ -373,7 +373,9 @@ export const api = {
   gogoanimeLatest: (day?: string) =>
     request<{ data: GogoAnimeItem[]; day?: string }>(
       `/api/v1/streaming/gogoanime/latest${day ? `?day=${day}` : ""}`,
-      300
+      300,
+      1,
+      15000
     ),
   gogoanimeHealth: () =>
     request<{ healthy: boolean; reason?: string }>(`/api/v1/streaming/gogoanime/health`, 120),
@@ -382,7 +384,9 @@ export const api = {
   recentEpisodes: (page = 1, limit = 20) =>
     request<{ data: RecentEpisode[]; page: number; has_next: boolean }>(
       `/api/v1/streaming/recent?page=${page}&limit=${limit}`,
-      300
+      300,
+      1,
+      20000
     ),
 
   // Anivexa fallback streaming

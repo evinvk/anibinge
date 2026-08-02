@@ -1,26 +1,54 @@
 import { NextResponse } from "next/server";
 import { fetchGogoApi } from "../gogoanime/_gogoanime";
+import { cachedFetch } from "@/lib/ttl-cache";
 
 const GRAPHQL = "https://graphql.anilist.co";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const PAGE_SIZE = 30;
 const LIVE_SEARCH_CONCURRENCY = 8;
-const ENRICH_DEADLINE_MS = 8000;
+const ENRICH_DEADLINE_MS = 4000;
+
+export const maxDuration = 30;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const page = Math.max(1, parseInt(url.searchParams.get("page") || "1"));
   const limit = Math.min(60, Math.max(1, parseInt(url.searchParams.get("limit") || String(PAGE_SIZE))));
 
-  const airing = await fetchAiringSchedule(page);
-  if (airing.length === 0) {
+  try {
+    const payload = await cachedFetch(
+      `recent:${page}:${limit}`,
+      120000,
+      () => buildRecent(page, limit),
+      60000
+    );
+    return NextResponse.json(payload);
+  } catch {
     return NextResponse.json({ data: [], page, has_next: false });
+  }
+}
+
+async function buildRecent(page: number, limit: number) {
+  // Hard ceiling so the route always responds before the platform function limit.
+  const deadline = Date.now() + 12000;
+  let airing: any[] = [];
+  try {
+    airing = await raceTimeout(fetchAiringSchedule(page), deadline);
+  } catch {}
+
+  // Fallback: if AniList is down/unreachable, use the GogoAnime catalog
+  // (sorted by last update time = real uploads with real slugs).
+  if (airing.length === 0) {
+    return raceTimeout(buildFromCatalog(page, limit), deadline);
   }
 
   const start = (page - 1) * limit;
   const target = airing.slice(start, start + limit);
 
-  const slugByTitle = await fetchGogoSlugMap(target.map((s: any) => s.title));
+  let slugByTitle = new Map<string, string>();
+  try {
+    slugByTitle = await raceTimeout(fetchGogoSlugMap(target.map((s: any) => s.title)), deadline);
+  } catch {}
 
   const items = target.map((s: any) => ({
     title: s.title,
@@ -32,11 +60,42 @@ export async function GET(req: Request) {
     anilist_id: s.anilist_id,
   }));
 
-  return NextResponse.json({
+  return {
     data: items,
     page,
     has_next: airing.length > start + limit,
-  });
+  };
+}
+
+async function raceTimeout<T>(promise: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("deadline exceeded");
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("deadline exceeded")), remaining)),
+  ]);
+}
+
+async function buildFromCatalog(page: number, limit: number) {
+  const data = await fetchGogoApi(`/api/search?keyword=&page=${page}`, 30000);
+  const items = Array.isArray(data) ? data : data.items || [];
+  const mapped = items
+    .map((e: any) => ({
+      title: e.title_english || e.title || "",
+      episode: e.latest_episode || 0,
+      poster: e.poster || null,
+      slug: e.slug || "",
+      aired_ago: 0,
+      genres: [],
+      anilist_id: null,
+    }))
+    .filter((e: any) => e.slug && e.episode > 0);
+  if (mapped.length === 0) throw new Error("empty catalog");
+  return {
+    data: mapped,
+    page,
+    has_next: items.length >= 30,
+  };
 }
 
 async function fetchGogoSlugMap(titles: string[]): Promise<Map<string, string>> {
@@ -44,7 +103,7 @@ async function fetchGogoSlugMap(titles: string[]): Promise<Map<string, string>> 
 
   // Cheap bulk pass: popular catalog (covers many ongoing/older shows)
   try {
-    const data = await fetchGogoApi("/api/search?keyword=&page=1", 20000);
+    const data = await fetchGogoApi("/api/search?keyword=&page=1", 10000);
     const items = Array.isArray(data) ? data : data.items || [];
     for (const it of items) {
       if (!it?.slug) continue;
@@ -75,7 +134,7 @@ async function fetchGogoSlugMap(titles: string[]): Promise<Map<string, string>> 
 
 async function liveSearchSlug(title: string): Promise<string | null> {
   try {
-    const data = await fetchGogoApi(`/api/search/live?q=${encodeURIComponent(title)}`, 15000);
+    const data = await fetchGogoApi(`/api/search/live?q=${encodeURIComponent(title)}`, 8000);
     const items = Array.isArray(data) ? data : data.data || [];
     const norm = normalizeTitle(title);
     for (const x of items) {

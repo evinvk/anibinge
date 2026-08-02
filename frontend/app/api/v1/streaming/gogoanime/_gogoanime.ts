@@ -1,9 +1,10 @@
 import { fetchViaCfProxy, hasCfProxy } from "@/lib/cf-proxy";
+import { cachedFetch } from "@/lib/ttl-cache";
 
 const GOGO_BASE = "https://gogoanimehd.to";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const JINA = "https://r.jina.ai";
-const JINA_TIMEOUT = 60000;
+const JINA_TIMEOUT = 20000;
 
 function stripJinaWrapper(body: string): string {
   const preStart = body.indexOf("<pre");
@@ -22,13 +23,17 @@ function stripJinaWrapper(body: string): string {
 }
 
 export async function fetchGogoApi(path: string, timeoutMs = 10000): Promise<any> {
+  return cachedFetch(`gogo:${path}`, 120000, () => fetchGogoApiFresh(path, timeoutMs), 60000);
+}
+
+async function fetchGogoApiFresh(path: string, timeoutMs: number): Promise<any> {
   const url = `${GOGO_BASE}${path}`;
 
   // Try direct first
   try {
     const resp = await fetch(url, {
       headers: { "User-Agent": UA, Referer: `${GOGO_BASE}/` },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(4000),
     });
     if (resp.ok) return resp.json();
   } catch {}
