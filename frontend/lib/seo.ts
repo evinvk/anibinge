@@ -1,4 +1,5 @@
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun";
+const RAW_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun";
+export const SITE_URL = RAW_SITE_URL.replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
 
 export interface SeasonSeo {
   slug: string;

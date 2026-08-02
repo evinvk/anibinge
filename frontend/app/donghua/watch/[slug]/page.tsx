@@ -4,6 +4,8 @@ import { Loader2 } from "lucide-react";
 import { fetchHtml, parseDetailAuto, resolveAnimeXinSeriesUrl } from "@/app/api/v1/donghua/_animexin";
 import DonghuaWatchPlayer from "@/components/donghua-watch-player";
 
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun").replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
+
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ ep?: string }>;
@@ -61,8 +63,8 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
     description: detail.description?.slice(0, 300) || `Watch ${detail.title} episode ${episodeNumber} online free.`,
     thumbnailUrl: detail.poster || undefined,
     uploadDate: new Date().toISOString().split("T")[0],
-    contentUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
-    embedUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    contentUrl: `${SITE_URL}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    embedUrl: `${SITE_URL}/donghua/watch/${slug}?ep=${episodeNumber}`,
     inLanguage: "zh",
     isAccessibleForFree: true,
     partOfEpisode: {
@@ -72,7 +74,7 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
       partOfSeries: {
         "@type": "TVSeries",
         name: detail.title,
-        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun"}/donghua/${slug}`,
+        url: `${SITE_URL}/donghua/${slug}`,
       },
     },
   };
