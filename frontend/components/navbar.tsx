@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/", label: "Anime" },
   { href: "/donghua", label: "Donghua" },
   { href: "/manhwa", label: "Manhwa" },
+  { href: "/hindi-anime", label: "Hindi Dubs" },
 ];
 
 export function Navbar() {
@@ -76,7 +77,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-64" : "max-h-0")}>
+      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-72" : "max-h-0")}>
         <div className="flex flex-col gap-1 px-4 pb-4">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">

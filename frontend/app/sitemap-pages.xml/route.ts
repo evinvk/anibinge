@@ -4,6 +4,7 @@ import { SITE_URL } from "@/lib/seo";
 const PAGES = [
   { url: `${SITE_URL}/`, changeFrequency: "hourly", priority: 1 },
   { url: `${SITE_URL}/browse`, changeFrequency: "daily", priority: 0.9 },
+  { url: `${SITE_URL}/hindi-anime`, changeFrequency: "daily", priority: 0.9 },
   { url: `${SITE_URL}/search`, changeFrequency: "daily", priority: 0.8 },
   { url: `${SITE_URL}/seasonal`, changeFrequency: "daily", priority: 0.9 },
   { url: `${SITE_URL}/schedule`, changeFrequency: "daily", priority: 0.8 },
