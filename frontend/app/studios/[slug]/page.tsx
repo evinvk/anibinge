@@ -6,7 +6,7 @@ import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { SITE_URL, STUDIO_PAGES, findStudioBySlug } from "@/lib/seo";
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+const SITE = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun";
 
 interface PageProps {
   params: Promise<{ slug: string }>;

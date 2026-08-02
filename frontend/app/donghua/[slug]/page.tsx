@@ -10,7 +10,7 @@ import { findGenreByName } from "@/lib/genre-seo";
 
 export const revalidate = 1800;
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun";
 
 function slugToId(slug: string): number {
   let hash = 0;

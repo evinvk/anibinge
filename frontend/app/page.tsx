@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   },
 };
 
-const SITE_URL = "https://anibinge.fun";
+const SITE_URL = "https://www.anibinge.fun";
 
 async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try { return await fn(); } catch { return null; }

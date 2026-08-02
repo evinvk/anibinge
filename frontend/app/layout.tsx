@@ -14,7 +14,7 @@ const sora = Sora({ subsets: ["latin"], variable: "--font-sora", display: "swap"
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains", display: "swap" });
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -116,13 +116,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               "@context": "https://schema.org",
               "@type": "WebSite",
               "name": "Anibinge",
-              "url": "https://anibinge.fun",
+              "url": SITE_URL,
               "description": "Watch anime online free in HD. Stream sub & dub episodes, track your progress, and never miss new releases.",
               "potentialAction": {
                 "@type": "SearchAction",
                 "target": {
                   "@type": "EntryPoint",
-                  "urlTemplate": "https://anibinge.fun/search?q={search_term_string}"
+                  "urlTemplate": `${SITE_URL}/search?q={search_term_string}`
                 },
                 "query-input": "required name=search_term_string"
               }

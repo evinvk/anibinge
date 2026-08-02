@@ -9,7 +9,7 @@ interface PageProps {
   searchParams: Promise<{ source?: string }>;
 }
 
-const SITE_URL = "https://anibinge.fun";
+const SITE_URL = "https://www.anibinge.fun";
 
 const resolveSlugCached = cache((slug: string) => resolveAnimeSlug(slug));
 

@@ -61,8 +61,8 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
     description: detail.description?.slice(0, 300) || `Watch ${detail.title} episode ${episodeNumber} online free.`,
     thumbnailUrl: detail.poster || undefined,
     uploadDate: new Date().toISOString().split("T")[0],
-    contentUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
-    embedUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    contentUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    embedUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun"}/donghua/watch/${slug}?ep=${episodeNumber}`,
     inLanguage: "zh",
     isAccessibleForFree: true,
     partOfEpisode: {
@@ -72,7 +72,7 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
       partOfSeries: {
         "@type": "TVSeries",
         name: detail.title,
-        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun"}/donghua/${slug}`,
+        url: `${process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun"}/donghua/${slug}`,
       },
     },
   };

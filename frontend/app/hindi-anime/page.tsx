@@ -6,7 +6,7 @@ import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import type { AnimeSummary } from "@/lib/api";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun";
 
 export const metadata: Metadata = {
   title: "Watch Anime in Hindi — Hindi Dubbed Anime Online Free",

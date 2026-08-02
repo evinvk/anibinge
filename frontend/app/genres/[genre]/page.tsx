@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://www.anibinge.fun";
 
 interface PageProps {
   params: Promise<{ genre: string }>;
