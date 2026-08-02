@@ -134,6 +134,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           strategy="afterInteractive"
           src="https://pl30495366.effectivecpmnetwork.com/1d/6b/a5/1d6ba5bb70bb38e1412d4a6f5c1da23f.js"
         />
+        <Script
+          id="monetag-zone"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `(function(s){s.dataset.zone='11404928',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
+          }}
+        />
       </body>
     </html>
   );
