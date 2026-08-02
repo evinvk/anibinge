@@ -39,6 +39,7 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
       title: `Watch ${title} Online — Episodes & Info`,
       description: desc,
       alternates: { canonical: `${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/anime/${id}` },
+      keywords: [title, `${title} anime`, "watch anime in hindi", "hindi dub", "english dub", "anime online"],
       openGraph: {
         title: `Watch ${title} Online Free`,
         description: desc,
