@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { api } from "@/lib/api";
 import { HeroBanner } from "@/components/hero-banner";
-import { CarouselRow } from "@/components/carousel-row";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 import { HomeSearch } from "@/components/home-search";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
@@ -24,11 +23,6 @@ const SITE_URL = "https://anibinge.fun";
 
 async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
   try { return await fn(); } catch { return null; }
-}
-
-async function TrendingRow({ data }: { data: any[] }) {
-  if (!data || data.length === 0) return null;
-  return <CarouselRow title="Trending Now" href="/anime" items={data} />;
 }
 
 export default async function HomePage() {
@@ -70,10 +64,6 @@ export default async function HomePage() {
           <AnimeSectionTabs />
         </div>
       </div>
-
-      <Suspense fallback={<CarouselRow title="Trending Now" loading />}>
-        <TrendingRow data={trendingData} />
-      </Suspense>
 
       <LatestReleasesSection />
     </>
