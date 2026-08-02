@@ -6,7 +6,7 @@ const GRAPHQL = "https://graphql.anilist.co";
 const STUDIO_QUERY = `query($search:String,$page:Int){
   Studio(search:$search,isAnimationStudio:true){
     id name siteUrl isAnimationStudio
-    media(sort:POPULARITY_DESC,page:$page,perPage:24,type:ANIME,isAdult:false){
+    media(sort:POPULARITY_DESC,page:$page,perPage:24,type:ANIME,countryOfOrigin:JP,isAdult:false){
       pageInfo{ hasNextPage }
       nodes{
         id idMal title{english romaji native}

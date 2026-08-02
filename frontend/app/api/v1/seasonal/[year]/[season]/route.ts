@@ -41,7 +41,7 @@ const VALID_SEASONS = ["winter", "spring", "summer", "fall"] as const;
 
 const SEASONAL_QUERY = `query($season:MediaSeason,$year:Int,$page:Int,$perPage:Int){
   Page(page:$page,perPage:$perPage){
-    media(season:$season,seasonYear:$year,type:ANIME,isAdult:false,sort:POPULARITY_DESC){
+    media(season:$season,seasonYear:$year,type:ANIME,countryOfOrigin:JP,isAdult:false,sort:POPULARITY_DESC){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status

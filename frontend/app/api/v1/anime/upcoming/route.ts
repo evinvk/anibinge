@@ -6,7 +6,7 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const UPCOMING_QUERY = `
 query($page:Int,$perPage:Int){
   Page(page:$page,perPage:$perPage){
-    media(status:NOT_YET_RELEASED,sort:START_DATE_DESC,type:ANIME,isAdult:false){
+    media(status:NOT_YET_RELEASED,sort:START_DATE_DESC,type:ANIME,countryOfOrigin:JP,isAdult:false){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status

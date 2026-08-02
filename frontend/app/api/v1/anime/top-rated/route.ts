@@ -6,7 +6,7 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const TOP_QUERY = `
 query($page:Int,$perPage:Int){
   Page(page:$page,perPage:$perPage){
-    media(sort:SCORE_DESC,type:ANIME,isAdult:false){
+    media(sort:SCORE_DESC,type:ANIME,countryOfOrigin:JP,isAdult:false){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status

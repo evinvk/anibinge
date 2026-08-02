@@ -2,7 +2,7 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 const SCHEDULE_QUERY = `query($page:Int,$perPage:Int){
   Page(page:$page,perPage:$perPage){
-    media(type:ANIME,status:RELEASING,sort:POPULARITY_DESC){
+    media(type:ANIME,countryOfOrigin:JP,status:RELEASING,sort:POPULARITY_DESC){
       id idMal title{english romaji native}
       coverImage{large} bannerImage
       averageScore popularity episodes status genres

@@ -54,7 +54,7 @@ export async function GET(req: Request) {
   const format = rawType && FORMAT_MAP[rawType] ? [FORMAT_MAP[rawType]] : null;
 
   const varDecls = ["$q:String", "$page:Int", "$perPage:Int", "$sort:[MediaSort]"];
-  const mediaArgs = ["search:$q", "type:ANIME", "isAdult:false", "sort:$sort"];
+  const mediaArgs = ["search:$q", "type:ANIME", "countryOfOrigin:JP", "isAdult:false", "sort:$sort"];
   if (genres?.length) { varDecls.push("$genres:[String]"); mediaArgs.push("genre_in:$genres"); }
   if (status) { varDecls.push("$status:MediaStatus"); mediaArgs.push("status:$status"); }
   if (format?.length) { varDecls.push("$format:[MediaFormat]"); mediaArgs.push("format_in:$format"); }
