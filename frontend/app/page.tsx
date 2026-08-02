@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { api } from "@/lib/api";
-import { HeroBanner } from "@/components/hero-banner";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 import { HomeSearch } from "@/components/home-search";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
@@ -28,7 +27,6 @@ async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
 export default async function HomePage() {
   const trendingRes = await safeFetch(() => api.trending(1));
   const trendingData = trendingRes?.data ?? [];
-  const heroAnime = trendingData[0];
 
   const itemList = trendingData.slice(0, 10).map((item: any, i: number) => ({
     "@type": "ListItem",
@@ -55,8 +53,6 @@ export default async function HomePage() {
           }}
         />
       )}
-
-      {heroAnime && <HeroBanner anime={heroAnime} />}
 
       <div className="pt-6">
         <HomeSearch />
