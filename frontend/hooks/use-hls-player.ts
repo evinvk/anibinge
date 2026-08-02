@@ -13,6 +13,32 @@ interface StreamData {
 
 export type PlayerStatus = "idle" | "buffering" | "playing" | "error";
 
+function find720LevelIndex(levels: any[]): number {
+  if (!levels || levels.length === 0) return -1;
+  if (levels.length === 1) return 0;
+  let best = -1;
+  let bestDiff = Infinity;
+  for (let i = 0; i < levels.length; i++) {
+    const h = levels[i]?.height || 0;
+    const diff = Math.abs(h - 720);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = i;
+    }
+  }
+  if (best === -1) {
+    for (let i = 0; i < levels.length; i++) {
+      const bw = levels[i]?.bitrate || levels[i]?.bandwidth || 0;
+      const diff = Math.abs(bw - 2500000);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+  }
+  return best;
+}
+
 export function useHlsPlayer(
   videoRef: React.RefObject<HTMLVideoElement | null>,
   onLoadSubtitles: () => void,
@@ -307,8 +333,15 @@ export function useHlsPlayer(
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, (_: any, data: any) => {
-        setSelectedQuality(-1);
-        setLevels(hls.levels ? [...hls.levels] : []);
+        const parsedLevels = hls.levels ? [...hls.levels] : [];
+        const defaultIdx = find720LevelIndex(parsedLevels);
+        setLevels(parsedLevels);
+        if (defaultIdx >= 0) {
+          setSelectedQuality(defaultIdx);
+          hls.currentLevel = defaultIdx;
+        } else {
+          setSelectedQuality(-1);
+        }
         networkErrorRetryRef.current = 0;
         video.play().catch(() => {
           setPlayerStatus("error");
@@ -408,6 +441,10 @@ export function useHlsPlayer(
   function setQuality(index: number) {
     const hls = hlsRef.current;
     if (!hls) return;
+    if (index === -1) {
+      const defaultIdx = find720LevelIndex(hls.levels);
+      if (defaultIdx >= 0) index = defaultIdx;
+    }
     setSelectedQuality(index);
     hls.currentLevel = index;
   }
