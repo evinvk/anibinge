@@ -7,6 +7,7 @@ import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
 import { EpisodeComments } from "@/components/episode-comments";
 import { InjectedAdScript } from "@/components/injected-ad-script";
+import { VideoAdOverlay } from "@/components/video-ad-overlay";
 import clsx from "clsx";
 
 interface SearchResult {
@@ -476,6 +477,12 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
           </div>
         ) : player.streamData ? (
           <>
+            <VideoAdOverlay
+              key={`ad-${currentEp}`}
+              id="monetag-ad-overlay"
+              src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+              show={true}
+            />
             <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" />
             {player.playerStatus === "buffering" && !player.error && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

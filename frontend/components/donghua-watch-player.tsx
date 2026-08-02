@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server } 
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
 import { InjectedAdScript } from "@/components/injected-ad-script";
+import { VideoAdOverlay } from "@/components/video-ad-overlay";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -218,19 +219,34 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <p className="text-sm text-mist">{error}</p>
             </div>
           ) : isDirectVideo && resolvedUrl ? (
-            <video
-              ref={videoRef}
-              key={resolvedUrl}
-              className="absolute inset-0 h-full w-full"
-              controls
-              autoPlay
-              playsInline
-              src={!isHls ? resolvedUrl : undefined}
-            >
-              <p>Your browser does not support HTML video.</p>
-            </video>
+            <>
+              <VideoAdOverlay
+                key={`ad-${currentEp}`}
+                id="monetag-ad-overlay"
+                src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+                show={true}
+              />
+              <video
+                ref={videoRef}
+                key={resolvedUrl}
+                className="absolute inset-0 h-full w-full"
+                controls
+                autoPlay
+                playsInline
+                src={!isHls ? resolvedUrl : undefined}
+              >
+                <p>Your browser does not support HTML video.</p>
+              </video>
+            </>
           ) : resolvedUrl ? (
-            <div className="absolute inset-0 flex flex-col">
+            <>
+              <VideoAdOverlay
+                key={`ad-${currentEp}`}
+                id="monetag-ad-overlay"
+                src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+                show={true}
+              />
+              <div className="absolute inset-0 flex flex-col">
               <iframe
                 key={resolvedUrl}
                 src={resolvedUrl}
@@ -249,6 +265,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
                 </a>
               </div>
             </div>
+            </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
               <p className="text-mist">No stream available</p>

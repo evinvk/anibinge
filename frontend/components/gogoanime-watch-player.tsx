@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
 import { InjectedAdScript } from "@/components/injected-ad-script";
+import { VideoAdOverlay } from "@/components/video-ad-overlay";
 import clsx from "clsx";
 
 interface StreamSource {
@@ -495,6 +496,12 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           </div>
         ) : player.streamData ? (
           <>
+            <VideoAdOverlay
+              key={`ad-${currentEp}-${audio}`}
+              id="monetag-ad-overlay"
+              src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+              show={true}
+            />
             <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" crossOrigin="anonymous" />
             {player.playerStatus === "buffering" && !player.error && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-black/20 backdrop-blur-sm">
