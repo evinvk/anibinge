@@ -148,12 +148,26 @@ async function seriesExists(slug: string): Promise<boolean> {
   return /data-season="\d+"/.test(html) || /href="\/episode\/[^"]+"/.test(html);
 }
 
-async function searchSeries(title: string): Promise<string | null> {
+async function searchSeriesCandidates(title: string): Promise<string[]> {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const push = (slug: string) => {
+    if (slug && !seen.has(slug)) {
+      seen.add(slug);
+      candidates.push(slug);
+    }
+  };
+
   // The search API is incomplete (e.g. plain "Naruto" is not surfaced) and can
-  // match the wrong dub variant, so prefer the direct slug first.
+  // match the wrong dub variant, so the direct slug is tried first. ToonStream
+  // ships Hindi audio under "-hindi"/"-dub" variants, so those are queued as
+  // fallbacks in case the plain series only exposes JS-protected embeds.
   const directSlug = slugify(title);
   if (directSlug && (await seriesExists(directSlug))) {
-    return directSlug;
+    push(directSlug);
+    for (const v of [`${directSlug}-hindi-dub`, `${directSlug}-hindi`, `${directSlug}-dub`]) {
+      if (await seriesExists(v)) push(v);
+    }
   }
 
   // Parenthetical suffixes (e.g. "Hunter x Hunter (2011)") break ToonStream's
@@ -162,20 +176,23 @@ async function searchSeries(title: string): Promise<string | null> {
   const data = await getJson(`${TOONSTREAM_BASE}/search/all?q=${encodeURIComponent(normalize(searchTitle))}`, undefined);
   const items = (data?.data || []) as { title?: string; type?: string; url?: string }[];
   const series = items.filter((it) => it.type === "series" && it.url);
-  if (!series.length) return null;
-
-  const titles = series.map((it) => it.title || "");
-  let best = bestTitleMatch(searchTitle, titles);
-  // ToonStream names Hindi variants with "-hindi" in the slug/title — prefer
-  // those over English/Japanese dub variants since we're resolving Hindi audio.
-  const hindiIdx = series.findIndex((it) => /hindi/i.test(`${it.title || ""} ${it.url || ""}`));
-  if (hindiIdx >= 0 && (best < 0 || best === hindiIdx || !/hindi/i.test(titles[best] || ""))) {
-    best = hindiIdx;
+  if (series.length) {
+    const scored = series.map((it) => {
+      const t = it.title || "";
+      const slug = (it.url || "").replace(/\/+$/, "").split("/").pop() || "";
+      return {
+        slug,
+        score: bestTitleMatch(searchTitle, [t]),
+        isHindiDub: /hindi|dub/i.test(`${t} ${it.url || ""}`),
+      };
+    });
+    // Prefer Hindi/dub variants first (we're resolving Hindi audio), then the
+    // closest title match.
+    scored.sort((a, b) => Number(b.isHindiDub) - Number(a.isHindiDub) || b.score - a.score);
+    for (const s of scored) push(s.slug);
   }
-  if (best < 0) best = 0;
-  const url = series[best]?.url || "";
-  const slug = url.replace(/\/+$/, "").split("/").pop();
-  return slug || null;
+
+  return candidates;
 }
 
 async function getSeasons(slug: string): Promise<number[]> {
@@ -310,29 +327,29 @@ export async function getHindiStream(anilistId: number, episode: number): Promis
   const title = await resolveAnilistTitle(anilistId);
   if (!title) return null;
 
-  const slug = await searchSeries(title);
-  if (!slug) return null;
+  const slugs = await searchSeriesCandidates(title);
+  for (const slug of slugs) {
+    const mapped = await mapEpisode(slug, episode);
+    if (!mapped) continue;
 
-  const mapped = await mapEpisode(slug, episode);
-  if (!mapped) return null;
-
-  const embeds = await getEpisodeEmbeds(slug, mapped.season, mapped.ep);
-  for (const embedPath of embeds) {
-    try {
-      const streamUrl = await resolveEmbed(embedPath);
-      if (streamUrl) {
-        return {
-          source: "toonstream",
-          stream_url: streamUrl,
-          stream_type: "hls",
-          referer: `${RUBYSTM_BASE}/`,
-          title,
-          season: mapped.season,
-          ep: mapped.ep,
-          langs: SUPPORTED_LANGS as unknown as string[],
-        };
-      }
-    } catch {}
+    const embeds = await getEpisodeEmbeds(slug, mapped.season, mapped.ep);
+    for (const embedPath of embeds) {
+      try {
+        const streamUrl = await resolveEmbed(embedPath);
+        if (streamUrl) {
+          return {
+            source: "toonstream",
+            stream_url: streamUrl,
+            stream_type: "hls",
+            referer: `${RUBYSTM_BASE}/`,
+            title,
+            season: mapped.season,
+            ep: mapped.ep,
+            langs: SUPPORTED_LANGS as unknown as string[],
+          };
+        }
+      } catch {}
+    }
   }
   return null;
 }
