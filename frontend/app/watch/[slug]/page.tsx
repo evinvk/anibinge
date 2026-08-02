@@ -8,7 +8,8 @@ interface PageProps {
   searchParams: Promise<{ ep?: string }>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://anibinge.fun";
 
 const fetchAnimeTitle = cache(async (slug: string): Promise<string> => {
   try {

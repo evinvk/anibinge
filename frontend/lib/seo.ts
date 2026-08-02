@@ -1,4 +1,4 @@
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://anibinge.fun";
+export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://anibinge.fun";
 
 export interface SeasonSeo {
   slug: string;
