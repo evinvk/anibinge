@@ -223,7 +223,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <VideoAdOverlay
                 key={`ad-${currentEp}`}
                 id="monetag-ad-overlay"
-                src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+                src="https://omg10.com/4/11482825"
                 show={true}
               />
               <video
@@ -243,7 +243,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <VideoAdOverlay
                 key={`ad-${currentEp}`}
                 id="monetag-ad-overlay"
-                src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+                src="https://omg10.com/4/11482825"
                 show={true}
               />
               <div className="absolute inset-0 flex flex-col">
@@ -364,7 +364,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
 
       <InjectedAdScript
         id="anibinge-ad-player"
-        src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+        src="https://omg10.com/4/11482825"
       />
     </div>
   );

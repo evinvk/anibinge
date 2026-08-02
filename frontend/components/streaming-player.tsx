@@ -480,7 +480,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
             <VideoAdOverlay
               key={`ad-${currentEp}`}
               id="monetag-ad-overlay"
-              src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+              src="https://omg10.com/4/11482825"
               show={true}
             />
             <video ref={videoRef} className="h-full w-full" controls playsInline controlsList="nofullscreen" />
@@ -731,7 +731,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
 
       <InjectedAdScript
         id="anibinge-ad-player"
-        src="https://pl30634618.effectivecpmnetwork.com/45/ac/d2/45acd20dc587a39a6ca62586c7b07763.js"
+        src="https://omg10.com/4/11482825"
       />
     </section>
   );
