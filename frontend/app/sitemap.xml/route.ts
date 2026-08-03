@@ -19,13 +19,17 @@ function esc(s: string) {
 
 export const dynamic = "force-static";
 
+const LAST_MOD = "2026-08-03T00:00:00Z";
+
 export async function GET() {
-  const now = new Date().toISOString();
   const body = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${SITEMAPS.map((url) => `  <sitemap>\n    <loc>${esc(url)}</loc>\n    <lastmod>${now}</lastmod>\n  </sitemap>`).join("\n")}
+${SITEMAPS.map((url) => `  <sitemap>\n    <loc>${esc(url)}</loc>\n    <lastmod>${LAST_MOD}</lastmod>\n  </sitemap>`).join("\n")}
 </sitemapindex>`;
   return new NextResponse(body, {
-    headers: { "Content-Type": "application/xml; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+    },
   });
 }

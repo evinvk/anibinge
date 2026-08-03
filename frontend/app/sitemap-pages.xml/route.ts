@@ -32,6 +32,9 @@ export async function GET() {
 ${PAGES.map((p) => `  <url>\n    <loc>${esc(p.url)}</loc>\n    <changefreq>${p.changeFrequency}</changefreq>\n    <priority>${p.priority}</priority>\n  </url>`).join("\n")}
 </urlset>`;
   return new NextResponse(body, {
-    headers: { "Content-Type": "application/xml; charset=utf-8" },
+    headers: {
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+    },
   });
 }
