@@ -1,6 +1,9 @@
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const ANILIST_API = "https://graphql.anilist.co";
 
+const EXIST_BY_ID = `query($id:Int){Media(id:$id,type:ANIME){id}}`;
+const EXIST_BY_MAL = `query($idMal:Int){Media(idMal:$idMal,type:ANIME){id}}`;
+
 const SEARCH_QUERY = `query($q:String){
   Page(page:1,perPage:5){
     media(search:$q,type:ANIME,isAdult:false,sort:SEARCH_MATCH){
@@ -50,4 +53,40 @@ export async function resolveAnimeSlug(slug: string): Promise<SlugResolution | n
     clearTimeout(timeout);
     return null;
   }
+}
+
+async function queryExists(query: string, vars: Record<string, number>): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const resp = await fetch(ANILIST_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "User-Agent": UA },
+      body: JSON.stringify({ query, variables: vars }),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) return false;
+    const data = await resp.json();
+    if (data.errors) return false;
+    return !!data?.data?.Media;
+  } catch {
+    clearTimeout(timeout);
+    return false;
+  }
+}
+
+export async function animeIdExists(id: number, source: "mal" | "anilist" = "mal"): Promise<boolean> {
+  if (!Number.isInteger(id) || id <= 0) return false;
+
+  if (source === "anilist") {
+    const byId = await queryExists(EXIST_BY_ID, { id });
+    if (byId) return true;
+    return queryExists(EXIST_BY_MAL, { idMal: id });
+  }
+
+  const byMal = await queryExists(EXIST_BY_MAL, { idMal: id });
+  if (byMal) return true;
+  return queryExists(EXIST_BY_ID, { id });
 }

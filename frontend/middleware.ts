@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { resolveAnimeSlug } from "./lib/resolve-anime-slug";
+import { resolveAnimeSlug, animeIdExists } from "./lib/resolve-anime-slug";
 
 const MAINTENANCE_VAR = "MAINTENANCE_MODE";
 const BYPASS_PARAM = "maintenance_bypass";
@@ -39,21 +39,30 @@ export default async function middleware(request: NextRequest) {
 
   if (pathname.startsWith("/anime/")) {
     const segment = pathname.slice("/anime/".length);
-    if (segment && !/^\d+$/.test(segment)) {
-      const resolution = await resolveAnimeSlug(segment);
-      if (!resolution) {
-        return NextResponse.next();
-      }
+    if (!segment) return NextResponse.next();
 
-      const url = request.nextUrl.clone();
-      url.pathname = `/anime/${resolution.id}`;
-      if (resolution.source === "anilist") {
-        url.searchParams.set("source", "anilist");
-      } else {
-        url.searchParams.delete("source");
+    if (/^\d+$/.test(segment)) {
+      const source = request.nextUrl.searchParams.get("source") === "anilist" ? "anilist" : "mal";
+      const exists = await animeIdExists(parseInt(segment, 10), source);
+      if (!exists) {
+        return NextResponse.rewrite(new URL("/404", request.url));
       }
-      return NextResponse.redirect(url, 308);
+      return NextResponse.next();
     }
+
+    const resolution = await resolveAnimeSlug(segment);
+    if (!resolution) {
+      return NextResponse.rewrite(new URL("/404", request.url));
+    }
+
+    const url = request.nextUrl.clone();
+    url.pathname = `/anime/${resolution.id}`;
+    if (resolution.source === "anilist") {
+      url.searchParams.set("source", "anilist");
+    } else {
+      url.searchParams.delete("source");
+    }
+    return NextResponse.redirect(url, 308);
   }
 
   return NextResponse.next();
