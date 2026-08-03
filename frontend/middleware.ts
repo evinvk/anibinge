@@ -40,6 +40,7 @@ export default async function middleware(request: NextRequest) {
   if (pathname.startsWith("/anime/")) {
     const segment = pathname.slice("/anime/".length);
     if (!segment) return NextResponse.next();
+    if (segment.includes(".")) return NextResponse.next();
 
     if (/^\d+$/.test(segment)) {
       const source = request.nextUrl.searchParams.get("source") === "anilist" ? "anilist" : "mal";
