@@ -45,14 +45,14 @@ export default async function middleware(request: NextRequest) {
       const source = request.nextUrl.searchParams.get("source") === "anilist" ? "anilist" : "mal";
       const exists = await animeIdExists(parseInt(segment, 10), source);
       if (!exists) {
-        return NextResponse.rewrite(new URL("/404", request.url));
+        return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
       }
       return NextResponse.next();
     }
 
     const resolution = await resolveAnimeSlug(segment);
     if (!resolution) {
-      return NextResponse.rewrite(new URL("/404", request.url));
+      return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
     }
 
     const url = request.nextUrl.clone();
