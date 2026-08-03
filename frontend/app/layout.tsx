@@ -136,13 +136,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(s){s.dataset.zone='11404928',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
           }}
         />
-        <Script
-          id="monetag-zone-266119"
-          strategy="afterInteractive"
-          src="https://quge5.com/88/tag.min.js"
-          data-zone="266119"
-          data-cfasync="false"
-        />
       </body>
     </html>
   );
