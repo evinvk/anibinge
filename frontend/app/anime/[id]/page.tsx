@@ -1,4 +1,4 @@
-import { AnimeDetailClient } from "./client";
+﻿import { AnimeDetailClient } from "./client";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { permanentRedirect, notFound } from "next/navigation";
 import { cache } from "react";
@@ -9,7 +9,7 @@ interface PageProps {
   searchParams: Promise<{ source?: string }>;
 }
 
-const SITE_URL = "https://www.anibinge.fun";
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun").replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
 
 const resolveSlugCached = cache((slug: string) => resolveAnimeSlug(slug));
 
@@ -30,20 +30,20 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
   const { source } = await searchParams;
   const id = await resolveIfSlug(rawId);
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`);
+    const res = await fetch(`${SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`);
     const { data } = await res.json();
     const title = data.title_english || data.title || "Anime";
     const desc = data.synopsis?.slice(0, 160) || `Watch ${title} online free. Stream episodes, check ratings, and track your progress.`;
     const image = data.images?.jpg?.large_image_url || data.banner || "/og.svg";
     return {
-      title: `Watch ${title} Online — Episodes & Info`,
+      title: `Watch ${title} Online â€” Episodes & Info`,
       description: desc,
-      alternates: { canonical: `${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/anime/${id}` },
+      alternates: { canonical: `${SITE_URL}/anime/${id}` },
       keywords: [title, `${title} anime`, "watch anime in hindi", "hindi dub", "english dub", "anime online"],
       openGraph: {
         title: `Watch ${title} Online Free`,
         description: desc,
-        url: `${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/anime/${id}`,
+        url: `${SITE_URL}/anime/${id}`,
         type: "website",
         images: [{ url: image, width: 1200, height: 630, alt: title }],
       },
@@ -67,7 +67,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
   let jsonld: Record<string, any> | null = null;
   let detailTitle: string | null = null;
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`, { cache: "no-store" });
+    const res = await fetch(`${SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`, { cache: "no-store" });
     const { data } = await res.json();
     if (data) {
       const title = data.title_english || data.title || "";
@@ -77,7 +77,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         "@context": "https://schema.org",
         "@type": isMovie ? "Movie" : "TVSeries",
         name: title,
-        url: `${process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}/anime/${id}`,
+        url: `${SITE_URL}/anime/${id}`,
         description: data.synopsis?.slice(0, 300) || undefined,
         image: data.images?.jpg?.large_image_url || data.banner || undefined,
         genre: (data.genres || []).map((g: any) => g.name || g) || undefined,
@@ -107,7 +107,7 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         {detailTitle ? (
           <Breadcrumbs
-            siteUrl={process.env.NEXT_PUBLIC_SITE_URL || SITE_URL}
+            siteUrl={SITE_URL}
             items={[{ label: "Anime", href: "/browse" }, { label: detailTitle }]}
           />
         ) : null}
