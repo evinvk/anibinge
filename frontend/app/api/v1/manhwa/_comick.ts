@@ -158,13 +158,23 @@ async function fetchComick(path: string, revalidate = 60): Promise<any> {
   try {
     return JSON.parse(await fetchHttp1(path));
   } catch {
-    // fall back to undici (may be CF-challenged; callers handle failures)
-    const res = await fetch(`${API}${path}`, {
-      headers: HEADERS,
-      next: { revalidate },
-    });
-    if (!res.ok) throw new Error(`ComicK ${res.status}: ${path}`);
-    return res.json();
+    try {
+      // fall back to undici (may be CF-challenged)
+      const res = await fetch(`${API}${path}`, {
+        headers: HEADERS,
+        next: { revalidate },
+      });
+      if (!res.ok) throw new Error(`ComicK ${res.status}: ${path}`);
+      return res.json();
+    } catch {
+      // Vercel datacenter IPs are CF-403'd by ComicK; route through the
+      // Cloudflare Worker proxy which fetches from Cloudflare's network.
+      if (hasCfProxy()) {
+        const text = await fetchViaCfProxy(`${API}${path}`);
+        return JSON.parse(text);
+      }
+      throw new Error(`ComicK unreachable: ${path}`);
+    }
   }
 }
 
