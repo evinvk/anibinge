@@ -95,6 +95,41 @@ export async function deleteComment(commentId: number): Promise<{ deleted: boole
   return { deleted: true };
 }
 
+export async function listIssues(opts: { slug?: string; resolved?: boolean; limit?: number; offset?: number }): Promise<{ issues: any[]; total: number }> {
+  const where = ["tag IN ('report', 'issue')"];
+  const params: any[] = [];
+  if (opts.slug) {
+    params.push(opts.slug);
+    where.push(`slug = $${params.length}`);
+  }
+  if (opts.resolved !== undefined) {
+    params.push(opts.resolved);
+    where.push(`is_resolved = $${params.length}`);
+  }
+  const whereSql = where.join(" AND ");
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+
+  const rows = await query<CommentRow>(
+    `SELECT id, slug, episode_number, body, tag, is_resolved, username, created_at
+     FROM comments WHERE ${whereSql}
+     ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset],
+  );
+  const totalRows = await query<{ c: number }>(`SELECT count(*)::int AS c FROM comments WHERE ${whereSql}`, params);
+  const issues = rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    episode_number: r.episode_number,
+    body: r.body,
+    tag: r.tag,
+    is_resolved: r.is_resolved,
+    username: r.username,
+    created_at: r.created_at,
+  }));
+  return { issues, total: totalRows[0]?.c ?? 0 };
+}
+
 export async function getReplies(slug: string, episodeNumber: number, parentId: number): Promise<any[]> {
   const rows = await query<CommentRow>(
     `SELECT * FROM comments WHERE slug = $1 AND episode_number = $2 AND parent_id = $3 ORDER BY created_at ASC`,
