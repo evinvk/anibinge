@@ -111,6 +111,7 @@ export interface ManhwaItemData {
   status: string;
   genres: string[];
   description: string;
+  officialUrl: string | null;
 }
 
 export interface ChapterData {
@@ -202,6 +203,14 @@ function safeChapter(lastChapter: any): number | null {
   return isNaN(n) ? null : n;
 }
 
+function ckOfficialUrl(raw: any): string | null {
+  const engtl = raw?.links?.engtl;
+  if (typeof engtl === "string" && engtl.startsWith("http")) return engtl.split(",")[0].trim();
+  const urls = Array.isArray(raw?.links?.urls?.engtl) ? raw.links.urls.engtl : [];
+  const en = urls.find((u: any) => typeof u?.url === "string" && u.url.startsWith("http"));
+  return en?.url || null;
+}
+
 export function parseItem(raw: any): ManhwaItemData {
   return {
     id: raw.hid,
@@ -212,6 +221,7 @@ export function parseItem(raw: any): ManhwaItemData {
     status: STATUS[raw.status] || "unknown",
     genres: genreNames(raw.genres),
     description: raw.desc || "",
+    officialUrl: ckOfficialUrl(raw),
   };
 }
 
@@ -334,6 +344,7 @@ export async function getMangaDetail(hid: string): Promise<ManhwaItemData> {
           .map((g: any) => g.name)
       : [],
     description: raw.desc || "",
+    officialUrl: ckOfficialUrl(raw),
   };
 }
 

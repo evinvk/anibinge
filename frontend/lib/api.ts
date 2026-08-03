@@ -92,6 +92,7 @@ export interface ManhwaItem {
   status: string;
   genres: string[];
   description: string;
+  officialUrl?: string | null;
 }
 
 export interface ChapterInfo {

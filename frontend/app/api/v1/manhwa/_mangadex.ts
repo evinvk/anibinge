@@ -30,6 +30,7 @@ export interface ManhwaItemData {
   status: string;
   genres: string[];
   description: string;
+  officialUrl: string | null;
 }
 
 interface MdManga {
@@ -42,6 +43,7 @@ interface MdManga {
     contentRating: string;
     lastChapter: string | null;
     year: number | null;
+    links?: Record<string, string>;
     tags: { id: string; attributes: { name: Record<string, string>; group: string } }[];
   };
   relationships: { type: string; id: string; attributes?: any }[];
@@ -69,6 +71,13 @@ function pickDescription(attrs: MdManga["attributes"]): string {
 
 function extractGenres(tags: MdManga["attributes"]["tags"]): string[] {
   return tags.filter((t) => t.attributes.group === "genre").map((t) => t.attributes.name.en || "").filter(Boolean);
+}
+
+function extractOfficialUrl(attrs: MdManga["attributes"]): string | null {
+  const link = attrs.links?.engtl || attrs.links?.raw;
+  if (!link) return null;
+  const first = link.split(",")[0].trim();
+  return first.startsWith("http") ? first : null;
 }
 
 function extractCover(manga: MdManga): string | null {
@@ -152,6 +161,7 @@ export function parseMangaItem(manga: MdManga): ManhwaItemData {
     status: attrs.status || "unknown",
     genres: extractGenres(attrs.tags || []),
     description: pickDescription(attrs),
+    officialUrl: extractOfficialUrl(attrs),
   };
 }
 
