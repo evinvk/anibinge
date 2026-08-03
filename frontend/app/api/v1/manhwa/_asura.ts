@@ -45,13 +45,27 @@ function normalizeTitle(s: string): string {
     .trim();
 }
 
+function slugify(s: string): string {
+  return normalizeTitle(s).replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+async function seriesExistsBySlug(slug: string): Promise<boolean> {
+  if (!slug || slug.length < 4) return false;
+  try {
+    const json = await fetchAsura(`/api/series/${encodeURIComponent(slug)}/chapters`, 300);
+    return Array.isArray(json?.data) && json.data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function resolveSeriesByTitle(title: string): Promise<string | null> {
   const q = normalizeTitle(title);
   if (q.length < 4) return null;
+  let inclusive: string | null = null;
   try {
     const json = await fetchAsura(`/api/search?q=${encodeURIComponent(title)}`, 3600);
     const list = Array.isArray(json?.data) ? json.data : [];
-    let inclusive: string | null = null;
     for (const item of list) {
       const candidates = [
         item?.title,
@@ -61,10 +75,16 @@ export async function resolveSeriesByTitle(title: string): Promise<string | null
       if (norm.some((c) => c === q)) return item.slug;
       if (!inclusive && norm.some((c) => c.includes(q))) inclusive = item.slug;
     }
-    return inclusive;
   } catch {
-    return null;
+    // fall through to slug lookup
   }
+
+  // Asura's search index misses some series that exist (e.g. Second Life
+  // Ranker). Fall back to the slugified title (also without a leading article).
+  for (const slug of [slugify(title), slugify(title.replace(/^(the|a|an)\s+/i, ""))]) {
+    if (slug && (await seriesExistsBySlug(slug))) return slug;
+  }
+  return inclusive;
 }
 
 export async function getChapters(seriesSlug: string): Promise<{ data: ChapterData[] }> {
