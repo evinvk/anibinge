@@ -3,7 +3,7 @@ import { api } from "@/lib/api";
 import { SITE_URL } from "@/lib/seo";
 import { fetchGogoApi } from "@/app/api/v1/streaming/gogoanime/_gogoanime";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const routes: MetadataRoute.Sitemap = [];
