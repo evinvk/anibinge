@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getChapterPages as getChapterPagesMD } from "../../_mangadex";
 import { getChapterPages as getChapterPagesCK } from "../../_comick";
 import { getChapterPages as getChapterPagesAS } from "../../_asura";
+import { getChapterPages as getChapterPagesWC } from "../../_weebcentral";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (id.startsWith("asura~")) {
       const parts = id.split("~");
       const data = await getChapterPagesAS(parts[1], parts[2]);
+      return NextResponse.json({ data });
+    }
+    if (id.startsWith("wc~")) {
+      const parts = id.split("~");
+      const data = await getChapterPagesWC(parts[1], parts[2]);
       return NextResponse.json({ data });
     }
     const data = await getChapterPagesMD(id).catch(() => getChapterPagesCK(id));

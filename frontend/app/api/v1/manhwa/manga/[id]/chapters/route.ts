@@ -7,12 +7,19 @@ import {
 } from "../../../_mangadex";
 import { getChapters as getChaptersCK, resolveHidByTitle } from "../../../_comick";
 import { getChapters as getChaptersAS, resolveSeriesByTitle } from "../../../_asura";
+import { getChapters as getChaptersWC, resolveSeriesByTitle as resolveSeriesWC } from "../../../_weebcentral";
 
 export const runtime = "nodejs";
 
 function chapterKey(ch: ChapterData): string {
   const n = parseFloat(ch.chapter);
-  return Number.isFinite(n) ? `n${n}` : `s${ch.chapter}`;
+  if (Number.isFinite(n)) {
+    // "Extra 36" and "Episode 36" share a number but are distinct chapters;
+    // tag the key with the qualifier so extras/bonus aren't collapsed away.
+    const q = ch.title.match(/^(extra|bonus|special|side[- ]?story|omake|spin[- ]?off)\b/i);
+    return q ? `n${n}-${q[1].toLowerCase()}` : `n${n}`;
+  }
+  return `s${ch.chapter}`;
 }
 
 function sortAsc(chapters: ChapterData[]): ChapterData[] {
@@ -49,8 +56,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Asura Scans is the primary source for manhwa: it's free, has full
     // chapter lists, and its CDN is server-fetchable (readable in-app). Try it
     // for every title, keeping MangaDex's readable chapters as supplements;
-    // ComicK (external mirror) is only a last-resort fallback when Asura
-    // yields nothing.
+    // WeebCentral is a secondary readable source (it hosts licensed titles
+    // that are image-purged elsewhere, including the ones Asura lacks);
+    // ComicK (external mirror) is only a last-resort fallback.
     try {
       const detail = await getMangaDetailMD(id);
 
@@ -59,6 +67,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         const asRes = await getChaptersAS(slug).catch(() => ({ data: [] }));
         const asura = asRes.data || [];
         if (asura.length > 0) merged = mergeReadable(asura, md, true);
+      }
+
+      if (merged.length === md.length) {
+        const wc = await resolveSeriesWC(detail.title);
+        if (wc) {
+          const wcRes = await getChaptersWC(wc.id).catch(() => ({ data: [] }));
+          const wcChapters = wcRes.data || [];
+          if (wcChapters.length > 0) merged = mergeReadable(wcChapters, md, true);
+        }
       }
 
       if (merged.length === md.length) {
