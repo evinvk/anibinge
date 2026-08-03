@@ -84,16 +84,21 @@ export async function getChapters(seriesSlug: string): Promise<{ data: ChapterDa
   return { data: chapters };
 }
 
+async function extractPages(json: any): Promise<string[]> {
+  return (Array.isArray(json?.data?.chapter?.pages) ? json.data.chapter.pages : [])
+    .map((p: any) => (typeof p === "string" ? p : p?.url))
+    .filter((u: any): u is string => typeof u === "string" && u.length > 0);
+}
+
 export async function getChapterPages(
   seriesSlug: string,
   chapterSlug: string
 ): Promise<{ baseUrl: string; hash: string; pages: string[] }> {
-  const json = await fetchAsura(
-    `/api/series/${encodeURIComponent(seriesSlug)}/chapters/${encodeURIComponent(chapterSlug)}`,
-    0
-  );
-  const pages = (Array.isArray(json?.data?.chapter?.pages) ? json.data.chapter.pages : [])
-    .map((p: any) => (typeof p === "string" ? p : p?.url))
-    .filter((u: any): u is string => typeof u === "string" && u.length > 0);
+  const path = `/api/series/${encodeURIComponent(seriesSlug)}/chapters/${encodeURIComponent(chapterSlug)}`;
+  let pages = await extractPages(await fetchAsura(path, 0));
+  if (pages.length === 0) {
+    await new Promise((r) => setTimeout(r, 500));
+    pages = await extractPages(await fetchAsura(path, 0));
+  }
   return { baseUrl: "", hash: "", pages };
 }
