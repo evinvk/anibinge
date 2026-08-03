@@ -21,6 +21,7 @@ const nextConfig = {
       { protocol: "https", hostname: "cdn.anipixcdn.co" },
       { protocol: "https", hostname: "img.animeschedule.net" },
       { protocol: "https", hostname: "uploads.mangadex.org" },
+      { protocol: "https", hostname: "cdn.asurascans.com" },
     ],
   },
   experimental: {

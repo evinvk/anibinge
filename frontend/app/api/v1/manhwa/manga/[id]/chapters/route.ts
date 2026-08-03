@@ -6,6 +6,7 @@ import {
   CACHE_HEADERS,
 } from "../../../_mangadex";
 import { getChapters as getChaptersCK, resolveHidByTitle } from "../../../_comick";
+import { getChapters as getChaptersAS, resolveSeriesByTitle } from "../../../_asura";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,19 @@ function sortAsc(chapters: ChapterData[]): ChapterData[] {
   });
 }
 
+// Prefer the provider's readable chapters; keep MangaDex chapters that aren't
+// already covered by the same chapter number (readable ones win over the
+// provider's, external ones fill gaps).
+function mergeReadable(provider: ChapterData[], md: ChapterData[]): ChapterData[] {
+  const byKey = new Map<string, ChapterData>();
+  for (const ch of provider) byKey.set(chapterKey(ch), ch);
+  for (const ch of md) {
+    if (!ch.externalUrl) byKey.set(chapterKey(ch), ch);
+    else if (!byKey.has(chapterKey(ch))) byKey.set(chapterKey(ch), ch);
+  }
+  return [...byKey.values()];
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
@@ -33,24 +47,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     let merged = md;
 
-    // MangaDex English coverage for manhwa is often thin (0-5 chapters, many external-only).
-    // When it is, top the list up with ComicK's complete chapter set. ComicK entries stay as
-    // external links (its image endpoint is CF-gated server-side) but point to free pages.
+    // MangaDex English coverage for manhwa is often thin (0-5 chapters, many
+    // external-only). When it is, top the list up: Asura first (free, readable
+    // in-app — server-fetchable CDN), then ComicK (external free mirror, since
+    // its images are browser-locked).
     if (mdReadable.length < 20) {
       try {
         const detail = await getMangaDetailMD(id);
-        const hid = await resolveHidByTitle(detail.title);
-        if (hid) {
-          const ckRes = await getChaptersCK(hid).catch(() => ({ data: [] }));
-          const ck = ckRes.data || [];
-          if (ck.length > 0) {
-            const byKey = new Map<string, ChapterData>();
-            for (const ch of ck) byKey.set(chapterKey(ch), ch);
-            for (const ch of md) {
-              if (!ch.externalUrl) byKey.set(chapterKey(ch), ch);
-              else if (!byKey.has(chapterKey(ch))) byKey.set(chapterKey(ch), ch);
-            }
-            merged = [...byKey.values()];
+
+        const slug = await resolveSeriesByTitle(detail.title);
+        if (slug) {
+          const asRes = await getChaptersAS(slug).catch(() => ({ data: [] }));
+          const asura = asRes.data || [];
+          if (asura.length > 0) merged = mergeReadable(asura, md);
+        }
+
+        if (merged.length === md.length) {
+          const hid = await resolveHidByTitle(detail.title);
+          if (hid) {
+            const ckRes = await getChaptersCK(hid).catch(() => ({ data: [] }));
+            const ck = ckRes.data || [];
+            if (ck.length > 0) merged = mergeReadable(ck, md);
           }
         }
       } catch {

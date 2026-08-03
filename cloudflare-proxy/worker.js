@@ -13,7 +13,16 @@ const ALLOWED_HOSTS = [
   "gogocdn.net",
   "api.comick.dev",
   "api.comick.io",
+  "comick.dev",
+  "comick.io",
+  "comix.to",
   "meo.comick.pictures",
+  "meo.comick.io",
+  "bato.to",
+  "xyz.bato.to",
+  "ibighit.bato.to",
+  "api.asurascans.com",
+  "cdn.asurascans.com",
 ];
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
