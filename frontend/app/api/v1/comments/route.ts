@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ detail: "Invalid JSON" }, { status: 400 });
   }
 
-  if (!body.slug || !body.episode_number || !body.body) {
+  if (!body.slug || body.episode_number === undefined || body.episode_number === null || !body.body) {
     return NextResponse.json({ detail: "Missing required fields: slug, episode_number, body" }, { status: 400 });
   }
 

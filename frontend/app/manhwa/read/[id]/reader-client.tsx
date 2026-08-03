@@ -6,6 +6,7 @@ import Image from "next/image";
 import { ArrowLeft, ChevronLeft, ChevronRight, Loader2, AlertTriangle, BookOpen, ExternalLink } from "lucide-react";
 import { api, type ChapterInfo, type ManhwaItem } from "@/lib/api";
 import { needsUnoptimized } from "@/lib/utils";
+import { EpisodeComments } from "@/components/episode-comments";
 
 interface Props {
   chapterId: string;
@@ -144,6 +145,10 @@ export default function ManhwaReaderClient({ chapterId, mangaId }: Props) {
             <ChevronRight className="h-5 w-5" />
           </button>
         )}
+      </div>
+
+      <div className="mx-auto max-w-3xl px-4 pb-12">
+        <EpisodeComments slug={chapterId} episodeNumber={0} issuePlaceholder="This chapter is not loading, or shows a blank page..." />
       </div>
     </div>
   );

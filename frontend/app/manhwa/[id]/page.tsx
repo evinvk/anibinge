@@ -6,6 +6,7 @@ import { ArrowLeft, BookOpen, Clock, Loader2, AlertTriangle, Star, ExternalLink 
 import Image from "next/image";
 import { api, type ManhwaItem, type ChapterInfo } from "@/lib/api";
 import { needsUnoptimized, hasValidImageUrl } from "@/lib/utils";
+import { EpisodeComments } from "@/components/episode-comments";
 
 export default function ManhwaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const [id, setId] = useState<string | null>(null);
@@ -176,6 +177,8 @@ export default function ManhwaDetailPage({ params }: { params: Promise<{ id: str
             </div>
           </section>
         )}
+
+        <EpisodeComments slug={id ?? ""} episodeNumber={0} issuePlaceholder="This chapter is not loading, or shows a blank page..." />
       </div>
     </div>
   );

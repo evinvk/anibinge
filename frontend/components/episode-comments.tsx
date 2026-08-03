@@ -13,6 +13,7 @@ import clsx from "clsx";
 interface Props {
   slug: string;
   episodeNumber: number;
+  issuePlaceholder?: string;
 }
 
 const TAGS = [
@@ -129,7 +130,7 @@ function CommentItem({
   );
 }
 
-export function EpisodeComments({ slug, episodeNumber }: Props) {
+export function EpisodeComments({ slug, episodeNumber, issuePlaceholder }: Props) {
   const { token, user } = useAuth();
   const [comments, setComments] = useState<EpisodeCommentData[]>([]);
   const [total, setTotal] = useState(0);
@@ -292,7 +293,7 @@ export function EpisodeComments({ slug, episodeNumber }: Props) {
               maxLength={2000}
               placeholder={
                 replyTo ? "Write your reply..."
-                : tag === "issue" ? "This episode is not loading, buffering, or has no video..."
+                : tag === "issue" ? (issuePlaceholder || "This episode is not loading, buffering, or has no video...")
                 : tag === "report" ? "Describe the issue you found..."
                 : "Leave a comment, share your thoughts..."
               }
