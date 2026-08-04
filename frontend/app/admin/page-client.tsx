@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Database, Users, Trash2, ShieldOff, ShieldCheck, AlertTriangle, CheckCircle2, CircleDot, MessageCircle, ExternalLink, Search, X } from "lucide-react";
+import { Activity, Database, Users, Trash2, ShieldOff, ShieldCheck, AlertTriangle, CheckCircle2, CircleDot, MessageCircle, ExternalLink, Search, X, BarChart3, Globe } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import Link from "next/link";
@@ -33,6 +33,7 @@ interface AdminUser {
 export default function AdminDashboardPage() {
   const { user, token, loading: authLoading } = useAuth();
   const [overview, setOverview] = useState<any>(null);
+  const [traffic, setTraffic] = useState<any>(null);
   const [monitoring, setMonitoring] = useState<any>(null);
   const [busyPrefix, setBusyPrefix] = useState<string | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -57,6 +58,7 @@ export default function AdminDashboardPage() {
     if (!t || !isAdmin) return;
     const headers = { Authorization: `Bearer ${t}` };
     fetch(`${API_BASE}/api/v1/admin/analytics/overview`, { headers }).then((r) => r.json()).then(setOverview);
+    fetch(`${API_BASE}/api/v1/admin/analytics/pageviews?days=14`, { headers }).then((r) => r.json()).then(setTraffic);
     fetch(`${API_BASE}/api/v1/admin/api-monitoring`, { headers }).then((r) => r.json()).then(setMonitoring);
   }, [isAdmin, token]);
 
@@ -188,11 +190,75 @@ export default function AdminDashboardPage() {
       <h1 className="font-display text-3xl font-bold">Admin Dashboard</h1>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <StatCard icon={<BarChart3 className="h-5 w-5" />} label="Visitors Today" value={overview?.visitors_today ?? "—"} />
+        <StatCard icon={<Activity className="h-5 w-5" />} label="Pageviews (24h)" value={overview?.pageviews_today ?? "—"} />
+        <StatCard icon={<Users className="h-5 w-5" />} label="Visitors (7d)" value={overview?.visitors_7d ?? "—"} />
+        <StatCard icon={<Globe className="h-5 w-5" />} label="Visitors (30d)" value={overview?.visitors_30d ?? "—"} />
         <StatCard icon={<Users className="h-5 w-5" />} label="Total Users" value={overview?.total_users ?? "—"} />
-        <StatCard icon={<Activity className="h-5 w-5" />} label="Requests (24h)" value={overview?.requests_last_24h ?? "—"} />
         <StatCard icon={<Database className="h-5 w-5" />} label="Watchlist Entries" value={overview?.total_watchlist_entries ?? "—"} />
         <StatCard icon={<AlertTriangle className="h-5 w-5" />} label="Open Issues" value={issuesTotal} accent={issuesTotal > 0} />
       </div>
+
+      {/* Traffic Section */}
+      <section className="mt-10">
+        <div className="flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-primary-400" />
+          <h2 className="font-display text-lg font-semibold">Traffic (last 14 days)</h2>
+        </div>
+
+        {!traffic ? (
+          <div className="mt-4 text-sm text-mist/40">Loading traffic…</div>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <div className="glass-card p-5 lg:col-span-2">
+              <div className="flex h-44 items-end gap-2">
+                {traffic.trend?.map((d: any) => {
+                  const max = Math.max(1, ...(traffic.trend?.map((t: any) => t.visitors) ?? [1]));
+                  const h = Math.max(4, Math.round((d.visitors / max) * 100));
+                  return (
+                    <div key={d.date} className="group flex flex-1 flex-col items-center gap-1">
+                      <span className="text-[10px] text-mist/50 group-hover:text-mist">{d.visitors || ""}</span>
+                      <div
+                        title={`${d.date}: ${d.visitors} visitors, ${d.pageviews} pageviews`}
+                        className="w-full rounded-t bg-primary-600/40 transition group-hover:bg-primary-500"
+                        style={{ height: `${h}%` }}
+                      />
+                      <span className="text-[9px] text-mist/30">
+                        {new Date(d.date + "T00:00:00").toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="glass-card p-4">
+                <p className="text-xs font-semibold text-mist">Top Pages (30d)</p>
+                <ul className="mt-2 space-y-1.5">
+                  {traffic.top_pages?.length ? traffic.top_pages.map((p: any) => (
+                    <li key={p.path} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-mist">{p.path}</span>
+                      <span className="shrink-0 text-xs text-paper">{p.count}</span>
+                    </li>
+                  )) : <li className="text-xs text-mist/40">No data yet.</li>}
+                </ul>
+              </div>
+              <div className="glass-card p-4">
+                <p className="text-xs font-semibold text-mist">Top Referrers (30d)</p>
+                <ul className="mt-2 space-y-1.5">
+                  {traffic.top_referrers?.length ? traffic.top_referrers.map((r: any) => (
+                    <li key={r.referrer} className="truncate text-sm text-mist">
+                      <span className="line-clamp-1">{new URL(r.referrer).hostname}</span>
+                      <span className="ml-2 text-xs text-paper">{r.count}</span>
+                    </li>
+                  )) : <li className="text-xs text-mist/40">No data yet.</li>}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
 
       {/* Issues Section */}
       <section className="mt-10">

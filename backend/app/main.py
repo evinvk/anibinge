@@ -11,7 +11,7 @@ from slowapi.util import get_remote_address
 
 from app.core.config import get_settings
 from app.core.circuit_breaker import all_breakers
-from app.routers import admin, anime, auth, comments, donghua, news, notifications, schedule, search, seasonal, streaming, watchlist
+from app.routers import admin, analytics, anime, auth, comments, donghua, news, notifications, schedule, search, seasonal, streaming, watchlist
 
 logging.basicConfig(
     level=logging.INFO,
@@ -139,6 +139,7 @@ app.include_router(news.router)
 app.include_router(streaming.router)
 app.include_router(comments.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)
 app.include_router(notifications.router)
 app.include_router(donghua.router)
 

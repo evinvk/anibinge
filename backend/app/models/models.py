@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -83,6 +83,22 @@ class EpisodeComment(Base):
 
     user: Mapped["User"] = relationship()
     replies: Mapped[list["EpisodeComment"]] = relationship()
+
+
+class PageView(Base):
+    __tablename__ = "page_views"
+    __table_args__ = (
+        Index("ix_page_views_created_at", "created_at"),
+        Index("ix_page_views_visitor_created", "visitor_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    visitor_id: Mapped[str] = mapped_column(String(64), index=True)
+    path: Mapped[str] = mapped_column(String(500), index=True)
+    referrer: Mapped[str | None] = mapped_column(String(800), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class CommentLike(Base):

@@ -8,6 +8,7 @@ import { NotificationsProvider } from "@/lib/notifications-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { AnalyticsTracker } from "@/components/analytics-tracker";
 
 
 const sora = Sora({ subsets: ["latin"], variable: "--font-sora", display: "swap" });
@@ -101,6 +102,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <NotificationsProvider>
               <div className="relative min-h-screen bg-aura-gradient bg-fixed">
                 <ServiceWorkerRegister />
+                <AnalyticsTracker />
                 <Navbar />
                 <main>{children}</main>
                 <Footer />
