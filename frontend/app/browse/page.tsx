@@ -32,13 +32,29 @@ export async function generateMetadata({ searchParams }: BrowsePageProps): Promi
     const canonical = new URLSearchParams();
     if (page > 1) canonical.set("page", String(page));
     const url = `${SITE_URL}/browse${canonical.size ? `?${canonical.toString()}` : ""}`;
+    const title = page === 1 ? "Browse Anime by Genre, Season & Studio" : `Browse Anime — Page ${page} of ${CATALOG_TOTAL_PAGES}`;
+    const description =
+      page === 1
+        ? "Browse thousands of anime to watch online free. Filter by genre, season, studio, status, and more. Find your next favorite show to stream."
+        : `Browse the full anime catalog — page ${page} of ${CATALOG_TOTAL_PAGES}. Watch popular and latest anime online free in HD on Anibinge.`;
     return {
-      title: page === 1 ? "Browse Anime by Genre, Season & Studio" : `Browse Anime — Page ${page} of ${CATALOG_TOTAL_PAGES}`,
-      description:
-        page === 1
-          ? "Browse thousands of anime to watch online free. Filter by genre, season, studio, status, and more. Find your next favorite show to stream."
-          : `Browse the full anime catalog — page ${page} of ${CATALOG_TOTAL_PAGES}. Watch popular and latest anime online free in HD on Anibinge.`,
+      title,
+      description,
       alternates: { canonical: url },
+      openGraph: {
+        title,
+        description,
+        url,
+        siteName: "Anibinge",
+        type: "website",
+        images: [{ url: "/og.svg", width: 1200, height: 630, alt: title }],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: ["/og.svg"],
+      },
     };
   }
 
