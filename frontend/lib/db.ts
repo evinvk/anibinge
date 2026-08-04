@@ -56,6 +56,18 @@ CREATE TABLE IF NOT EXISTS watchlist (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, anime_id)
 );
+
+CREATE TABLE IF NOT EXISTS page_views (
+  id BIGSERIAL PRIMARY KEY,
+  visitor_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  referrer TEXT,
+  user_agent TEXT,
+  ip TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at);
+CREATE INDEX IF NOT EXISTS idx_page_views_visitor_created ON page_views(visitor_id, created_at);
 `;
 
 let schemaPromise: Promise<void> | null = null;

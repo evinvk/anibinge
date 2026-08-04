@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+const TRACK_URL = "/api/v1/track/pageview";
 const VISITOR_KEY = "anibinge_visitor_id";
 
 function getVisitorId(): string {
@@ -23,7 +23,7 @@ function getVisitorId(): string {
 }
 
 function send(path: string) {
-  if (!API_BASE || path.startsWith("/admin")) return;
+  if (path.startsWith("/admin") || path.startsWith("/api/")) return;
   try {
     const blob = new Blob(
       [
@@ -35,7 +35,7 @@ function send(path: string) {
       ],
       { type: "application/json" }
     );
-    navigator.sendBeacon(`${API_BASE}/api/v1/track/pageview`, blob);
+    navigator.sendBeacon(TRACK_URL, blob);
   } catch {
     // silent fail
   }
@@ -43,15 +43,9 @@ function send(path: string) {
 
 export function AnalyticsTracker() {
   const pathname = usePathname();
-  const mounted = useRef(false);
 
   useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    const path = pathname + (window.location.search || "");
-    send(path);
+    send(pathname + (window.location.search || ""));
   }, [pathname]);
 
   return null;
