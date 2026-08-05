@@ -37,12 +37,11 @@ const API_CHECKS: [string, string][] = [
   ["/api/v1/streaming/recent", "API Recent Releases"],
   ["/api/v1/manhwa/latest", "API Manhwa Latest"],
   ["/api/v1/search?q=one+piece", "API Search"],
-  ["/api/v1/streaming/gogoanime/health", "Gogo Health"],
 ];
 
 const ANIVEXA_FALLBACKS: [number, string][] = [
   [21, "One Piece"],
-  [52991, "Frieren"],
+  [16498, "AOT S1"],
 ];
 
 async function fetchWithTimeout(url: string, timeoutMs = 20000): Promise<Response> {
@@ -88,6 +87,21 @@ async function checkApi(path: string, name: string, minItems = 0): Promise<Check
   } catch (e: any) {
     const msg = e?.name === "TimeoutError" ? "timeout" : e?.message || "fetch failed";
     return fail(path, name, url, msg, start);
+  }
+}
+
+async function checkGogoHealth(): Promise<CheckResult> {
+  const url = `${SITE}/api/v1/streaming/gogoanime/health`;
+  const start = Date.now();
+  try {
+    const res = await fetchWithTimeout(url, 30000);
+    const body = await res.json().catch(() => null);
+    if (!res.ok) return fail("gogo:health", "Gogo Health", url, `HTTP ${res.status}`, start);
+    if (body?.healthy === true) return ok("gogo:health", "Gogo Health", url, start);
+    return fail("gogo:health", "Gogo Health", url, `healthy: ${body?.healthy ?? "missing"}`, start);
+  } catch (e: any) {
+    const msg = e?.name === "TimeoutError" ? "timeout" : e?.message || "fetch failed";
+    return fail("gogo:health", "Gogo Health", url, msg, start);
   }
 }
 
@@ -170,7 +184,11 @@ async function checkOneStream(slug: string): Promise<CheckResult[]> {
         const text = await pRes.text().catch(() => "");
         const isPlaylist = pRes.ok && (text.includes("#EXTM3U") || (pRes.headers.get("content-type") || "").includes("mpegurl"));
         if (isPlaylist) results.push(ok(`stream:${slug}:playback`, `Playback: ${slug}`, proxUrl, t3));
-        else results.push(fail(`stream:${slug}:playback`, `Playback: ${slug}`, proxUrl, `not a playlist (HTTP ${pRes.status})`, t3));
+        else if (pRes.ok && (text.trim().startsWith("<!DOCTYPE") || text.includes("<html"))) {
+          results.push(fail(`stream:${slug}:playback`, `Playback: ${slug}`, proxUrl, "HTML embed page, no direct playlist", t3));
+        } else {
+          results.push(fail(`stream:${slug}:playback`, `Playback: ${slug}`, proxUrl, `not a playlist (HTTP ${pRes.status})`, t3));
+        }
       } catch (e: any) {
         results.push(fail(`stream:${slug}:playback`, `Playback: ${slug}`, proxUrl, e?.name === "TimeoutError" ? "timeout" : e?.message || "fetch failed", t3));
       }
@@ -214,7 +232,7 @@ export async function runHealthCheck(): Promise<{
     ...API_CHECKS.map(([p, n]) => checkApi(p, n, 1)),
   ];
 
-  const settled = await Promise.allSettled([...batch, checkGogoStreams(runOffset), checkAnivexaFallbacks()]);
+  const settled = await Promise.allSettled([...batch, checkGogoStreams(runOffset), checkAnivexaFallbacks(), checkGogoHealth()]);
   const results: CheckResult[] = [];
   for (const s of settled) {
     if (s.status === "fulfilled") {
