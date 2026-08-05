@@ -4,10 +4,11 @@ let pool: Pool | null = null;
 
 function getPool(): Pool {
   if (pool) return pool;
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
+  const raw = process.env.DATABASE_URL;
+  if (!raw) {
     throw new Error("DATABASE_URL is not set");
   }
+  const connectionString = normalizeConnectionString(raw);
   pool = new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
@@ -16,6 +17,22 @@ function getPool(): Pool {
     idleTimeoutMillis: 30000,
   });
   return pool;
+}
+
+// pg-connection-string v3 (pg v9) will stop treating 'prefer'/'require'/'verify-ca'
+// as aliases for 'verify-full'. Pin the current semantics explicitly to silence
+// the deprecation warning without changing behavior.
+function normalizeConnectionString(cs: string): string {
+  try {
+    const url = new URL(cs);
+    const mode = url.searchParams.get("sslmode");
+    if (mode && mode !== "verify-full" && mode !== "disable" && mode !== "no-verify") {
+      url.searchParams.set("sslmode", "verify-full");
+    }
+    return url.toString();
+  } catch {
+    return cs;
+  }
 }
 
 const SCHEMA_SQL = `
