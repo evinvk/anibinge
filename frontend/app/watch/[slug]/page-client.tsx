@@ -8,6 +8,7 @@ import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
 import { MonetagPopunder } from "@/components/monetag-popunder";
 import { TopTen } from "@/components/top-ten";
+import { SequelsRelatedRow } from "@/components/sequels-related-row";
 import { ReleaseCountdown } from "@/components/release-countdown";
 import { useAuth } from "@/lib/auth-context";
 import { RELEASE_LOCK_SECONDS } from "@/lib/release-lock";
@@ -190,6 +191,7 @@ function WatchPageInner({ slug }: { slug: string }) {
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_300px]">
           <div className="min-w-0">
+            <SequelsRelatedRow anilistId={anilistId} />
             {title && (
               <EpisodeComments slug={slug} episodeNumber={currentEp} />
             )}

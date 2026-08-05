@@ -12,6 +12,7 @@ const DETAIL_BY_ID = `query($id:Int){Media(id:$id,type:ANIME){
   startDate{year month day} season format
   trailer{id site}
   studios{edges{isMain node{name}}}
+  relations{edges{relationType node{id idMal title{english romaji native} coverImage{large} episodes format}}}
 }}`;
 const DETAIL_BY_MAL = `query($idMal:Int){Media(idMal:$idMal,type:ANIME){
   id idMal title{english romaji native}
@@ -22,6 +23,7 @@ const DETAIL_BY_MAL = `query($idMal:Int){Media(idMal:$idMal,type:ANIME){
   startDate{year month day} season format
   trailer{id site}
   studios{edges{isMain node{name}}}
+  relations{edges{relationType node{id idMal title{english romaji native} coverImage{large} episodes format}}}
 }}`;
 
 async function fetchGraphQL(query: string, variables: Record<string, any>) {
@@ -52,6 +54,17 @@ function denormalizeAnilist(m: any) {
     studios: (m.studios?.edges || [])
       .filter((e: any) => e.isMain)
       .map((e: any) => ({ name: e.node.name })),
+    relations: (m.relations?.edges || [])
+      .filter((e: any) => e.node?.id && (e.node.title?.english || e.node.title?.romaji))
+      .map((e: any) => ({
+        id: e.node.id,
+        mal_id: e.node.idMal,
+        type: e.relationType || "RELATED",
+        title: e.node.title?.english || e.node.title?.romaji || e.node.title?.native || "",
+        image: e.node.coverImage?.large || null,
+        episodes: e.node.episodes || null,
+        format: e.node.format || null,
+      })),
     status: m.status || null,
     episodes: m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : null),
     rating: null,

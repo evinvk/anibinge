@@ -77,6 +77,25 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
   }, [detail]);
 
   const displayTitle = detail?.title_english || detail?.title || "This anime";
+
+  const SHOWN_RELATION_TYPES = ["SEQUEL", "PREQUEL", "PARENT", "SIDE_STORY", "SPIN_OFF", "SUMMARY", "ALTERNATIVE", "CHARACTER"];
+  const RELATION_LABELS: Record<string, string> = {
+    SEQUEL: "Sequel",
+    PREQUEL: "Prequel",
+    PARENT: "Main series",
+    SIDE_STORY: "Side story",
+    SPIN_OFF: "Spin-off",
+    SUMMARY: "Summary",
+    ALTERNATIVE: "Alternative version",
+    CHARACTER: "Character show",
+  };
+  const relations = useMemo(() => {
+    const seen = new Set<number>();
+    return (detail?.relations ?? [])
+      .filter((r: any) => SHOWN_RELATION_TYPES.includes(r.type) && !seen.has(r.id) && seen.add(r.id))
+      .slice(0, 12);
+  }, [detail]);
+
   const faqItems = useMemo(() => {
     if (!detail) return [];
     const items = [];
@@ -261,6 +280,33 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
                   <p className="mt-2 line-clamp-2 text-xs font-medium">{c.character.name}</p>
                   <p className="text-[10px] text-mist">{c.voice_actors?.[0]?.person?.name}</p>
                 </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {relations.length > 0 && (
+          <section className="mt-12">
+            <h2 className="font-display text-xl font-bold">Sequels & Related</h2>
+            <div className="mt-4 flex gap-4 overflow-x-auto pb-2">
+              {relations.map((r: any) => (
+                <Link
+                  key={r.id}
+                  href={`/anime/${r.mal_id ?? r.id}?source=${r.mal_id ? "mal" : "anilist"}`}
+                  className="group w-32 shrink-0 sm:w-36"
+                >
+                  <div className="relative aspect-[2/3] overflow-hidden rounded-xl bg-surface-hi">
+                    {r.image && (
+                      <Image src={r.image} alt={r.title} fill sizes="150px" className="object-cover transition-transform duration-300 group-hover:scale-105" unoptimized />
+                    )}
+                    <span className="absolute left-1.5 top-1.5 rounded bg-black/70 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary-300 backdrop-blur-sm">
+                      {RELATION_LABELS[r.type] ?? r.type}
+                    </span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-xs font-medium leading-snug text-paper transition-colors group-hover:text-primary-400">
+                    {r.title}
+                  </p>
+                </Link>
               ))}
             </div>
           </section>
