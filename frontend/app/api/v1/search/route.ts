@@ -37,6 +37,8 @@ export async function GET(req: Request) {
   const rawType = url.searchParams.get("type");
   const rawOrderBy = url.searchParams.get("order_by");
   const rawSort = url.searchParams.get("sort");
+  const rawYear = url.searchParams.get("year");
+  const rawSeason = url.searchParams.get("season");
 
   if (!q) return NextResponse.json({ data: [] });
 
@@ -52,12 +54,16 @@ export async function GET(req: Request) {
   const genres = rawGenres ? rawGenres.split(",").map((g) => g.trim()).filter(Boolean) : null;
   const status = rawStatus && STATUS_MAP[rawStatus] ? STATUS_MAP[rawStatus] : null;
   const format = rawType && FORMAT_MAP[rawType] ? [FORMAT_MAP[rawType]] : null;
+  const year = rawYear && /^\d{4}$/.test(rawYear) ? parseInt(rawYear) : null;
+  const season = rawSeason && ["WINTER", "SPRING", "SUMMER", "FALL"].includes(rawSeason.toUpperCase()) ? rawSeason.toUpperCase() : null;
 
   const varDecls = ["$q:String", "$page:Int", "$perPage:Int", "$sort:[MediaSort]"];
   const mediaArgs = ["search:$q", "type:ANIME", "countryOfOrigin:JP", "isAdult:false", "sort:$sort"];
   if (genres?.length) { varDecls.push("$genres:[String]"); mediaArgs.push("genre_in:$genres"); }
   if (status) { varDecls.push("$status:MediaStatus"); mediaArgs.push("status:$status"); }
   if (format?.length) { varDecls.push("$format:[MediaFormat]"); mediaArgs.push("format_in:$format"); }
+  if (year) { varDecls.push("$seasonYear:Int"); mediaArgs.push("seasonYear:$seasonYear"); }
+  if (season) { varDecls.push("$season:MediaSeason"); mediaArgs.push("season:$season"); }
 
   const SEARCH_QUERY = `query(${varDecls.join(",")}){
   Page(page:$page,perPage:$perPage){
@@ -77,6 +83,8 @@ export async function GET(req: Request) {
     if (genres?.length) variables.genres = genres;
     if (status) variables.status = status;
     if (format?.length) variables.format = format;
+    if (year) variables.seasonYear = year;
+    if (season) variables.season = season;
     const resp = await fetch(ANILIST_API, {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },

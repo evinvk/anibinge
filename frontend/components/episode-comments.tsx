@@ -8,7 +8,45 @@ import {
 } from "lucide-react";
 import { api, EpisodeCommentData } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { getCommentReactions, toggleCommentReaction, REACTION_EMOJIS, ReactionEmoji } from "@/lib/comment-reactions";
 import clsx from "clsx";
+
+function CommentReactions({ commentId }: { commentId: number }) {
+  const [state, setState] = useState(() => getCommentReactions(commentId));
+
+  const react = (emoji: ReactionEmoji) => {
+    setState(toggleCommentReaction(commentId, emoji));
+  };
+
+  const total = REACTION_EMOJIS.reduce((sum, e) => sum + (state.counts[e] ?? 0), 0);
+  if (total === 0 && !state.mine) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1">
+      {REACTION_EMOJIS.map((emoji) => {
+        const count = state.counts[emoji] ?? 0;
+        if (count === 0 && emoji !== state.mine) return null;
+        const active = state.mine === emoji;
+        return (
+          <button
+            key={emoji}
+            onClick={() => react(emoji)}
+            title={active ? "Remove reaction" : "React"}
+            className={clsx(
+              "flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition",
+              active
+                ? "bg-primary-500/15 ring-1 ring-primary-400/40"
+                : "bg-white/5 hover:bg-white/10"
+            )}
+          >
+            <span className="text-sm leading-none">{emoji}</span>
+            <span className={active ? "text-primary-300" : "text-mist/60"}>{count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 interface Props {
   slug: string;
@@ -103,6 +141,8 @@ function CommentItem({
         </div>
         {/* Body */}
         <p className="mt-2 text-sm leading-relaxed text-mist whitespace-pre-wrap break-words">{c.body}</p>
+        {/* Reactions */}
+        <CommentReactions commentId={c.id} />
       </div>
 
       {/* Replies */}

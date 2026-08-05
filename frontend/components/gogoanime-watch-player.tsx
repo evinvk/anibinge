@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download, Maximize2, Minimize2, RectangleHorizontal, Shrink } from "lucide-react";
+import { ChevronDown, Loader2, AlertTriangle, Monitor, Play, RotateCcw, Download, Maximize2, Minimize2, RectangleHorizontal, Shrink, SkipForward } from "lucide-react";
 import { api } from "@/lib/api";
 import { useSubtitles } from "@/hooks/use-subtitles";
 import { useHlsPlayer } from "@/hooks/use-hls-player";
 import { InjectedAdScript } from "@/components/injected-ad-script";
 import { VideoAdOverlay } from "@/components/video-ad-overlay";
+import { getEntry, loadHistory, saveProgress, markWatched } from "@/lib/watch-history";
+import { getSkipTimes, recordSkipIntro, recordSkipOutro, DEFAULT_INTRO_START, DEFAULT_INTRO_LENGTH, DEFAULT_OUTRO_LENGTH } from "@/lib/skip-intro";
 import clsx from "clsx";
 
 interface StreamSource {
@@ -25,9 +27,18 @@ interface Props {
   anilistId?: number | null;
   initialEp?: number;
   onEpisodeChange?: (ep: number) => void;
+  historyScope?: string;
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+type ServerPref = "auto" | "anitsu" | "gogoanime" | "hindi";
+
+function fmtTime(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 
 function proxySubUrl(file: string, referer: string) {
   return `/api/proxy?url=${encodeURIComponent(file)}&referer=${encodeURIComponent(referer || "")}`;
@@ -48,7 +59,7 @@ function friendlyError(raw: string): string {
   return raw;
 }
 
-export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initialEp = 1, onEpisodeChange }: Props) {
+export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initialEp = 1, onEpisodeChange, historyScope = "guest" }: Props) {
   const [currentEp, setCurrentEp] = useState(initialEp);
   const videoRef = useRef<HTMLVideoElement>(null);
   const resolvedAnilistRef = useRef<number | null>(anilistId ?? null);
@@ -60,6 +71,22 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   const [audio, setAudio] = useState<"sub" | "dub" | "hindi">("sub");
   const audioRef = useRef(audio);
   audioRef.current = audio;
+
+  const [resumeInfo, setResumeInfo] = useState<{ time: number; duration: number } | null>(null);
+  const resumeDoneRef = useRef(false);
+  const resumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSaveRef = useRef(0);
+  const lastSkipStateRef = useRef({ intro: false, outro: false });
+  const [showSkipIntro, setShowSkipIntro] = useState(false);
+  const [showSkipOutro, setShowSkipOutro] = useState(false);
+  const [serverPref, setServerPref] = useState<ServerPref>(() => {
+    try {
+      const saved = localStorage.getItem("anibinge_server_pref");
+      return saved === "anitsu" || saved === "gogoanime" || saved === "hindi" ? saved : "auto";
+    } catch { return "auto"; }
+  });
+  const serverPrefRef = useRef(serverPref);
+  serverPrefRef.current = serverPref;
 
   const [statusText, setStatusText] = useState<string>("");
   const [autoPlay, setAutoPlay] = useState(true);
@@ -260,6 +287,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   }, [tryGogoanime, tryAnitsu]);
 
   const onMediaEnded = useCallback(() => {
+    markWatched(historyScope, slug, title, currentEpRef.current);
     if (!autoPlay) return;
     const next = currentEpRef.current + 1;
     if (totalEps && next > totalEps) return;
@@ -278,7 +306,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         return prev - 1;
       });
     }, 1000);
-  }, [autoPlay, totalEps]);
+  }, [autoPlay, totalEps, historyScope, slug, title]);
 
   const onAfterLoad = useCallback(() => {
     if (subs.subtitles.length > 0) {
@@ -309,7 +337,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       preloadedStreamRef.current = null;
       loadStream(slug, currentEp);
     }
-  }, [slug, currentEp, audio]);
+  }, [slug, currentEp, audio, serverPref]);
 
   // Preload next episode in background
   useEffect(() => {
@@ -344,8 +372,101 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   onEpisodeChangeRef.current = onEpisodeChange;
 
   useEffect(() => {
+    const saved = getEntry(historyScope, slug);
+    const canResume = saved && saved.ep === currentEp && saved.time > 20 && (saved.duration === 0 || saved.time < saved.duration - 60);
+    if (canResume) {
+      resumeDoneRef.current = false;
+      setResumeInfo({ time: saved.time, duration: saved.duration });
+    } else {
+      setResumeInfo(null);
+    }
+    return () => { if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current); };
+  }, [slug, currentEp, historyScope]);
+
+  const applyResume = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !resumeInfo) return;
+    resumeDoneRef.current = true;
+    v.currentTime = resumeInfo.time;
+    v.play().catch(() => {});
+    setResumeInfo(null);
+  }, [resumeInfo]);
+
+  const startOver = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    resumeDoneRef.current = true;
+    v.currentTime = 0;
+    saveProgress(historyScope, { slug, title, ep: currentEpRef.current, time: 0, duration: v.duration || 0 });
+    setResumeInfo(null);
+  }, [historyScope, slug, title]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    const onTime = () => {
+      const t = video.currentTime;
+      const d = video.duration || 0;
+
+      if (t > 0 && Date.now() - lastSaveRef.current > 5000) {
+        lastSaveRef.current = Date.now();
+        saveProgress(historyScope, { slug, title, ep: currentEpRef.current, time: t, duration: d });
+      }
+
+      if (resumeInfo && !resumeDoneRef.current && video.readyState >= 1 && (t === 0 || Math.abs(t) < 0.5)) {
+        resumeDoneRef.current = true;
+        video.currentTime = resumeInfo.time;
+        video.play().catch(() => {});
+        if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
+        resumeTimerRef.current = setTimeout(() => setResumeInfo(null), 8000);
+      }
+
+      const times = getSkipTimes(slug);
+      const introStart = times.intro ?? DEFAULT_INTRO_START;
+      const introEnd = introStart + DEFAULT_INTRO_LENGTH;
+      const introVisible = t >= introStart - 3 && t < introEnd;
+      const outroVisible = d > 180 && t >= d - DEFAULT_OUTRO_LENGTH && t < d - 5;
+      if (introVisible !== lastSkipStateRef.current.intro) {
+        lastSkipStateRef.current.intro = introVisible;
+        setShowSkipIntro(introVisible);
+      }
+      if (outroVisible !== lastSkipStateRef.current.outro) {
+        lastSkipStateRef.current.outro = outroVisible;
+        setShowSkipOutro(outroVisible);
+      }
+    };
+
+    video.addEventListener("timeupdate", onTime);
+    return () => video.removeEventListener("timeupdate", onTime);
+  }, [slug, title, historyScope, resumeInfo]);
+
+  const skipIntro = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const times = getSkipTimes(slug);
+    const end = (times.intro ?? DEFAULT_INTRO_START) + DEFAULT_INTRO_LENGTH;
+    recordSkipIntro(slug, v.currentTime);
+    v.currentTime = end;
+    v.play().catch(() => {});
+    setShowSkipIntro(false);
+  }, [slug]);
+
+  const skipOutro = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const d = v.duration || 0;
+    if (d > 0) {
+      recordSkipOutro(slug, v.currentTime);
+      v.currentTime = Math.max(0, d - 15);
+    }
+    setShowSkipOutro(false);
+  }, [slug]);
+
+  useEffect(() => {
     return () => {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (resumeTimerRef.current) clearTimeout(resumeTimerRef.current);
     };
   }, []);
 
@@ -398,16 +519,15 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
     // Try Anivexa first (works from Vercel), then GogoAnime (Vercel-blocked)
     // When Hindi is selected, try the ToonStream Hindi dub first, then fall back.
+    // The user's chosen server preference reorders the chain.
+    const baseOrder: ServerPref[] = audio === "hindi" ? ["hindi", "anitsu", "gogoanime"] : ["anitsu", "gogoanime"];
+    const pref = serverPrefRef.current;
+    const order: ServerPref[] = pref === "auto" ? baseOrder : [pref, ...baseOrder.filter((s) => s !== pref)];
+
     let result: string | null = null;
-    if (audio === "hindi") {
-      result =
-        (await tryHindi(ep).then((ok) => (ok ? "hindi" : null))) ||
-        (await tryAnitsu(ep).then((ok) => (ok ? "anitsu" : null))) ||
-        (await tryGogoanime(ep).then((ok) => (ok ? "gogoanime" : null)));
-    } else {
-      result =
-        (await tryAnitsu(ep).then((ok) => (ok ? "anitsu" : null))) ||
-        (await tryGogoanime(ep).then((ok) => (ok ? "gogoanime" : null)));
+    for (const s of order) {
+      const ok = s === "hindi" ? await tryHindi(ep) : s === "anitsu" ? await tryAnitsu(ep) : await tryGogoanime(ep);
+      if (ok) { result = s; break; }
     }
     if (!result) {
       // Try donghua endpoint as additional fallback (for Chinese anime not on GogoAnime)
@@ -526,6 +646,43 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 ))}
               </div>
             )}
+            {resumeInfo && (
+              <div className="absolute bottom-20 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 rounded-full border border-white/10 bg-black/80 px-3.5 py-2 shadow-xl backdrop-blur-sm animate-[slideUp_0.2s_ease-out]">
+                <span className="flex items-center gap-1.5 text-xs text-white/90">
+                  <Play className="h-3 w-3 text-primary-400" />
+                  Resumed from {fmtTime(resumeInfo.time)}
+                </span>
+                <button
+                  onClick={applyResume}
+                  className="rounded-full bg-primary-600 px-3 py-1 text-[11px] font-medium text-white transition hover:bg-primary-500"
+                >
+                  Resume
+                </button>
+                <button
+                  onClick={startOver}
+                  className="rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-white/80 transition hover:bg-white/20"
+                >
+                  Start over
+                </button>
+              </div>
+            )}
+            {showSkipOutro ? (
+              <button
+                onClick={skipOutro}
+                className="absolute bottom-20 right-3 z-20 flex items-center gap-1.5 rounded-md bg-black/70 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-black/90 animate-[slideUp_0.2s_ease-out]"
+              >
+                Skip Outro
+                <SkipForward className="h-3.5 w-3.5" />
+              </button>
+            ) : showSkipIntro ? (
+              <button
+                onClick={skipIntro}
+                className="absolute bottom-20 right-3 z-20 flex items-center gap-1.5 rounded-md bg-black/70 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-black/90 animate-[slideUp_0.2s_ease-out]"
+              >
+                Skip Intro
+                <SkipForward className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
             {isTheater && (
               <button
                 onClick={() => setIsTheater(false)}
@@ -797,6 +954,30 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         </button>
       </div>
 
+      {!isTheater && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-mist/60">Server</span>
+          {(["auto", "anitsu", "gogoanime", "hindi"] as ServerPref[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                setServerPref(s);
+                try { localStorage.setItem("anibinge_server_pref", s); } catch { /* ignore */ }
+              }}
+              className={clsx(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition",
+                serverPref === s
+                  ? "bg-primary-600 text-white"
+                  : "bg-white/5 text-mist hover:bg-white/10"
+              )}
+            >
+              <Monitor className="h-3 w-3" />
+              {s === "auto" ? "Auto" : s === "anitsu" ? "Anivexa" : s === "gogoanime" ? "GogoAnime" : "Hindi"}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!isTheater && ((totalEps && totalEps > 1) || currentEp > 1) ? (
         <div className="mt-3">
           {totalEps && totalEps > 1 ? (
@@ -809,28 +990,36 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
                 <ChevronDown className={clsx("h-3.5 w-3.5 transition-transform", showEpisodes && "rotate-180")} />
               </button>
 
-              {showEpisodes && (
-                <div className="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg bg-void/80 p-2 scrollbar-thin">
-                  {Array.from({ length: totalEps }, (_, i) => i + 1).map((ep) => (
-                    <button
-                      key={ep}
-                      onClick={() => {
-                        setCurrentEp(ep);
-                        if (onEpisodeChange) onEpisodeChange(ep);
-                        setShowEpisodes(false);
-                      }}
-                      className={clsx(
-                        "flex h-8 min-w-[2rem] items-center justify-center rounded-md px-2 text-xs font-mono font-medium transition",
-                        ep === currentEp
-                          ? "bg-primary-600 text-white"
-                          : "bg-white/5 text-mist hover:bg-white/10"
-                      )}
-                    >
-                      {ep}
-                    </button>
-                  ))}
-                </div>
-              )}
+              {showEpisodes && (() => {
+                const watchedSet = new Set(loadHistory(historyScope).find((e) => e.slug === slug)?.watchedEps ?? []);
+                return (
+                  <div className="mt-2 flex max-h-48 flex-wrap gap-1.5 overflow-y-auto rounded-lg bg-void/80 p-2 scrollbar-thin">
+                    {Array.from({ length: totalEps }, (_, i) => i + 1).map((ep) => (
+                      <button
+                        key={ep}
+                        onClick={() => {
+                          setCurrentEp(ep);
+                          if (onEpisodeChange) onEpisodeChange(ep);
+                          setShowEpisodes(false);
+                        }}
+                        className={clsx(
+                          "relative flex h-8 min-w-[2rem] items-center justify-center rounded-md px-2 text-xs font-mono font-medium transition",
+                          ep === currentEp
+                            ? "bg-primary-600 text-white"
+                            : watchedSet.has(ep)
+                              ? "bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                              : "bg-white/5 text-mist hover:bg-white/10"
+                        )}
+                      >
+                        {ep}
+                        {watchedSet.has(ep) && ep !== currentEp && (
+                          <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <div className="flex items-center gap-2">

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Menu, X, Sparkles, User, Bookmark, LogIn } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { Menu, X, Sparkles, User, Bookmark, LogIn, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+import { RandomAnimeButton } from "@/components/random-anime-button";
 
 const LINKS = [
   { href: "/", label: "Anime" },
@@ -13,9 +14,31 @@ const LINKS = [
   { href: "/hindi-anime", label: "Hindi Dubs" },
 ];
 
+const BROWSE_LINKS = [
+  { href: "/browse", label: "Browse All" },
+  { href: "/movies", label: "Movies" },
+  { href: "/ova", label: "OVA" },
+  { href: "/ona", label: "ONA" },
+  { href: "/specials", label: "Specials" },
+  { href: "/az", label: "A–Z Index" },
+  { href: "/schedule", label: "Schedule" },
+  { href: "/seasonal", label: "Seasonal" },
+  { href: "/news", label: "News" },
+];
+
 export function Navbar() {
   const [open, setOpen] = useState(false);
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const browseRef = useRef<HTMLDivElement>(null);
   const { user, loading } = useAuth();
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (browseRef.current && !browseRef.current.contains(e.target as Node)) setBrowseOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
 
   return (
     <header className="sticky top-0 z-50 glass border-b border-white/10">
@@ -25,15 +48,39 @@ export function Navbar() {
           <span className="text-gradient">Anibinge</span>
         </Link>
 
-        <div className="hidden items-center gap-6 md:flex">
+        <div className="hidden items-center gap-5 md:flex">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} className="text-sm text-mist transition-colors hover:text-paper">
               {l.label}
             </Link>
           ))}
+          <div className="relative" ref={browseRef}>
+            <button
+              onClick={() => setBrowseOpen((v) => !v)}
+              className="flex items-center gap-1 text-sm text-mist transition-colors hover:text-paper"
+            >
+              Browse
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", browseOpen && "rotate-180")} />
+            </button>
+            {browseOpen && (
+              <div className="absolute left-1/2 top-full mt-3 w-44 -translate-x-1/2 rounded-xl border border-white/10 bg-surface-hi/95 p-1.5 shadow-2xl shadow-black/40 backdrop-blur-md animate-[fadeIn_0.15s_ease-out]">
+                {BROWSE_LINKS.map((l) => (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    onClick={() => setBrowseOpen(false)}
+                    className="block rounded-lg px-3 py-2 text-sm text-mist transition hover:bg-white/5 hover:text-paper"
+                  >
+                    {l.label}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <RandomAnimeButton className="hidden md:flex" />
           <Link
             href="/watchlist"
             className="flex items-center gap-2 rounded-full bg-primary-600 px-2.5 py-2 text-sm font-medium text-white shadow-glow-sm transition-transform hover:scale-105 sm:px-4"
@@ -77,13 +124,23 @@ export function Navbar() {
         </div>
       </nav>
 
-      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-72" : "max-h-0")}>
+      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-[32rem]" : "max-h-0")}>
         <div className="flex flex-col gap-1 px-4 pb-4">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
               {l.label}
             </Link>
           ))}
+          <div className="mt-1 border-t border-white/5 pt-1">
+            {BROWSE_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
+                {l.label}
+              </Link>
+            ))}
+          </div>
+          <div className="mt-1 flex items-center gap-2">
+            <RandomAnimeButton />
+          </div>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-primary-400 hover:bg-white/5">
             My Watchlist
           </Link>

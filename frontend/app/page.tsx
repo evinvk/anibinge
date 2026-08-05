@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 import { HomeSearch } from "@/components/home-search";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
 import { LoginPopup } from "@/components/login-popup";
+import { ContinueWatching } from "@/components/continue-watching";
+import { TopTen } from "@/components/top-ten";
+import { GENRE_PAGES } from "@/lib/genre-seo";
 
 export const revalidate = 300;
 
@@ -56,13 +60,52 @@ export default async function HomePage() {
       )}
 
       <div className="pt-6">
-        <HomeSearch />
-        <div className="mt-4">
-          <AnimeSectionTabs />
+        <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
+          <div className="min-w-0 space-y-8">
+            <HomeSearch />
+            <ContinueWatching />
+            <div>
+              <AnimeSectionTabs />
+            </div>
+            <LatestReleasesSection />
+          </div>
+
+          <aside className="min-w-0 space-y-6">
+            <TopTen />
+
+            <div className="glass-card rounded-2xl p-4">
+              <h2 className="font-display text-base font-bold text-paper">Explore</h2>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                <Link href="/anime/movies" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Movies</Link>
+                <Link href="/anime/ova" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">OVA</Link>
+                <Link href="/anime/specials" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Specials</Link>
+                <Link href="/anime/ona" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">ONA</Link>
+                <Link href="/az" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">A–Z Index</Link>
+                <Link href="/schedule" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Schedule</Link>
+                <Link href="/seasonal" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Seasonal</Link>
+                <Link href="/news" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">News</Link>
+                <Link href="/hindi-anime" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Hindi Dubs</Link>
+              </div>
+            </div>
+
+            <div className="glass-card rounded-2xl p-4">
+              <h2 className="font-display text-base font-bold text-paper">Top Genres</h2>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {GENRE_PAGES.slice(0, 12).map((g) => (
+                  <Link
+                    key={g.slug}
+                    href={`/genres/${g.slug}`}
+                    className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper"
+                  >
+                    {g.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
 
-      <LatestReleasesSection />
       <LoginPopup />
     </>
   );

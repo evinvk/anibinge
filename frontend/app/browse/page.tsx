@@ -26,7 +26,7 @@ function buildBrowseHref(page: number, params: URLSearchParams): string {
 export async function generateMetadata({ searchParams }: BrowsePageProps): Promise<Metadata> {
   const params = await searchParams;
   const page = Math.max(1, parseInt(params.page || "1"));
-  const isCatalog = !(params.q || params.genres || params.status || params.type || params.order_by || params.sort);
+  const isCatalog = !(params.q || params.genres || params.status || params.type || params.order_by || params.sort || params.year || params.season);
 
   if (isCatalog) {
     const canonical = new URLSearchParams();
@@ -74,7 +74,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const params = await searchParams;
   const page = Math.max(1, parseInt(params.page || "1"));
   const query = params.q || "anime";
-  const hasSearchOrFilter = !!(params.q || params.genres || params.status || params.type || params.order_by || params.sort);
+  const hasSearchOrFilter = !!(params.q || params.genres || params.status || params.type || params.order_by || params.sort || params.year || params.season);
 
   const filters: Record<string, string> = {
     ...(params.genres ? { genres: params.genres } : {}),
@@ -82,6 +82,8 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
     ...(params.type ? { type: params.type } : {}),
     ...(params.order_by ? { order_by: params.order_by } : {}),
     ...(params.sort ? { sort: params.sort } : {}),
+    ...(params.year ? { year: params.year } : {}),
+    ...(params.season ? { season: params.season } : {}),
   };
 
   let catalogItems: GogoAnimeItem[] = [];

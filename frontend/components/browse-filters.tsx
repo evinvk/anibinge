@@ -7,6 +7,8 @@ import { api } from "@/lib/api";
 
 const STATUS_OPTIONS = ["airing", "complete", "upcoming"];
 const TYPE_OPTIONS = ["tv", "movie", "ova", "ona", "special"];
+const SEASON_OPTIONS = ["winter", "spring", "summer", "fall"];
+const YEARS = Array.from({ length: 28 }, (_, i) => 2026 - i);
 const SORT_OPTIONS = [
   { value: "score", label: "Score" },
   { value: "popularity", label: "Popularity" },
@@ -29,6 +31,8 @@ export function BrowseFilters() {
   const currentStatus = searchParams.get("status") ?? "";
   const currentType = searchParams.get("type") ?? "";
   const currentOrderBy = searchParams.get("order_by") ?? "";
+  const currentYear = searchParams.get("year") ?? "";
+  const currentSeason = searchParams.get("season") ?? "";
   const currentGenres = searchParams.get("genres") ?? "";
 
   useEffect(() => {
@@ -67,7 +71,7 @@ export function BrowseFilters() {
   }
 
   const selectedGenres = currentGenres ? currentGenres.split(",") : [];
-  const hasFilters = currentStatus || currentType || currentOrderBy || selectedGenres.length > 0;
+  const hasFilters = currentStatus || currentType || currentOrderBy || currentYear || currentSeason || selectedGenres.length > 0;
 
   return (
     <div className="mt-6 space-y-4">
@@ -117,6 +121,28 @@ export function BrowseFilters() {
           <option value="">Sort by</option>
           {SORT_OPTIONS.map((s) => (
             <option key={s.value} value={s.value}>{s.label}</option>
+          ))}
+        </select>
+
+        <select
+          value={currentYear}
+          onChange={(e) => setParam("year", e.target.value)}
+          className="rounded-full bg-surface-hi px-3 py-2 text-sm"
+        >
+          <option value="">Year</option>
+          {YEARS.map((y) => (
+            <option key={y} value={String(y)}>{y}</option>
+          ))}
+        </select>
+
+        <select
+          value={currentSeason}
+          onChange={(e) => setParam("season", e.target.value)}
+          className="rounded-full bg-surface-hi px-3 py-2 text-sm"
+        >
+          <option value="">Season</option>
+          {SEASON_OPTIONS.map((s) => (
+            <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
           ))}
         </select>
 

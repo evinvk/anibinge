@@ -7,6 +7,8 @@ import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
 import { MonetagPopunder } from "@/components/monetag-popunder";
+import { TopTen } from "@/components/top-ten";
+import { useAuth } from "@/lib/auth-context";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -15,6 +17,8 @@ interface PageProps {
 function WatchPageInner({ slug }: { slug: string }) {
   const searchParams = useSearchParams();
   const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
+  const { user } = useAuth();
+  const historyScope = user?.id ?? "guest";
   const [title, setTitle] = useState<string | null>(null);
   const [totalEps, setTotalEps] = useState<number | null>(null);
   const [anilistId, setAnilistId] = useState<number | null>(null);
@@ -114,7 +118,7 @@ function WatchPageInner({ slug }: { slug: string }) {
         ) : (
           <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
         )}
-        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} />
+        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} historyScope={historyScope} />
 
         <div className="mt-4 flex items-center justify-between gap-2">
           {currentEp > 1 ? (
@@ -137,9 +141,16 @@ function WatchPageInner({ slug }: { slug: string }) {
           ) : <span />}
         </div>
 
-        {title && (
-          <EpisodeComments slug={slug} episodeNumber={currentEp} />
-        )}
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_300px]">
+          <div className="min-w-0">
+            {title && (
+              <EpisodeComments slug={slug} episodeNumber={currentEp} />
+            )}
+          </div>
+          <aside className="min-w-0">
+            <TopTen />
+          </aside>
+        </div>
       </div>
     </div>
   );

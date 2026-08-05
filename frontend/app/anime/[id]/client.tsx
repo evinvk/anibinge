@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Star, Users, TrendingUp, AlertTriangle } from "lucide-react";
+import { Star, Users, TrendingUp, AlertTriangle, Play } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
@@ -21,6 +21,8 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
   const [recommendations, setRecommendations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [watchSlug, setWatchSlug] = useState<string | null>(null);
+  const watchSlugRef = useRef<string | null>(null);
   const malId = Number(id);
 
   useEffect(() => {
@@ -51,6 +53,28 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
         }
       });
   }, [id, source, malId]);
+
+  useEffect(() => {
+    if (!detail || watchSlugRef.current) return;
+    const q = detail.title_english || detail.title;
+    if (!q) return;
+    api.gogoanimeSearch(q)
+      .then((res) => {
+        const items = res?.data ?? [];
+        if (items.length === 0) return;
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const target = norm(q);
+        const match =
+          items.find((a: any) => a.title && norm(a.title) === target) ||
+          items.find((a: any) => a.title_english && norm(a.title_english) === target) ||
+          (detail.episodes === 1 ? items[0] : null);
+        if (match?.slug) {
+          watchSlugRef.current = match.slug;
+          setWatchSlug(match.slug);
+        }
+      })
+      .catch(() => {});
+  }, [detail]);
 
   const displayTitle = detail?.title_english || detail?.title || "This anime";
   const faqItems = useMemo(() => {
@@ -153,6 +177,15 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
+              {watchSlug && (
+                <Link
+                  href={`/watch/${watchSlug}?ep=1`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white shadow-glow-sm transition-transform hover:scale-105"
+                >
+                  <Play className="h-4 w-4" />
+                  Watch Now
+                </Link>
+              )}
               <AddToWatchlistButton animeId={malId} source={source} />
               <DownloadButton
                 title={detail.title_english || detail.title}
