@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { fetchGogoApi } from "../gogoanime/_gogoanime";
 import { getAnivexaStream } from "@/lib/anivexa";
 
