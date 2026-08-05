@@ -250,6 +250,7 @@ async function handleDownload(req: NextRequest) {
       "-map", "0:a:0?",
       "-c", "copy",
       "-bsf:a", "aac_adtstoasc",
+      "-movflags", "frag_keyframe+empty_moov+default_base_moof",
       "-f", "mp4",
       "pipe:1",
     ],
