@@ -124,8 +124,8 @@ export function Navbar() {
         </div>
       </nav>
 
-      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-[32rem]" : "max-h-0")}>
-        <div className="flex flex-col gap-1 px-4 pb-4">
+      <div className={cn("overflow-hidden transition-all duration-300 md:hidden", open ? "max-h-[100dvh]" : "max-h-0")}>
+        <div className="max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 pb-4">
           {LINKS.map((l) => (
             <Link key={l.href} href={l.href} onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
               {l.label}
