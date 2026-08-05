@@ -4,8 +4,7 @@ const nextConfig = {
   output: "standalone", // required for the multi-stage Docker build
   serverExternalPackages: ["ffmpeg-static"],
   images: {
-    formats: ["image/webp"],
-    minimumCacheTTL: 31536000,
+    unoptimized: true,
     remotePatterns: [
       { protocol: "https", hostname: "cdn.myanimelist.net" },
       { protocol: "https", hostname: "s4.anilist.co" },
