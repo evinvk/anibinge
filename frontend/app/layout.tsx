@@ -96,6 +96,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         {API_BASE && <link rel="dns-prefetch" href={API_BASE} />}
         <link rel="preconnect" href="https://gogocdn.net" />
         <link rel="dns-prefetch" href="https://gogocdn.net" />
+        <link rel="preconnect" href="https://s4.anilist.co" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://s4.anilist.co" />
+        <link rel="preconnect" href="https://cdn.anipixcdn.co" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://cdn.anipixcdn.co" />
         <link rel="preconnect" href="https://graphql.anilist.co" />
         <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
           <AuthProvider>
