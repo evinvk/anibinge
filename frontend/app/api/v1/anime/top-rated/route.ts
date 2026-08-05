@@ -41,18 +41,31 @@ function normalizeMedia(m: any) {
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const page = parseInt(url.searchParams.get("page") || "1");
-  try {
-    const resp = await fetch("https://graphql.anilist.co", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query: TOP_QUERY, variables: { page, perPage: 30 } }),
-    });
-    if (!resp.ok) return NextResponse.json({ error: "Upstream error" }, { status: 502 });
-    const data = await resp.json();
-    const media = data?.data?.Page?.media || [];
-    const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
-    return NextResponse.json({ data: enrichWithViews(results) });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+
+  // AniList rate-limits Vercel's shared egress IPs — retry with backoff and cache upstream hits.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const resp = await fetch("https://graphql.anilist.co", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "User-Agent": UA },
+        body: JSON.stringify({ query: TOP_QUERY, variables: { page, perPage: 30 } }),
+        next: { revalidate: 3600 },
+      });
+      if (!resp.ok) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+      const data = await resp.json();
+      const media = data?.data?.Page?.media || [];
+      const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
+      return NextResponse.json({ data: enrichWithViews(results) });
+    } catch (e: any) {
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+        continue;
+      }
+      return NextResponse.json({ error: e.message }, { status: 503 });
+    }
   }
+  return NextResponse.json({ error: "Upstream error" }, { status: 502 });
 }

@@ -40,13 +40,16 @@ export async function GET(req: Request) {
   const rawYear = url.searchParams.get("year");
   const rawSeason = url.searchParams.get("season");
 
-  if (!q) return NextResponse.json({ data: [] });
+  // "anime" is the browse page's sentinel default query — treat it as "no search term"
+  // so filters (type/year/season) return full catalogs instead of empty results.
+  const useSearch = q.length > 0 && q.toLowerCase() !== "anime";
 
   let sortVal = "SEARCH_MATCH";
   const SORT_MAP: Record<string, string> = { score: "SCORE_DESC", popularity: "POPULARITY_DESC", title: "TITLE_ENGLISH", start_date: "START_DATE_DESC" };
   const ASC_MAP: Record<string, string> = { SCORE_DESC: "SCORE", POPULARITY_DESC: "POPULARITY", TITLE_ENGLISH: "TITLE_ENGLISH", START_DATE_DESC: "START_DATE" };
   if (rawOrderBy && SORT_MAP[rawOrderBy]) sortVal = SORT_MAP[rawOrderBy];
   if (rawSort === "asc" && ASC_MAP[sortVal]) sortVal = ASC_MAP[sortVal];
+  if (!useSearch && sortVal === "SEARCH_MATCH") sortVal = "POPULARITY_DESC";
 
   const STATUS_MAP: Record<string, string> = { airing: "RELEASING", complete: "FINISHED", upcoming: "NOT_YET_RELEASED" };
   const FORMAT_MAP: Record<string, string> = { tv: "TV", movie: "MOVIE", ova: "OVA", ona: "ONA", special: "SPECIAL" };
@@ -57,8 +60,9 @@ export async function GET(req: Request) {
   const year = rawYear && /^\d{4}$/.test(rawYear) ? parseInt(rawYear) : null;
   const season = rawSeason && ["WINTER", "SPRING", "SUMMER", "FALL"].includes(rawSeason.toUpperCase()) ? rawSeason.toUpperCase() : null;
 
-  const varDecls = ["$q:String", "$page:Int", "$perPage:Int", "$sort:[MediaSort]"];
-  const mediaArgs = ["search:$q", "type:ANIME", "countryOfOrigin:JP", "isAdult:false", "sort:$sort"];
+  const varDecls = ["$page:Int", "$perPage:Int", "$sort:[MediaSort]"];
+  const mediaArgs = ["type:ANIME", "countryOfOrigin:JP", "isAdult:false", "sort:$sort"];
+  if (useSearch) { varDecls.push("$q:String"); mediaArgs.unshift("search:$q"); }
   if (genres?.length) { varDecls.push("$genres:[String]"); mediaArgs.push("genre_in:$genres"); }
   if (status) { varDecls.push("$status:MediaStatus"); mediaArgs.push("status:$status"); }
   if (format?.length) { varDecls.push("$format:[MediaFormat]"); mediaArgs.push("format_in:$format"); }
@@ -79,7 +83,8 @@ export async function GET(req: Request) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    const variables: Record<string, any> = { q, page, perPage: 20, sort: [sortVal] };
+    const variables: Record<string, any> = { page, perPage: 20, sort: [sortVal] };
+    if (useSearch) variables.q = q;
     if (genres?.length) variables.genres = genres;
     if (status) variables.status = status;
     if (format?.length) variables.format = format;

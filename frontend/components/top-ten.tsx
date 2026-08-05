@@ -12,12 +12,29 @@ export function TopTen() {
 
   useEffect(() => {
     let cancelled = false;
-    api.topRated(1)
-      .then((res) => {
-        if (!cancelled) setItems((res?.data ?? []).slice(0, 10));
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false); });
+    (async () => {
+      let list: AnimeSummary[] = [];
+      try {
+        const res = await api.topRated(1);
+        list = res?.data ?? [];
+      } catch { /* fall through */ }
+      if (list.length === 0) {
+        try {
+          const res = await api.trending(1);
+          list = res?.data ?? [];
+        } catch { /* fall through */ }
+      }
+      if (list.length === 0) {
+        try {
+          const res = await api.search("", { order_by: "popularity" });
+          list = res?.data ?? [];
+        } catch { /* give up */ }
+      }
+      if (!cancelled) {
+        setItems(list.slice(0, 10));
+        setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
