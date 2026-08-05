@@ -77,6 +77,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
   const hasSearchOrFilter = !!(params.q || params.genres || params.status || params.type || params.order_by || params.sort || params.year || params.season);
 
   const filters: Record<string, string> = {
+    scope: "anime",
     ...(params.genres ? { genres: params.genres } : {}),
     ...(params.status ? { status: params.status } : {}),
     ...(params.type ? { type: params.type } : {}),

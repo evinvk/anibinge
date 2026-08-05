@@ -41,6 +41,7 @@ export async function GET(req: Request) {
   const rawSort = url.searchParams.get("sort");
   const rawYear = url.searchParams.get("year");
   const rawSeason = url.searchParams.get("season");
+  const rawScope = url.searchParams.get("scope");
 
   // "anime" is the browse page's sentinel default query — treat it as "no search term"
   // so filters (type/year/season) return full catalogs instead of empty results.
@@ -139,8 +140,9 @@ export async function GET(req: Request) {
     }
 
     // No Japanese-anime match (or upstream rate-limited) — fall back to manhwa so
-    // titles like "Tomb Raider King" still surface in search.
-    if (useSearch) {
+    // titles like "Tomb Raider King" still surface in search. Browse requests opt out
+    // (scope=anime) so the browse catalog stays anime-only.
+    if (useSearch && rawScope !== "anime") {
       const manhwa = await searchMangaMD(q)
         .then((r) => (r.data.length > 0 ? r : searchMangaCK(q)))
         .catch(() => searchMangaCK(q))
