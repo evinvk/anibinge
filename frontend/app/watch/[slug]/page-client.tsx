@@ -73,33 +73,38 @@ function WatchPageInner({ slug }: { slug: string }) {
       }
 
       // Step 4: Resolve to AniList ID so Anivexa can serve the stream directly
-      try {
-        const res = await fetch(`${apiBase}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(resolvedTitle)}`);
-        const data = await res.json();
-        if (data.anilist_id) setAnilistId(data.anilist_id);
-        if (data.episodes) setTotalEps((prev) => prev ?? data.episodes);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await fetch(`${apiBase}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(resolvedTitle)}`);
+          const data = await res.json();
+          if (data.anilist_id) setAnilistId(data.anilist_id);
+          if (data.episodes) setTotalEps((prev) => prev ?? data.episodes);
 
-        // Step 5: Check the airing schedule — new episodes stay locked for 4 hours after release
-        if (data.anilist_id) {
-          try {
-            const air = await fetch("https://graphql.anilist.co", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                query: `query($id:Int,$ep:Int){ AiringSchedule(mediaId:$id, episode:$ep){ airingAt } }`,
-                variables: { id: data.anilist_id, ep: initialEp },
-              }),
-              signal: AbortSignal.timeout(8000),
-            });
-            const airJson = await air.json();
-            const airingAt = airJson?.data?.AiringSchedule?.airingAt;
-            if (airingAt) {
-              const until = airingAt * 1000 + RELEASE_LOCK_SECONDS * 1000;
-              if (until > Date.now()) setReleaseLockUntil(until);
-            }
-          } catch { /* no schedule data — don't lock */ }
+          // Step 5: Check the airing schedule — new episodes stay locked for 4 hours after release
+          if (data.anilist_id) {
+            try {
+              const air = await fetch("https://graphql.anilist.co", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  query: `query($id:Int,$ep:Int){ AiringSchedule(mediaId:$id, episode:$ep){ airingAt } }`,
+                  variables: { id: data.anilist_id, ep: initialEp },
+                }),
+                signal: AbortSignal.timeout(8000),
+              });
+              const airJson = await air.json();
+              const airingAt = airJson?.data?.AiringSchedule?.airingAt;
+              if (airingAt) {
+                const until = airingAt * 1000 + RELEASE_LOCK_SECONDS * 1000;
+                if (until > Date.now()) setReleaseLockUntil(until);
+              }
+            } catch { /* no schedule data — don't lock */ }
+          }
+          break;
+        } catch {
+          if (attempt === 0) await new Promise((r) => setTimeout(r, 800));
         }
-      } catch {}
+      }
 
       setLoading(false);
     }
@@ -143,12 +148,17 @@ function WatchPageInner({ slug }: { slug: string }) {
           <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
         )}
         {releaseLockUntil != null ? (
-          <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-white/10 bg-surface-hi px-6 py-20 text-center">
-            <Lock className="h-10 w-10 text-amber-300" />
-            <h2 className="font-display text-xl font-bold text-paper">Episode {currentEp} isn&apos;t available yet</h2>
-            <p className="max-w-md text-sm text-mist">
-              This episode just aired. It unlocks for everyone once the countdown ends.
-            </p>
+          <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-white/10 bg-surface-hi px-6 py-16 text-center">
+            <span className="rounded-full bg-amber-400/10 border border-amber-400/20 px-3 py-1 text-xs font-medium text-amber-300">
+              Episode {currentEp}
+            </span>
+            <h2 className="font-display text-2xl font-bold text-paper">{title}</h2>
+            <div className="flex items-center gap-2 text-mist">
+              <Lock className="h-4 w-4 text-amber-300" />
+              <p className="max-w-md text-sm text-mist">
+                This episode just aired. It unlocks for everyone once the countdown ends.
+              </p>
+            </div>
             <span className="rounded-full bg-black/60 px-4 py-2 font-mono text-sm font-bold text-amber-300">
               Unlocks in <ReleaseCountdown until={releaseLockUntil} onExpire={() => setReleaseLockUntil(null)} />
             </span>

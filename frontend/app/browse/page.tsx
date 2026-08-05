@@ -115,7 +115,7 @@ export default async function BrowsePage({ searchParams }: BrowsePageProps) {
 
       <BrowseFilters />
 
-      {!hasSearchOrFilter && catalogLoaded ? (
+      {!hasSearchOrFilter && catalogLoaded && catalogItems.length >= 24 ? (
         <>
           <CatalogGrid className="mt-8">
             {catalogItems.map((item, i) => (
