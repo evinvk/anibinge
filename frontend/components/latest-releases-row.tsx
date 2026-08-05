@@ -1,7 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronRight, ChevronLeft, Play, Clock, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { ChevronRight, ChevronLeft, Play, Clock, Loader2, Lock } from "lucide-react";
 import { needsUnoptimized } from "@/lib/utils";
+import { releaseLockUntil } from "@/lib/release-lock";
+import { ReleaseCountdown } from "@/components/release-countdown";
 import type { RecentEpisode } from "@/lib/api";
 
 interface LatestReleasesRowProps {
@@ -36,74 +39,106 @@ function SkeletonCard() {
 }
 
 function EpisodeCard({ item }: { item: RecentEpisode }) {
+  const [lockUntil, setLockUntil] = useState<number | null>(() => releaseLockUntil(item.aired_ago));
+  const locked = lockUntil != null;
   const watchHref = item.slug ? `/watch/${item.slug}?ep=${item.episode}` : `/anime/${item.anilist_id}`;
   const animeHref = `/anime/${item.anilist_id}`;
   const genre = item.genres?.[0] || null;
 
-  return (
-    <div className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]">
-      <Link href={watchHref} className="relative block w-full overflow-hidden aspect-[2/3]">
-        {item.poster && item.poster.startsWith("http") ? (
-          <Image
-            src={item.poster}
-            alt={item.title}
-            fill
-            loading="lazy"
-            sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
-            className="object-cover transition-transform duration-500 group-hover:scale-110"
-            unoptimized={needsUnoptimized(item.poster)}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-surface-hi">
-            <span className="text-3xl font-bold text-mist/40">{item.title?.charAt(0)}</span>
-          </div>
-        )}
-
-        {/* Gradient overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-void via-void/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300" />
-
-        {/* Sheen sweep */}
-        <div className="pointer-events-none absolute inset-0 bg-card-sheen opacity-0 group-hover:opacity-100 group-hover:animate-sheen" />
-
-        {/* Episode badge - top left */}
-        <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-primary-600/90 px-3 py-1 backdrop-blur-md shadow-lg">
-          <Play className="h-3 w-3 fill-white text-white" />
-          <span className="font-mono text-[11px] font-bold text-white">Ep {item.episode}</span>
+  const body = (
+    <>
+      {item.poster && item.poster.startsWith("http") ? (
+        <Image
+          src={item.poster}
+          alt={item.title}
+          fill
+          loading="lazy"
+          sizes="(max-width: 640px) 45vw, (max-width: 1024px) 22vw, 16vw"
+          className="object-cover transition-transform duration-500 group-hover:scale-110"
+          unoptimized={needsUnoptimized(item.poster)}
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center bg-surface-hi">
+          <span className="text-3xl font-bold text-mist/40">{item.title?.charAt(0)}</span>
         </div>
+      )}
 
-        {/* Sub badge - top right */}
-        <div className="absolute right-3 top-3 z-10 rounded-full bg-void/70 px-2.5 py-1 backdrop-blur-md">
-          <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-white">Sub</span>
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-void via-void/40 to-transparent opacity-80 group-hover:opacity-90 transition-opacity duration-300" />
+
+      {/* Sheen sweep */}
+      <div className="pointer-events-none absolute inset-0 bg-card-sheen opacity-0 group-hover:opacity-100 group-hover:animate-sheen" />
+
+      {/* Episode badge - top left */}
+      <div className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full bg-primary-600/90 px-3 py-1 backdrop-blur-md shadow-lg">
+        <Play className="h-3 w-3 fill-white text-white" />
+        <span className="font-mono text-[11px] font-bold text-white">Ep {item.episode}</span>
+      </div>
+
+      {/* Sub badge - top right */}
+      <div className="absolute right-3 top-3 z-10 rounded-full bg-void/70 px-2.5 py-1 backdrop-blur-md">
+        <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-white">Sub</span>
+      </div>
+
+      {/* Lock overlay for new episodes */}
+      {locked && lockUntil != null && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-void/75 backdrop-blur-[2px]">
+          <Lock className="h-6 w-6 text-amber-300" />
+          <span className="rounded-full bg-black/70 px-3 py-1 font-mono text-xs font-bold text-amber-300">
+            Unlocks in <ReleaseCountdown until={lockUntil} onExpire={() => setLockUntil(null)} />
+          </span>
+          <span className="px-3 text-center text-[10px] text-mist">New episodes unlock for everyone after 4 hours</span>
         </div>
+      )}
 
-        {/* Play button on hover */}
+      {/* Play button on hover */}
+      {!locked && (
         <div className="absolute inset-0 z-10 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary-600/80 backdrop-blur-md shadow-glow scale-75 group-hover:scale-100 transition-transform duration-300">
             <Play className="h-6 w-6 fill-white text-white ml-0.5" />
           </div>
         </div>
+      )}
 
-        {/* Title + time at bottom */}
-        <div className="absolute inset-x-0 bottom-0 z-10 p-3">
-          <Link
-            href={animeHref}
-            onClick={(e) => e.stopPropagation()}
-            className="block"
-          >
-            <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 hover:text-primary-300 transition-colors">
-              {item.title}
-            </h3>
-          </Link>
-          <div className="mt-1.5 flex items-center gap-2">
-            {genre && (
-              <span className="text-[10px] font-medium uppercase tracking-wider text-mist">{genre}</span>
-            )}
+      {/* Title + time at bottom */}
+      <div className="absolute inset-x-0 bottom-0 z-10 p-3">
+        <Link
+          href={animeHref}
+          onClick={(e) => e.stopPropagation()}
+          className="block"
+        >
+          <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 hover:text-primary-300 transition-colors">
+            {item.title}
+          </h3>
+        </Link>
+        <div className="mt-1.5 flex items-center gap-2">
+          {genre && (
+            <span className="text-[10px] font-medium uppercase tracking-wider text-mist">{genre}</span>
+          )}
+          {locked && lockUntil != null ? (
+            <span className="flex items-center gap-1 text-[10px] text-amber-300">
+              <Lock className="h-2.5 w-2.5" />
+              Unlocks in <ReleaseCountdown until={lockUntil} onExpire={() => setLockUntil(null)} />
+            </span>
+          ) : (
             <span className="flex items-center gap-0.5 text-[10px] text-mist">
               <Clock className="h-2.5 w-2.5" /> {timeAgo(item.aired_ago)}
             </span>
-          </div>
+          )}
         </div>
-      </Link>
+      </div>
+    </>
+  );
+
+  return (
+    <div className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]">
+      {locked ? (
+        <div className="relative block w-full overflow-hidden aspect-[2/3] cursor-not-allowed">{body}</div>
+      ) : (
+        <Link href={watchHref} className="relative block w-full overflow-hidden aspect-[2/3]">
+          {body}
+        </Link>
+      )}
     </div>
   );
 }

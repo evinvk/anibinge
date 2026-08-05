@@ -3,12 +3,14 @@
 import { use, useState, useEffect, useRef, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Loader2, AlertTriangle, Lock } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
 import { MonetagPopunder } from "@/components/monetag-popunder";
 import { TopTen } from "@/components/top-ten";
+import { ReleaseCountdown } from "@/components/release-countdown";
 import { useAuth } from "@/lib/auth-context";
+import { RELEASE_LOCK_SECONDS } from "@/lib/release-lock";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -25,6 +27,7 @@ function WatchPageInner({ slug }: { slug: string }) {
   const [currentEp, setCurrentEp] = useState(initialEp);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [releaseLockUntil, setReleaseLockUntil] = useState<number | null>(null);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
@@ -75,6 +78,27 @@ function WatchPageInner({ slug }: { slug: string }) {
         const data = await res.json();
         if (data.anilist_id) setAnilistId(data.anilist_id);
         if (data.episodes) setTotalEps((prev) => prev ?? data.episodes);
+
+        // Step 5: Check the airing schedule — new episodes stay locked for 4 hours after release
+        if (data.anilist_id) {
+          try {
+            const air = await fetch("https://graphql.anilist.co", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                query: `query($id:Int,$ep:Int){ AiringSchedule(mediaId:$id, episode:$ep){ airingAt } }`,
+                variables: { id: data.anilist_id, ep: initialEp },
+              }),
+              signal: AbortSignal.timeout(8000),
+            });
+            const airJson = await air.json();
+            const airingAt = airJson?.data?.AiringSchedule?.airingAt;
+            if (airingAt) {
+              const until = airingAt * 1000 + RELEASE_LOCK_SECONDS * 1000;
+              if (until > Date.now()) setReleaseLockUntil(until);
+            }
+          } catch { /* no schedule data — don't lock */ }
+        }
       } catch {}
 
       setLoading(false);
@@ -118,7 +142,20 @@ function WatchPageInner({ slug }: { slug: string }) {
         ) : (
           <h1 className="mb-4 font-display text-2xl font-bold text-paper">{title}</h1>
         )}
-        <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} historyScope={historyScope} />
+        {releaseLockUntil != null ? (
+          <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-white/10 bg-surface-hi px-6 py-20 text-center">
+            <Lock className="h-10 w-10 text-amber-300" />
+            <h2 className="font-display text-xl font-bold text-paper">Episode {currentEp} isn&apos;t available yet</h2>
+            <p className="max-w-md text-sm text-mist">
+              This episode just aired. It unlocks for everyone once the countdown ends.
+            </p>
+            <span className="rounded-full bg-black/60 px-4 py-2 font-mono text-sm font-bold text-amber-300">
+              Unlocks in <ReleaseCountdown until={releaseLockUntil} onExpire={() => setReleaseLockUntil(null)} />
+            </span>
+          </div>
+        ) : (
+          <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} historyScope={historyScope} />
+        )}
 
         <div className="mt-4 flex items-center justify-between gap-2">
           {currentEp > 1 ? (
