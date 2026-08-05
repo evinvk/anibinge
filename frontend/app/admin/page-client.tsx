@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Database, Users, Trash2, ShieldOff, ShieldCheck, AlertTriangle, CheckCircle2, CircleDot, MessageCircle, ExternalLink, Search, X, BarChart3, Globe } from "lucide-react";
+import { Activity, Database, Users, Trash2, ShieldOff, ShieldCheck, AlertTriangle, CheckCircle2, CircleDot, MessageCircle, ExternalLink, Search, X, BarChart3, Globe, HeartPulse, RefreshCw } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
 import Link from "next/link";
@@ -34,6 +34,9 @@ export default function AdminDashboardPage() {
   const { user, token, loading: authLoading } = useAuth();
   const [overview, setOverview] = useState<any>(null);
   const [traffic, setTraffic] = useState<any>(null);
+  const [health, setHealth] = useState<any>(null);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [runningHealth, setRunningHealth] = useState(false);
   const [monitoring, setMonitoring] = useState<any>(null);
   const [busyPrefix, setBusyPrefix] = useState<string | null>(null);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -59,6 +62,11 @@ export default function AdminDashboardPage() {
     const headers = { Authorization: `Bearer ${t}` };
     fetch(`${API_BASE}/api/v1/admin/analytics/overview`, { headers }).then((r) => r.json()).then(setOverview);
     fetch(`${API_BASE}/api/v1/admin/analytics/pageviews?days=14`, { headers }).then((r) => r.json()).then(setTraffic);
+    fetch(`${API_BASE}/api/v1/admin/health`, { headers })
+      .then((r) => r.json())
+      .then(setHealth)
+      .catch(() => {})
+      .finally(() => setHealthLoading(false));
     fetch(`${API_BASE}/api/v1/admin/api-monitoring`, { headers }).then((r) => r.json()).then(setMonitoring);
   }, [isAdmin, token]);
 
@@ -160,6 +168,20 @@ export default function AdminDashboardPage() {
     setTogglingId(null);
   }
 
+  async function handleRunHealthCheck() {
+    const t = getToken();
+    if (!t || runningHealth) return;
+    setRunningHealth(true);
+    setHealth(null);
+    try {
+      await fetch(`/api/cron/monitor`, { headers: { Authorization: `Bearer ${t}` } });
+    } catch { /* still refetch below */ }
+    const res = await fetch(`${API_BASE}/api/v1/admin/health`, { headers: { Authorization: `Bearer ${t}` } });
+    const data = await res.json().catch(() => null);
+    if (data) setHealth(data);
+    setRunningHealth(false);
+  }
+
   if (authLoading) {
     return <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 text-mist">Loading…</div>;
   }
@@ -256,6 +278,118 @@ export default function AdminDashboardPage() {
                 </ul>
               </div>
             </div>
+          </div>
+        )}
+      </section>
+
+      {/* Site Monitor Section */}
+      <section className="mt-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <HeartPulse className="h-5 w-5 text-primary-400" />
+            <h2 className="font-display text-lg font-semibold">Site Monitor</h2>
+            {health?.latest_run && (
+              <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-bold text-mist">
+                {new Date(health.latest_run.started_at).toLocaleString()}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleRunHealthCheck}
+            disabled={runningHealth}
+            className="flex items-center gap-1.5 rounded-full bg-primary-600 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-500 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${runningHealth ? "animate-spin" : ""}`} />
+            {runningHealth ? "Checking…" : "Run checks now"}
+          </button>
+        </div>
+
+        {healthLoading ? (
+          <div className="mt-4 text-sm text-mist/40">Loading monitor…</div>
+        ) : health?.latest_run ? (
+          <div className="mt-4">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${health.latest_run.failed > 0 ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"}`}>
+                <CircleDot className="h-3 w-3" />
+                {health.latest_run.failed > 0 ? `${health.latest_run.failed} failing` : "All healthy"}
+              </span>
+              <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-mist">
+                {health.latest_run.passed} / {health.latest_run.total} passed
+              </span>
+              <span className="text-xs text-mist/40">
+                took {(health.latest_run.duration_ms / 1000).toFixed(1)}s
+              </span>
+            </div>
+
+            {health.checks?.some((c: any) => !c.ok) && (
+              <div className="mt-4 space-y-2">
+                {health.checks.filter((c: any) => !c.ok).map((c: any) => (
+                  <div key={c.key} className="flex items-start gap-3 rounded-xl border border-red-500/20 bg-red-500/5 px-4 py-3">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-paper">{c.name}</p>
+                      <p className="truncate text-xs text-mist/60">{c.url}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-xs font-medium text-red-400">{c.error}</p>
+                      <p className="text-[10px] text-mist/40">{c.latency_ms}ms</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {health.checks?.length > 0 && (
+              <div className="mt-4">
+                <p className="text-xs font-semibold text-mist">All checks ({health.checks.length})</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {health.checks.map((c: any) => (
+                    <span
+                      key={c.key}
+                      title={`${c.name}${c.error ? ` — ${c.error}` : ""} (${c.latency_ms}ms)`}
+                      className={`flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold ${
+                        c.ok ? "bg-green-500/15 text-green-400" : "bg-red-500/15 text-red-400"
+                      }`}
+                    >
+                      <CircleDot className="h-2.5 w-2.5" />
+                      {c.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {health.recent_runs?.length > 1 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-white/5 text-left uppercase tracking-wider text-mist/50">
+                      <th className="pb-2 pr-4 font-medium">Run</th>
+                      <th className="pb-2 pr-4 font-medium">Time</th>
+                      <th className="pb-2 pr-4 font-medium">Passed</th>
+                      <th className="pb-2 font-medium">Failed</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {health.recent_runs.map((r: any) => (
+                      <tr key={r.id} className="border-b border-white/[0.03]">
+                        <td className="py-2 pr-4 font-medium text-paper">#{r.id}</td>
+                        <td className="py-2 pr-4 text-mist/60">{new Date(r.started_at).toLocaleString()}</td>
+                        <td className="py-2 pr-4 text-green-400">{r.passed}/{r.total}</td>
+                        <td className={`py-2 ${r.failed > 0 ? "text-red-400" : "text-mist/40"}`}>{r.failed}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-6 rounded-xl bg-white/[0.03] border border-white/5 p-8 text-center">
+            <HeartPulse className="mx-auto h-8 w-8 text-mist/30" />
+            <p className="mt-3 text-sm text-mist/40">
+              No runs yet. Click "Run checks now" to scan pages, streams and fallback sources.
+            </p>
           </div>
         )}
       </section>

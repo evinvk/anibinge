@@ -68,6 +68,28 @@ CREATE TABLE IF NOT EXISTS page_views (
 );
 CREATE INDEX IF NOT EXISTS idx_page_views_created ON page_views(created_at);
 CREATE INDEX IF NOT EXISTS idx_page_views_visitor_created ON page_views(visitor_id, created_at);
+
+CREATE TABLE IF NOT EXISTS health_runs (
+  id BIGSERIAL PRIMARY KEY,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  duration_ms INTEGER,
+  total INTEGER NOT NULL DEFAULT 0,
+  passed INTEGER NOT NULL DEFAULT 0,
+  failed INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS health_checks (
+  id BIGSERIAL PRIMARY KEY,
+  run_id BIGINT NOT NULL REFERENCES health_runs(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  url TEXT,
+  ok BOOLEAN NOT NULL,
+  error TEXT,
+  latency_ms INTEGER,
+  checked_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_health_checks_run ON health_checks(run_id);
 `;
 
 let schemaPromise: Promise<void> | null = null;
