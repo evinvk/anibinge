@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
 import { chmodSync, existsSync } from "fs";
-import ffmpegStatic from "ffmpeg-static";
 import { fetchGogoApi } from "../gogoanime/_gogoanime";
 import { getAnivexaStream } from "@/lib/anivexa";
 
@@ -9,6 +8,20 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
+async function resolveFfmpegPath(): Promise<string | null> {
+  try {
+    const mod = (await import("ffmpeg-static")) as unknown;
+    const path =
+      typeof mod === "string"
+        ? mod
+        : (mod as { default?: string | null }).default ?? null;
+    return path;
+  } catch (err) {
+    console.error("ffmpeg-static import failed:", err);
+    return null;
+  }
+}
 
 function dubSlug(slug: string, audio: string): string {
   return audio === "dub" ? (slug.endsWith("-dub") ? slug : `${slug}-dub`) : slug.replace(/-dub$/, "");
@@ -149,23 +162,24 @@ async function handleDownload(req: NextRequest) {
   if (!segmentUrls.length) {
     return NextResponse.json({ error: "Could not parse HLS playlist" }, { status: 502 });
   }
-  if (!ffmpegStatic) {
-    return NextResponse.json({ error: "ffmpeg unavailable" }, { status: 502 });
+  const ffmpegPath = await resolveFfmpegPath();
+  if (!ffmpegPath) {
+    return NextResponse.json({ error: "ffmpeg unavailable (import failed)" }, { status: 502 });
   }
-  if (!existsSync(ffmpegStatic)) {
+  if (!existsSync(ffmpegPath)) {
     return NextResponse.json(
-      { error: `ffmpeg binary missing at ${ffmpegStatic}` },
+      { error: `ffmpeg binary missing at ${ffmpegPath}` },
       { status: 502 }
     );
   }
   try {
-    chmodSync(ffmpegStatic, 0o755);
+    chmodSync(ffmpegPath, 0o755);
   } catch {
     // permission may already be set
   }
 
   const ffmpeg = spawn(
-    ffmpegStatic,
+    ffmpegPath,
     [
       "-hide_banner",
       "-loglevel", "error",
