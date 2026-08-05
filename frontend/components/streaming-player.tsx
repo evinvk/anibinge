@@ -589,14 +589,9 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
         ))}
         <button
           onClick={() => {
-            const dlUrl = api.downloadUrl({
-              slug: selectedSlug || undefined,
-              anilist_id: resolvedAnilistRef.current || undefined,
-              ep: currentEp,
-              audio: audio === "hindi" ? "sub" : audio,
-              filename: `${animeTitle.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`,
-            });
-            window.open(dlUrl, "_blank");
+            const fallbackSlug = animeTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+            const audioParam = audio === "hindi" ? "sub" : audio;
+            window.location.href = `/download/${selectedSlug || fallbackSlug}?ep=${currentEp}&audio=${audioParam}`;
           }}
           className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
         >

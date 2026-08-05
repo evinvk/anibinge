@@ -62,7 +62,6 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
   audioRef.current = audio;
 
   const [statusText, setStatusText] = useState<string>("");
-  const [downloading, setDownloading] = useState(false);
   const [autoPlay, setAutoPlay] = useState(true);
   const [nextEpCountdown, setNextEpCountdown] = useState(0);
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -788,18 +787,10 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         ))}
         <button
           onClick={() => {
-            const fname = `${title.replace(/[^a-zA-Z0-9 ]/g, "").trim()}_E${currentEp}`;
-            const dlUrl = api.downloadUrl({
-              slug,
-              anilist_id: resolvedAnilistRef.current || undefined,
-              ep: currentEp,
-              audio: audio === "hindi" ? "sub" : audio,
-              filename: fname,
-            });
-            window.open(dlUrl, "_blank");
+            const audioParam = audio === "hindi" ? "sub" : audio;
+            window.location.href = `/download/${slug}?ep=${currentEp}&audio=${audioParam}`;
           }}
-          disabled={downloading}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium bg-white/5 text-mist hover:bg-white/10 transition"
         >
           <Download className="h-3 w-3" />
           Download
