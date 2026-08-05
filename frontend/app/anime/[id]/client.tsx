@@ -8,6 +8,9 @@ import { Star, Users, TrendingUp, AlertTriangle, Play } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
+import { AddToCollection } from "@/components/add-to-collection";
+import { AnimeRating } from "@/components/anime-rating";
+import { AnimeCommentsSection } from "@/components/anime-comments-section";
 import { DownloadButton } from "@/components/download-button";
 import { LazyStreamingPlayer } from "@/components/lazy-streaming-player";
 import { FaqSection } from "@/components/faq-section";
@@ -180,6 +183,10 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
               <Stat icon={<Users className="h-4 w-4 text-primary-400" />} label="Members" value={detail.members?.toLocaleString()} />
             </div>
 
+            <div className="mt-4">
+              <AnimeRating animeId={malId} source={source} />
+            </div>
+
             <div className="mt-4 flex flex-wrap gap-2">
               {detail.genres?.map((g: any) => {
                 const page = findGenreByName(g.name ?? "");
@@ -206,6 +213,12 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
                 </Link>
               )}
               <AddToWatchlistButton animeId={malId} source={source} />
+              <AddToCollection
+                animeId={malId}
+                source={source}
+                title={detail.title_english || detail.title}
+                poster={detail.images?.jpg?.large_image_url || detail.images?.jpg?.image_url || null}
+              />
               <DownloadButton
                 title={detail.title_english || detail.title}
                 anilistId={detail.anilist_id}
@@ -317,6 +330,8 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
           anilistId={detail.anilist_id}
           totalEpisodes={detail.episodes}
         />
+
+        <AnimeCommentsSection animeId={malId} source={source} />
 
         <FaqSection items={faqItems} />
 

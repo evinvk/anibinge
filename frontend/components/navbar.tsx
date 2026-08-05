@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
-import { Menu, X, Sparkles, User, Bookmark, LogIn, ChevronDown } from "lucide-react";
+import { Menu, X, Sparkles, User, Bookmark, LogIn, ChevronDown, FolderPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { RandomAnimeButton } from "@/components/random-anime-button";
@@ -89,6 +89,14 @@ export function Navbar() {
             <Bookmark className="h-4 w-4 sm:hidden" />
             <span className="hidden sm:inline">My Watchlist</span>
           </Link>
+          <Link
+            href="/collections"
+            className="flex items-center gap-2 rounded-full border border-white/10 px-2.5 py-2 text-sm text-mist transition-colors hover:text-paper sm:px-4"
+            aria-label="My Collections"
+          >
+            <FolderPlus className="h-4 w-4 sm:hidden" />
+            <span className="hidden sm:inline">Collections</span>
+          </Link>
           {!loading && (
             <>
               {user ? (
@@ -143,6 +151,9 @@ export function Navbar() {
           </div>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-primary-400 hover:bg-white/5">
             My Watchlist
+          </Link>
+          <Link href="/collections" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm text-mist hover:bg-white/5 hover:text-paper">
+            Collections
           </Link>
           {!loading && (
             user ? (

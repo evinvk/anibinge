@@ -74,6 +74,49 @@ CREATE TABLE IF NOT EXISTS watchlist (
   PRIMARY KEY (user_id, anime_id)
 );
 
+CREATE TABLE IF NOT EXISTS anime_ratings (
+  user_id TEXT NOT NULL,
+  anime_id INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'mal',
+  rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 10),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, anime_id, source)
+);
+
+CREATE TABLE IF NOT EXISTS anime_comments (
+  id SERIAL PRIMARY KEY,
+  anime_id INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'mal',
+  user_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  body TEXT NOT NULL,
+  likes INTEGER NOT NULL DEFAULT 0,
+  liked_by TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_anime_comments_anime ON anime_comments(anime_id, source, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS collections (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id);
+
+CREATE TABLE IF NOT EXISTS collection_items (
+  collection_id TEXT NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+  anime_id INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'mal',
+  title TEXT NOT NULL,
+  poster TEXT,
+  added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (collection_id, anime_id, source)
+);
+CREATE INDEX IF NOT EXISTS idx_collection_items_collection ON collection_items(collection_id);
+
 CREATE TABLE IF NOT EXISTS page_views (
   id BIGSERIAL PRIMARY KEY,
   visitor_id TEXT NOT NULL,
