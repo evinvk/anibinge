@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone", // required for the multi-stage Docker build
+  serverExternalPackages: ["ffmpeg-static"],
   images: {
     unoptimized: true,
     remotePatterns: [
@@ -17,6 +18,9 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ["lucide-react"],
+    outputFileTracingIncludes: {
+      "/api/v1/streaming/download": ["./node_modules/ffmpeg-static/**/*"],
+    },
   },
   compiler: {
     removeConsole: false,

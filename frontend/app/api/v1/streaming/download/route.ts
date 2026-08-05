@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+import { spawn } from "child_process";
+import { chmodSync } from "fs";
+import ffmpegStatic from "ffmpeg-static";
 import { fetchGogoApi } from "../gogoanime/_gogoanime";
 import { getAnivexaStream } from "@/lib/anivexa";
 
+export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
@@ -64,6 +68,31 @@ async function parseHlsSegments(playlistUrl: string, referer: string): Promise<s
   return segments;
 }
 
+function writeToStream(stream: NodeJS.WritableStream, chunk: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const onError = (err: Error) => {
+      stream.removeListener("drain", onDrain);
+      reject(err);
+    };
+    const onDrain = () => {
+      stream.removeListener("error", onError);
+      resolve();
+    };
+    try {
+      stream.once("error", onError);
+      if (stream.write(chunk)) {
+        stream.removeListener("error", onError);
+        resolve();
+      } else {
+        stream.once("drain", onDrain);
+      }
+    } catch (err) {
+      stream.removeListener("error", onError);
+      reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  });
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const rawSlug = searchParams.get("slug");
@@ -109,39 +138,116 @@ export async function GET(req: NextRequest) {
   if (!segmentUrls.length) {
     return NextResponse.json({ error: "Could not parse HLS playlist" }, { status: 502 });
   }
+  if (!ffmpegStatic) {
+    return NextResponse.json({ error: "ffmpeg unavailable" }, { status: 502 });
+  }
+  try {
+    chmodSync(ffmpegStatic, 0o755);
+  } catch {
+    // permission may already be set
+  }
 
-  const readable = new ReadableStream({
-    async start(controller) {
-      try {
-        for (const segUrl of segmentUrls) {
-          for (let attempt = 0; attempt < 3; attempt++) {
-            try {
-              const sresp = await fetch(segUrl, { headers: streamHeaders, redirect: "follow" });
-              if (!sresp.ok || !sresp.body) throw new Error(`segment status ${sresp.status}`);
-              const reader = sresp.body.getReader();
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                controller.enqueue(value);
+  const ffmpeg = spawn(
+    ffmpegStatic,
+    [
+      "-hide_banner",
+      "-loglevel", "error",
+      "-fflags", "+genpts",
+      "-avoid_negative_ts", "make_zero",
+      "-i", "pipe:0",
+      "-map", "0:v:0",
+      "-map", "0:a:0?",
+      "-c", "copy",
+      "-bsf:a", "aac_adtstoasc",
+      "-f", "mp4",
+      "pipe:1",
+    ],
+    { stdio: ["pipe", "pipe", "pipe"] }
+  );
+
+  ffmpeg.stdin.on("error", () => {
+    // EPIPE etc. when ffmpeg exits early — handled via ffmpeg 'close'
+  });
+
+  let closed = false;
+  let stderrTail = "";
+  ffmpeg.stderr.on("data", (d: Uint8Array) => {
+    stderrTail = (stderrTail + Buffer.from(d).toString("utf8")).slice(-2000);
+  });
+
+  const readable = new ReadableStream<Uint8Array>({
+    start(controller) {
+      ffmpeg.stdout.on("data", (chunk: Uint8Array) => {
+        if (closed) return;
+        if (controller.desiredSize != null && controller.desiredSize <= 0) {
+          ffmpeg.stdout.pause();
+        }
+        controller.enqueue(chunk);
+      });
+      ffmpeg.stdout.on("error", (err) => {
+        if (!closed) {
+          closed = true;
+          controller.error(err);
+        }
+      });
+      ffmpeg.on("error", (err) => {
+        if (!closed) {
+          closed = true;
+          controller.error(err);
+        }
+      });
+      ffmpeg.on("close", (code) => {
+        if (closed) return;
+        closed = true;
+        if (code === 0) controller.close();
+        else controller.error(new Error(`remux failed (code ${code}): ${stderrTail || "no stderr output"}`));
+      });
+
+      const writeToStdin = async () => {
+        try {
+          for (const segUrl of segmentUrls) {
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                const sresp = await fetch(segUrl, { headers: streamHeaders, redirect: "follow" });
+                if (!sresp.ok || !sresp.body) throw new Error(`segment status ${sresp.status}`);
+                const reader = sresp.body.getReader();
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  await writeToStream(ffmpeg.stdin, value);
+                }
+                break;
+              } catch (err) {
+                if (attempt === 2) throw err;
+                await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
               }
-              break;
-            } catch (err) {
-              if (attempt === 2) throw err;
-              await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
             }
           }
+          ffmpeg.stdin.end();
+        } catch (err) {
+          ffmpeg.stdin.destroy();
+          ffmpeg.kill();
+          if (!closed) {
+            closed = true;
+            controller.error(err instanceof Error ? err : new Error(String(err)));
+          }
         }
-        controller.close();
-      } catch (err) {
-        controller.error(err);
-      }
+      };
+      void writeToStdin();
+    },
+    pull() {
+      if (!closed && ffmpeg.stdout.isPaused()) ffmpeg.stdout.resume();
+    },
+    cancel() {
+      closed = true;
+      ffmpeg.kill();
     },
   });
 
   return new Response(readable, {
     headers: {
-      "Content-Disposition": `attachment; filename="${safeName}.ts"`,
-      "Content-Type": "video/mp2t",
+      "Content-Disposition": `attachment; filename="${safeName}.mp4"`,
+      "Content-Type": "video/mp4",
     },
   });
 }
