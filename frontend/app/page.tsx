@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 import { HomeSearch } from "@/components/home-search";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
+import { LoginPopup } from "@/components/login-popup";
 
 export const revalidate = 300;
 
@@ -62,6 +63,7 @@ export default async function HomePage() {
       </div>
 
       <LatestReleasesSection />
+      <LoginPopup />
     </>
   );
 }
