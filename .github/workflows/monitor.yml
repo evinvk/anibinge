@@ -1,0 +1,26 @@
+name: Site monitor
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger monitor
+        run: |
+          SECRET="${{ secrets.MONITOR_SECRET }}"
+          if [ -z "$SECRET" ]; then
+            echo "::error::MONITOR_SECRET not set in GitHub repo secrets"
+            exit 1
+          fi
+          STATUS=$(curl -sS -o /dev/null -w "%{http_code}" \
+            -H "x-monitor-secret: $SECRET" \
+            "https://www.anibinge.fun/api/cron/monitor")
+          echo "Monitor returned HTTP $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Monitor endpoint returned $STATUS (expected 200)"
+            exit 1
+          fi
