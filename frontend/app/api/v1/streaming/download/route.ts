@@ -23,6 +23,62 @@ async function resolveFfmpegPath(): Promise<string | null> {
   }
 }
 
+async function runFfmpegDiag(): Promise<Response> {
+  const ffmpegPath = await resolveFfmpegPath();
+  if (!ffmpegPath) {
+    return NextResponse.json({ ok: false, error: "import failed" }, { status: 500 });
+  }
+  const exists = existsSync(ffmpegPath);
+  if (!exists) {
+    return NextResponse.json({ ok: false, path: ffmpegPath, error: "binary missing" }, { status: 500 });
+  }
+  let mode = "?";
+  try {
+    mode = JSON.stringify({ mode: (await import("fs")).statSync(ffmpegPath).mode, size: (await import("fs")).statSync(ffmpegPath).size });
+  } catch {
+    // ignore
+  }
+  return await new Promise((resolve) => {
+    const out: string[] = [];
+    const errOut: string[] = [];
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve(
+        NextResponse.json({
+          ok: true,
+          path: ffmpegPath,
+          mode,
+          stdout: out.join("").slice(0, 4000),
+          stderr: errOut.join("").slice(0, 4000),
+        })
+      );
+    };
+    let child;
+    try {
+      child = spawn(ffmpegPath, ["-version"], { stdio: ["ignore", "pipe", "pipe"] });
+    } catch (err) {
+      return resolve(
+        NextResponse.json(
+          { ok: false, path: ffmpegPath, error: `spawn threw: ${err instanceof Error ? err.message : String(err)}` },
+          { status: 500 }
+        )
+      );
+    }
+    child.stdout.on("data", (d: Uint8Array) => out.push(Buffer.from(d).toString("utf8")));
+    child.stderr.on("data", (d: Uint8Array) => errOut.push(Buffer.from(d).toString("utf8")));
+    child.on("error", (err) => {
+      errOut.push(`[spawn error] ${err.message}`);
+    });
+    child.on("close", (code) => {
+      errOut.push(`[exit ${code}]`);
+      finish();
+    });
+    setTimeout(finish, 20000);
+  });
+}
+
 function dubSlug(slug: string, audio: string): string {
   return audio === "dub" ? (slug.endsWith("-dub") ? slug : `${slug}-dub`) : slug.replace(/-dub$/, "");
 }
@@ -119,6 +175,10 @@ export async function GET(req: NextRequest) {
 
 async function handleDownload(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+  const diag = searchParams.get("diag") === "1";
+  if (diag) {
+    return await runFfmpegDiag();
+  }
   const rawSlug = searchParams.get("slug");
   const anilistIdParam = searchParams.get("anilist_id");
   const ep = parseInt(searchParams.get("ep") || "1", 10) || 1;
