@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
-import { chmodSync } from "fs";
+import { chmodSync, existsSync } from "fs";
 import ffmpegStatic from "ffmpeg-static";
 import { fetchGogoApi } from "../gogoanime/_gogoanime";
 import { getAnivexaStream } from "@/lib/anivexa";
@@ -94,6 +94,17 @@ function writeToStream(stream: NodeJS.WritableStream, chunk: Uint8Array): Promis
 }
 
 export async function GET(req: NextRequest) {
+  try {
+    return await handleDownload(req);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      { status: 500 }
+    );
+  }
+}
+
+async function handleDownload(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const rawSlug = searchParams.get("slug");
   const anilistIdParam = searchParams.get("anilist_id");
@@ -141,6 +152,12 @@ export async function GET(req: NextRequest) {
   if (!ffmpegStatic) {
     return NextResponse.json({ error: "ffmpeg unavailable" }, { status: 502 });
   }
+  if (!existsSync(ffmpegStatic)) {
+    return NextResponse.json(
+      { error: `ffmpeg binary missing at ${ffmpegStatic}` },
+      { status: 502 }
+    );
+  }
   try {
     chmodSync(ffmpegStatic, 0o755);
   } catch {
@@ -164,6 +181,9 @@ export async function GET(req: NextRequest) {
     ],
     { stdio: ["pipe", "pipe", "pipe"] }
   );
+  if (ffmpeg.pid === undefined) {
+    return NextResponse.json({ error: "ffmpeg failed to spawn" }, { status: 502 });
+  }
 
   ffmpeg.stdin.on("error", () => {
     // EPIPE etc. when ffmpeg exits early — handled via ffmpeg 'close'
