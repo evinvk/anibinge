@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { enrichWithViews } from "@/lib/views";
+import { searchManga as searchMangaMD } from "../manhwa/_mangadex";
+import { searchManga as searchMangaCK } from "../manhwa/_comick";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 const ANILIST_API = "https://graphql.anilist.co";
@@ -90,24 +92,81 @@ export async function GET(req: Request) {
     if (format?.length) variables.format = format;
     if (year) variables.seasonYear = year;
     if (season) variables.season = season;
-    const resp = await fetch(ANILIST_API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query: SEARCH_QUERY, variables }),
-      signal: controller.signal,
-    });
+
+    // AniList rate-limits Vercel's shared egress IPs — retry with backoff and cache
+    // upstream hits (cache key includes the query body, so every search is cached separately).
+    let results: any[] = [];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      let resp: Response;
+      try {
+        resp = await fetch(ANILIST_API, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "User-Agent": UA },
+          body: JSON.stringify({ query: SEARCH_QUERY, variables }),
+          signal: controller.signal,
+          next: { revalidate: 3600 },
+        });
+      } catch (e) {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        break;
+      }
+      if (!resp.ok) {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        break;
+      }
+      const data = await resp.json();
+      if (data.errors) {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+          continue;
+        }
+        break;
+      }
+      results = data?.data?.Page?.media || [];
+      break;
+    }
     clearTimeout(timeout);
-    if (!resp.ok) {
-      const text = await resp.text();
-      return NextResponse.json({ data: [] });
+
+    if (results.length > 0) {
+      const mapped = results.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
+      return NextResponse.json({ data: enrichWithViews(mapped) });
     }
-    const data = await resp.json();
-    if (data.errors) {
-      return NextResponse.json({ data: [] });
+
+    // No Japanese-anime match (or upstream rate-limited) — fall back to manhwa so
+    // titles like "Tomb Raider King" still surface in search.
+    if (useSearch) {
+      const manhwa = await searchMangaMD(q)
+        .then((r) => (r.data.length > 0 ? r : searchMangaCK(q)))
+        .catch(() => searchMangaCK(q))
+        .then((r) => r.data.map((item: any) => ({
+          id: item.id,
+          source: "manhwa",
+          title: item.title,
+          title_english: item.title,
+          image: item.poster,
+          banner: null,
+          score: item.rating,
+          popularity: null,
+          episodes: null,
+          status: item.status,
+          genres: item.genres,
+          synopsis: item.description,
+          year: null,
+          season: null,
+          format: "Manhwa",
+          start_date: null,
+        })))
+        .catch(() => []);
+      if (manhwa.length > 0) return NextResponse.json({ data: manhwa });
     }
-    const media = data?.data?.Page?.media || [];
-    const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
-    return NextResponse.json({ data: enrichWithViews(results) });
+
+    return NextResponse.json({ data: [] });
   } catch (e) {
     clearTimeout(timeout);
     return NextResponse.json({ data: [] });

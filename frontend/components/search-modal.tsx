@@ -113,7 +113,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
             <button
               key={anime.id}
               onClick={() => goToBrowse(anime.title)}
-              onDoubleClick={() => router.push(`/anime/${anime.id}`)}
+              onDoubleClick={() => router.push(anime.source === "manhwa" ? `/manhwa/${anime.id}` : `/anime/${anime.id}`)}
               className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-white/5"
             >
               {anime.image && (

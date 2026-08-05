@@ -41,7 +41,11 @@ export function AnimeCard({ anime, priority = false }: AnimeCardProps) {
 
   return (
     <Link
-      href={anime.source === "anilist" ? `/anime/${anime.id}?source=anilist` : `/anime/${anime.id}`}
+      href={
+        anime.source === "anilist" ? `/anime/${anime.id}?source=anilist` :
+        anime.source === "manhwa" ? `/manhwa/${anime.id}` :
+        `/anime/${anime.id}`
+      }
       className="group block h-full"
     >
       <div className="glass-card aura-border flex h-full flex-col transition-transform duration-200 group-hover:-translate-y-1">

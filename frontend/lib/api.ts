@@ -17,7 +17,7 @@ function userIdFromToken(token: string): string | null {
 
 export interface AnimeSummary {
   id: number | string;
-  source: "mal" | "jikan" | "anilist" | "animeschedule";
+  source: "mal" | "jikan" | "anilist" | "animeschedule" | "manhwa";
   title: string;
   title_english: string | null;
   image: string | null;
