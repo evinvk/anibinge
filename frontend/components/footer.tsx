@@ -27,6 +27,7 @@ export function Footer() {
             <li><Link href="/search">Search</Link></li>
             <li><Link href="/recent">Latest Releases</Link></li>
             <li><Link href="/hindi-anime">Hindi Dubbed Anime</Link></li>
+            <li><Link href="/sitemap">Sitemap</Link></li>
             <li><Link href="/genres/action">Action</Link></li>
             <li><Link href="/genres/romance">Romance</Link></li>
             <li><Link href="/genres/fantasy">Fantasy</Link></li>
