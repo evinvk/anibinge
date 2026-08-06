@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Map } from "lucide-react";
-import { SITE_URL, SEASON_PAGES, STUDIO_PAGES } from "@/lib/seo";
+import { SITE_URL, getSeasonPages, STUDIO_PAGES } from "@/lib/seo";
 import { GENRE_PAGES } from "@/lib/genre-seo";
 import { HINDI_ANIME } from "@/lib/hindi-seo";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Sitemap — Browse All Anime Pages",
@@ -31,6 +33,8 @@ const MAIN_LINKS: { href: string; label: string }[] = [
 ];
 
 export default function SitemapPage() {
+  const seasonPages = getSeasonPages();
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <div className="mt-6 flex items-center gap-2">
@@ -76,7 +80,7 @@ export default function SitemapPage() {
         <section>
           <h2 className="font-display text-lg font-semibold text-paper">Seasons</h2>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {SEASON_PAGES.map((s) => (
+            {seasonPages.map((s) => (
               <Link
                 key={s.slug}
                 href={`/season/${s.slug}`}

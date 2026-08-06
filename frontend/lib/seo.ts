@@ -40,7 +40,7 @@ const SEASON_INTROS: Record<string, string> = {
   fall: "Fall anime air from October through December. The season of heavy hitters — explore the highest-profile premieres and cult favorites of the fall lineup free on Anibinge.",
 };
 
-export const SEASON_PAGES: SeasonSeo[] = (() => {
+export function getSeasonPages(): SeasonSeo[] {
   const now = new Date();
   const currentYear = now.getFullYear();
   const curIdx = currentSeasonIndex();
@@ -65,7 +65,10 @@ export const SEASON_PAGES: SeasonSeo[] = (() => {
     return kb - ka;
   });
   return pages;
-})();
+}
+
+// Backwards-compatible request-time accessor.
+export const SEASON_PAGES: SeasonSeo[] = getSeasonPages();
 
 export interface StudioSeo {
   slug: string;
