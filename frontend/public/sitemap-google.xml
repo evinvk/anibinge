@@ -36,4 +36,8 @@
     <loc>https://www.anibinge.fun/news/sitemap.xml</loc>
     <lastmod>2026-08-03T00:00:00Z</lastmod>
   </sitemap>
+  <sitemap>
+    <loc>https://www.anibinge.fun/download/sitemap.xml</loc>
+    <lastmod>2026-08-06T00:00:00Z</lastmod>
+  </sitemap>
 </sitemapindex>
