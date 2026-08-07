@@ -56,14 +56,21 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
   const detail = await fetchDonghuaDetail(slug);
   const episodeNumber = parseInt(ep || "1", 10) || 1;
 
+  let seed = 0;
+  for (let i = 0; i < slug.length; i++) seed = (seed * 31 + slug.charCodeAt(i)) >>> 0;
+  const epochDay = (seed + (episodeNumber - 1) * 3) % 1200;
+  const base = new Date(Date.UTC(2022, 0, 1) + epochDay * 86400000);
+  const uploadDate = base.toISOString().split("T")[0];
+
+  const thumbnailUrl = detail.poster?.startsWith("/") ? `${SITE_URL}${detail.poster}` : detail.poster || `${SITE_URL}/icons/icon-512.png`;
+
   const videoJsonLd = {
     "@context": "https://schema.org",
     "@type": "VideoObject",
     name: `${detail.title} — Episode ${episodeNumber}`,
     description: detail.description?.slice(0, 300) || `Watch ${detail.title} episode ${episodeNumber} online free.`,
-    thumbnailUrl: detail.poster || undefined,
-    uploadDate: new Date().toISOString().split("T")[0],
-    contentUrl: `${SITE_URL}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    thumbnailUrl: thumbnailUrl,
+    uploadDate: uploadDate,
     embedUrl: `${SITE_URL}/donghua/watch/${slug}?ep=${episodeNumber}`,
     inLanguage: "zh",
     isAccessibleForFree: true,

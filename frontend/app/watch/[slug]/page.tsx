@@ -13,29 +13,41 @@ const API_BASE =
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun").replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
 
-const fetchAnimeTitle = cache(async (slug: string): Promise<string> => {
+const fetchAnimeMeta = cache(async (slug: string): Promise<{ title: string; poster: string | null }> => {
   try {
     const res = await fetch(`${API_BASE}/api/v1/streaming/gogoanime/${slug}/info`, { signal: AbortSignal.timeout(8000) });
     const data = await res.json();
-    if (data.data?.title) return data.data.title;
+    if (data.data?.title) {
+      const poster = data.data.poster || data.data.image || data.data.anime_image || null;
+      return { title: data.data.title, poster: typeof poster === "string" ? poster : null };
+    }
   } catch {}
 
   try {
     const res = await fetch(`${API_BASE}/api/v1/streaming/gogoanime/search?q=${slug.replace(/-/g, " ")}`, { signal: AbortSignal.timeout(12000) });
     const data = await res.json();
     const match = data.data?.find((a: any) => a.slug === slug);
-    if (match?.title) return match.title;
-    if (data.data?.length > 0) return data.data[0].title;
+    if (match?.title) return { title: match.title, poster: match.poster || null };
+    if (data.data?.length > 0) return { title: data.data[0].title, poster: data.data[0].poster || null };
   } catch {}
 
-  return slug.replace(/-/g, " ");
+  return { title: slug.replace(/-/g, " "), poster: null };
 });
+
+function toAbsoluteImage(url: string | null | undefined): string | null {
+  if (!url) return null;
+  if (url.startsWith("//")) return `https:${url}`;
+  if (url.startsWith("/")) return `${SITE_URL}${url}`;
+  return url;
+}
+
+const THUMB_FALLBACK = `${SITE_URL}/icons/icon-512.png`;
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const { ep } = await searchParams;
   const episodeNumber = parseInt(ep || "1", 10) || 1;
-  const title = await fetchAnimeTitle(slug);
+  const { title } = await fetchAnimeMeta(slug);
   const pageUrl = episodeNumber === 1 ? `${SITE_URL}/watch/${slug}` : `${SITE_URL}/watch/${slug}?ep=${episodeNumber}`;
 
   return {
@@ -59,9 +71,10 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
 
 export default async function WatchPage({ params, searchParams }: PageProps) {
   const [{ slug }, { ep }] = await Promise.all([params, searchParams]);
-  const title = await fetchAnimeTitle(slug);
+  const { title, poster } = await fetchAnimeMeta(slug);
   const episodeNumber = parseInt(ep || "1", 10) || 1;
   const url = `${SITE_URL}/watch/${slug}?ep=${episodeNumber}`;
+  const thumbnailUrl = toAbsoluteImage(poster) || THUMB_FALLBACK;
 
   // Stable per-episode date derived from slug (Google requires uploadDate;
   // using today's date on every episode looks like auto-generated spam).
@@ -76,9 +89,8 @@ export default async function WatchPage({ params, searchParams }: PageProps) {
     "@type": "VideoObject",
     name: `${title} — Episode ${episodeNumber}`,
     description: `Watch ${title} episode ${episodeNumber} online free in Hindi, English dub and sub. HD quality.`,
-    thumbnailUrl: `${SITE_URL}/watch/${slug}`,
+    thumbnailUrl: thumbnailUrl,
     uploadDate: uploadDate,
-    contentUrl: url,
     embedUrl: url,
     inLanguage: "ja",
     isAccessibleForFree: true,
