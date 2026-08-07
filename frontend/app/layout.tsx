@@ -94,6 +94,17 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=G-PWXMN27P3E"
+        ></script>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-PWXMN27P3E');`,
+          }}
+        />
+      </head>
       <body className={`${sora.variable} ${inter.variable} ${jetbrains.variable}`}>
         {API_BASE && <link rel="preconnect" href={API_BASE} />}
         {API_BASE && <link rel="dns-prefetch" href={API_BASE} />}
@@ -144,18 +155,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `(function(s){s.dataset.zone='11404928',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
-          }}
-        />
-        <Script
-          id="gtag"
-          strategy="beforeInteractive"
-          src="https://www.googletagmanager.com/gtag/js?id=G-PWXMN27P3E"
-        />
-        <Script
-          id="gtag-init"
-          strategy="beforeInteractive"
-          dangerouslySetInnerHTML={{
-            __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-PWXMN27P3E');`,
           }}
         />
       </body>
