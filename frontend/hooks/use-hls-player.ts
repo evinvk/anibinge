@@ -52,6 +52,8 @@ export function useHlsPlayer(
   const [error, setError] = useState<string | null>(null);
   const [playerStatus, setPlayerStatus] = useState<PlayerStatus>("idle");
   const [levels, setLevels] = useState<any[]>([]);
+  const [subtitleTracks, setSubtitleTracks] = useState<any[]>([]);
+  const [subtitleTrack, setSubtitleTrackIdx] = useState(-1);
   const hlsRef = useRef<any>(null);
   const sourceRef = useRef<"gogoanime" | "anitsu" | "anivexa" | "wibu" | "hindi" | null>(null);
   const fallbackAttemptedRef = useRef(false);
@@ -336,6 +338,11 @@ export function useHlsPlayer(
         const parsedLevels = hls.levels ? [...hls.levels] : [];
         const defaultIdx = find720LevelIndex(parsedLevels);
         setLevels(parsedLevels);
+        if (hls.subtitleTracks && hls.subtitleTracks.length > 0) {
+          setSubtitleTracks([...hls.subtitleTracks]);
+        } else {
+          setSubtitleTracks([]);
+        }
         if (defaultIdx >= 0) {
           setSelectedQuality(defaultIdx);
           hls.currentLevel = defaultIdx;
@@ -449,6 +456,15 @@ export function useHlsPlayer(
     hls.currentLevel = index;
   }
 
+  function setSubtitleTrack(index: number) {
+    const hls = hlsRef.current;
+    if (!hls) return;
+    try {
+      hls.subtitleTrack = index;
+    } catch {}
+    setSubtitleTrackIdx(index);
+  }
+
   function destroyHls() {
     if (stallTimerRef.current) {
       clearTimeout(stallTimerRef.current);
@@ -459,6 +475,8 @@ export function useHlsPlayer(
       hlsRef.current = null;
     }
     setLevels([]);
+    setSubtitleTracks([]);
+    setSubtitleTrackIdx(-1);
   }
 
   function resetPlayer() {
@@ -482,6 +500,8 @@ export function useHlsPlayer(
     setMasterUrl,
     selectedQuality,
     levels,
+    subtitleTracks,
+    subtitleTrack,
     loadingStream,
     setLoadingStream,
     error,
@@ -493,6 +513,7 @@ export function useHlsPlayer(
     fallbackAttemptedRef,
     loadPlayer,
     setQuality,
+    setSubtitleTrack,
     resetPlayer,
     destroyHls,
   };

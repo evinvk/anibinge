@@ -316,6 +316,17 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   const player = useHlsPlayer(videoRef, onAfterLoad, onFatalError, onMediaEnded);
 
+  const autoEmbeddedSubRef = useRef(false);
+
+  useEffect(() => {
+    if (autoEmbeddedSubRef.current) return;
+    if (audio !== "sub") return;
+    if (player.subtitleTracks.length > 0 && subs.subtitles.length === 0) {
+      autoEmbeddedSubRef.current = true;
+      player.setSubtitleTrack(0);
+    }
+  }, [player.subtitleTracks, subs.subtitles, audio, player]);
+
   useEffect(() => {
     currentEpRef.current = currentEp;
   }, [currentEp]);
@@ -474,6 +485,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     player.setLoadingStream(true);
     player.setError(null);
     subs.resetSubs();
+    autoEmbeddedSubRef.current = false;
     player.destroyHls();
     player.setStreamData(null);
     player.setMasterUrl(null);
@@ -824,12 +836,12 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         </div>
       )}
 
-      {!isTheater && subs.subtitles.length > 0 && (
+      {!isTheater && (subs.subtitles.length > 0 || player.subtitleTracks.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {subs.subtitles.map((sub, i) => (
             <button
               key={i}
-              onClick={() => subs.switchSub(i)}
+              onClick={() => { player.setSubtitleTrack(-1); subs.switchSub(i); }}
               className={clsx(
                 "rounded-md px-2 py-1 text-xs font-medium transition",
                 subs.selectedSub === i
@@ -840,11 +852,25 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
               {sub.label}
             </button>
           ))}
+          {player.subtitleTracks.map((t, i) => (
+            <button
+              key={`embedded-${i}`}
+              onClick={() => { subs.setSelectedSub(-1); subs.cuesRef.current = []; subs.setActiveCues([]); player.setSubtitleTrack(i); }}
+              className={clsx(
+                "rounded-md px-2 py-1 text-xs font-medium transition",
+                player.subtitleTrack === i
+                  ? "bg-primary-600 text-white"
+                  : "bg-white/5 text-mist hover:bg-white/10"
+              )}
+            >
+              {t.name || t.lang || t.type || `Track ${i + 1}`}
+            </button>
+          ))}
           <button
-            onClick={() => { subs.setSelectedSub(-1); subs.cuesRef.current = []; subs.setActiveCues([]); }}
+            onClick={() => { subs.setSelectedSub(-1); subs.cuesRef.current = []; subs.setActiveCues([]); player.setSubtitleTrack(-1); }}
             className={clsx(
               "rounded-md px-2 py-1 text-xs font-medium transition",
-              subs.selectedSub === -1
+              subs.selectedSub === -1 && player.subtitleTrack === -1
                 ? "bg-primary-600 text-white"
                 : "bg-white/5 text-mist hover:bg-white/10"
             )}
