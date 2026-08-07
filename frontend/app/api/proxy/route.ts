@@ -55,10 +55,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
+    const range = req.headers.get("range") || "";
     const resp = await fetch(url, {
       headers: {
         "User-Agent": UA,
         ...(referer ? { Referer: referer } : {}),
+        ...(range ? { Range: range } : {}),
       },
     });
 
@@ -168,7 +170,7 @@ export async function GET(req: NextRequest) {
       }
 
       return new Response(resp.body, {
-        status: 200,
+        status: resp.status,
         headers: {
           "Content-Type": contentType || "application/octet-stream",
           "Cache-Control": "public, max-age=3600",
@@ -186,7 +188,7 @@ export async function GET(req: NextRequest) {
     }
 
     return new Response(resp.body, {
-      status: 200,
+      status: resp.status,
       headers: {
         "Content-Type": contentType || "application/octet-stream",
         "Cache-Control": "public, max-age=3600",
@@ -194,6 +196,7 @@ export async function GET(req: NextRequest) {
         ...(resp.headers.get("Content-Length") ? { "Content-Length": resp.headers.get("Content-Length")! } : {}),
         ...(resp.headers.get("Content-Range") ? { "Content-Range": resp.headers.get("Content-Range")! } : {}),
         ...(resp.headers.get("Accept-Ranges") ? { "Accept-Ranges": resp.headers.get("Accept-Ranges")! } : {}),
+        ...(resp.status === 206 ? { "Vary": "Range" } : {}),
       },
     });
   } catch (e: any) {
