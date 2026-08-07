@@ -410,7 +410,7 @@ export const api = {
   // Fetch subtitles only (background — used alongside GogoAnime primary stream)
   fetchSubtitles: (q: string, ep: number, anilistId?: number) =>
     request<{ subtitles: any[]; provider: string | null }>(
-      `/api/v1/streaming/subtitles?q=${encodeURIComponent(q)}&ep=${ep}${anilistId ? `&anilist_id=${anilistId}` : ""}`,
+      `/api/v1/streaming/subtitles?q=${encodeURIComponent(q)}&ep=${ep}${anilistId ? `&anilist_id=${anilistId}` : ""}&v=2`,
       60
     ),
 
