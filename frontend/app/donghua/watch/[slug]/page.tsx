@@ -16,7 +16,8 @@ const fetchDonghuaDetail = cache(async (slug: string): Promise<{ title: string; 
     const path = (await resolveAnimeXinSeriesUrl(slug)) || `/${slug}/`;
     const html = await fetchHtml(path);
     const detail = parseDetailAuto(html, slug);
-    return { title: detail.title || slug, description: detail.description || "", poster: detail.poster, genres: detail.genres || [] };
+    const poster = detail.poster && /^blob:/i.test(detail.poster) === false && /^data:/i.test(detail.poster) === false ? detail.poster : null;
+    return { title: detail.title || slug, description: detail.description || "", poster, genres: detail.genres || [] };
   } catch {}
   return { title: slug.replace(/-/g, " "), description: "", poster: null, genres: [] };
 });
