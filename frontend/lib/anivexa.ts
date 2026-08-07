@@ -148,19 +148,33 @@ export async function getAnivexaStream(
       if (!Array.isArray(data?.streams)) continue;
 
       const streams = data.streams;
-      const hlsStream = streams.find((s: any) => s.type === "hls");
       const embedStream = streams.find((s: any) => s.type === "embed");
-      const streamUrl = hlsStream?.url || streams[0]?.url || null;
-      if (!streamUrl) continue;
-
       const referer = `https://${provider}.app/`;
 
-      // Skip providers that answer with a broken or ad-only playlist
-      // (e.g. anineko returns an all-ad HLS for episodes it does not actually have).
-      if (!isMp4Url(streamUrl)) {
-        const valid = await playlistHasRealSegments(streamUrl, referer);
-        if (!valid) continue;
+      // Try every hls/mp4 stream for this provider — the first may be an
+      // ad-only or broken playlist while later streams are perfectly playable.
+      let streamUrl: string | null = null;
+      let streamType: "hls" | "mp4" | null = null;
+      for (const s of streams) {
+        if (s?.type !== "hls" && s?.type !== "mp4") continue;
+        const url = s?.url;
+        if (!url) continue;
+        if (isMp4Url(url)) {
+          const head = await fetchWithReferer(url, referer, 6000);
+          if (head && head.ok) {
+            streamUrl = url;
+            streamType = "mp4";
+            break;
+          }
+          continue;
+        }
+        if (await playlistHasRealSegments(url, referer)) {
+          streamUrl = url;
+          streamType = "hls";
+          break;
+        }
       }
+      if (!streamUrl) continue;
 
       const subtitles = (data.subtitles || []).map((s: any) => ({
         file: s.url || s.file,
@@ -181,7 +195,7 @@ export async function getAnivexaStream(
         source: "anivexa",
         provider,
         stream_url: streamUrl,
-        stream_type: isMp4Url(streamUrl) ? "mp4" : "hls",
+        stream_type: streamType as "hls" | "mp4",
         referer,
         embed_url: embedStream?.url || data.embed_url || null,
         subtitles,
