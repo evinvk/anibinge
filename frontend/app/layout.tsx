@@ -146,6 +146,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: `(function(s){s.dataset.zone='11404928',s.src='https://al5sm.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))`,
           }}
         />
+        <Script
+          id="gtag"
+          strategy="afterInteractive"
+          src="https://www.googletagmanager.com/gtag/js?id=G-PWXMN27P3E"
+        />
+        <Script
+          id="gtag-init"
+          strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-PWXMN27P3E');`,
+          }}
+        />
       </body>
     </html>
   );
