@@ -30,39 +30,34 @@ export async function GET(req: Request) {
   if (!anilistId) return NextResponse.json({ subtitles: [], provider: null });
 
   try {
-    // Probe all Anivexa providers in parallel, prefer the earliest with subtitles
-    const results = await Promise.allSettled(
-      ANIVEXA_PROVIDERS.map(async (provider) => {
-        const resp = await fetch(
-          `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
-          { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(8000) }
-        );
-        if (!resp.ok) throw new Error("not ok");
-        const data = await resp.json();
-        const subs = (data.subtitles || []).map((s: any) => ({
-          file: s.url || s.file,
-          label: s.label || s.language || "English",
-          language: s.language || "en",
-          kind: "captions",
-          default: s.default || false,
-          source: provider,
-          referer: `https://${provider}.app/`,
-        }));
-        for (const s of data.streams || []) {
-          if (s?.type !== "embed") continue;
-          for (const sub of extractEmbedSubtitles(s.url, provider)) {
-            if (!subs.some((x: any) => x.file === sub.file)) subs.push(sub);
-          }
+    // Probe all Anivexa providers in parallel; resolve as soon as any has subtitles
+    const probe = async (provider: string) => {
+      const resp = await fetch(
+        `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
+        { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000) }
+      );
+      if (!resp.ok) throw new Error("not ok");
+      const data = await resp.json();
+      const subs = (data.subtitles || []).map((s: any) => ({
+        file: s.url || s.file,
+        label: s.label || s.language || "English",
+        language: s.language || "en",
+        kind: "captions",
+        default: s.default || false,
+        source: provider,
+        referer: `https://${provider}.app/`,
+      }));
+      for (const s of data.streams || []) {
+        if (s?.type !== "embed") continue;
+        for (const sub of extractEmbedSubtitles(s.url, provider)) {
+          if (!subs.some((x: any) => x.file === sub.file)) subs.push(sub);
         }
-        return { provider, subs };
-      })
-    );
-    for (const result of results) {
-      if (result.status !== "fulfilled") continue;
-      if (result.value.subs.length > 0) {
-        return NextResponse.json({ subtitles: result.value.subs, provider: result.value.provider });
       }
-    }
+      if (!subs.length) throw new Error("no subtitles");
+      return { provider, subs };
+    };
+    const winner = await Promise.any(ANIVEXA_PROVIDERS.map(probe));
+    return NextResponse.json({ subtitles: winner.subs, provider: winner.provider });
   } catch {}
 
   return NextResponse.json({ subtitles: [], provider: null });
