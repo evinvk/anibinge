@@ -294,7 +294,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
 
       if (data?.direct_stream?.stream_url) {
         player.sourceRef.current = "gogoanime";
-        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(data.direct_stream.stream_url)}&referer=${encodeURIComponent(data.direct_stream.referer || "")}`;
         let qualities = [{ quality: "Auto", url: proxiedUrl }];
         try {
           const m3u8Resp = await fetch(proxiedUrl);

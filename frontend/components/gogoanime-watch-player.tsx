@@ -106,7 +106,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       if (data?.direct_stream?.stream_url) {
         subs.setSubs([]);
         player.sourceRef.current = "gogoanime";
-        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(data.direct_stream.stream_url)}&referer=${encodeURIComponent(data.direct_stream.referer || "")}`;
         player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
         player.setMasterUrl(proxiedUrl);
         player.setLoadingStream(false);
@@ -503,7 +503,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       const data = preloaded.data;
       if (data.direct_stream?.stream_url) {
         player.sourceRef.current = "gogoanime";
-        const proxiedUrl = api.gogoanimeEmbedProxy(data.direct_stream.stream_url, data.direct_stream.referer);
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(data.direct_stream.stream_url)}&referer=${encodeURIComponent(data.direct_stream.referer || "")}`;
         player.setStreamData({ qualities: [{ quality: "Auto", url: proxiedUrl }] });
         player.setMasterUrl(proxiedUrl);
         player.setLoadingStream(false);
