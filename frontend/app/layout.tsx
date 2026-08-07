@@ -148,12 +148,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <Script
           id="gtag"
-          strategy="afterInteractive"
+          strategy="beforeInteractive"
           src="https://www.googletagmanager.com/gtag/js?id=G-PWXMN27P3E"
         />
         <Script
           id="gtag-init"
-          strategy="afterInteractive"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-PWXMN27P3E');`,
           }}
