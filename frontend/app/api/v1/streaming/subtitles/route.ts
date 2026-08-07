@@ -65,6 +65,6 @@ export async function GET(req: Request) {
 
   return NextResponse.json(
     { subtitles: [], provider: null },
-    { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=21600" } }
+    { headers: { "Cache-Control": "no-store" } }
   );
 }
