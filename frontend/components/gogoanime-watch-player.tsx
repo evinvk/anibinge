@@ -156,6 +156,8 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
           ...s,
           file: proxySubUrl(s.file, s.referer),
         })));
+        subs.loadSubtitles();
+        fetchSubtitlesInBackground(ep);
         player.sourceRef.current = "anitsu";
 
         if (res.stream_type === "mp4") {
