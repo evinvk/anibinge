@@ -34,7 +34,7 @@ export async function GET(req: Request) {
     const probe = async (provider: string) => {
       const resp = await fetch(
         `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
-        { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(12000) }
+        { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(18000) }
       );
       if (!resp.ok) throw new Error("not ok");
       const data = await resp.json();
@@ -57,8 +57,14 @@ export async function GET(req: Request) {
       return { provider, subs };
     };
     const winner = await Promise.any(ANIVEXA_PROVIDERS.map(probe));
-    return NextResponse.json({ subtitles: winner.subs, provider: winner.provider });
+    return NextResponse.json(
+      { subtitles: winner.subs, provider: winner.provider },
+      { headers: { "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=86400" } }
+    );
   } catch {}
 
-  return NextResponse.json({ subtitles: [], provider: null });
+  return NextResponse.json(
+    { subtitles: [], provider: null },
+    { headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=21600" } }
+  );
 }

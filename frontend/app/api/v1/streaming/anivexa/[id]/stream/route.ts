@@ -15,8 +15,11 @@ export async function GET(req: Request) {
 
   try {
     const stream = await getAnivexaStream(anilistId, ep, audio);
-    if (!stream) return NextResponse.json({ error: "No stream found" }, { status: 404 });
-    return NextResponse.json(stream);
+    if (!stream)
+      return NextResponse.json({ error: "No stream found" }, { status: 404 });
+    return NextResponse.json(stream, {
+      headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=21600" },
+    });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 503 });
   }
