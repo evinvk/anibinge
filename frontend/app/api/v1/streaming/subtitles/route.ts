@@ -30,14 +30,14 @@ export async function GET(req: Request) {
   if (!anilistId) return NextResponse.json({ subtitles: [], provider: null });
 
   try {
-    // Try Anivexa providers for subtitles
-    for (const provider of ANIVEXA_PROVIDERS) {
-      try {
+    // Probe all Anivexa providers in parallel, prefer the earliest with subtitles
+    const results = await Promise.allSettled(
+      ANIVEXA_PROVIDERS.map(async (provider) => {
         const resp = await fetch(
           `${ANIVEXA_API}/watch/${provider}/${anilistId}/${audio}/${provider}-${ep}`,
           { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(8000) }
         );
-        if (!resp.ok) continue;
+        if (!resp.ok) throw new Error("not ok");
         const data = await resp.json();
         const subs = (data.subtitles || []).map((s: any) => ({
           file: s.url || s.file,
@@ -54,8 +54,14 @@ export async function GET(req: Request) {
             if (!subs.some((x: any) => x.file === sub.file)) subs.push(sub);
           }
         }
-        if (subs.length > 0) return NextResponse.json({ subtitles: subs, provider });
-      } catch { continue; }
+        return { provider, subs };
+      })
+    );
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      if (result.value.subs.length > 0) {
+        return NextResponse.json({ subtitles: result.value.subs, provider: result.value.provider });
+      }
     }
   } catch {}
 
