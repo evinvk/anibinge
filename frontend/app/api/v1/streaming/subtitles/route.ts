@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { ANIVEXA_API, ANIVEXA_PROVIDERS } from "@/lib/anivexa";
+import { ANIVEXA_API, ANIVEXA_PROVIDERS, extractEmbedSubtitles } from "@/lib/anivexa";
 const GRAPHQL = "https://graphql.anilist.co";
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
@@ -48,6 +48,12 @@ export async function GET(req: Request) {
           source: provider,
           referer: `https://${provider}.app/`,
         }));
+        for (const s of data.streams || []) {
+          if (s?.type !== "embed") continue;
+          for (const sub of extractEmbedSubtitles(s.url, provider)) {
+            if (!subs.some((x: any) => x.file === sub.file)) subs.push(sub);
+          }
+        }
         if (subs.length > 0) return NextResponse.json({ subtitles: subs, provider });
       } catch { continue; }
     }

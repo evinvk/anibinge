@@ -39,6 +39,43 @@ function isMp4Url(u: string): boolean {
   }
 }
 
+export function extractEmbedSubtitles(
+  embedUrl: string | null | undefined,
+  source: string
+): any[] {
+  if (!embedUrl) return [];
+  let u: URL;
+  try {
+    u = new URL(embedUrl);
+  } catch {
+    return [];
+  }
+  const subs: any[] = [];
+  const push = (file: string, label: string | null) => {
+    if (!file || !/\.(vtt|srt)$/i.test(file)) return;
+    subs.push({
+      file,
+      label: label || "English",
+      language: "en",
+      kind: "captions",
+      source,
+      referer: `${u.origin}/`,
+    });
+  };
+  for (const [key, value] of u.searchParams.entries()) {
+    const cap = key.match(/^caption_(\d+)$/i);
+    if (cap) {
+      push(value, u.searchParams.get(`sub_${cap[1]}`) || u.searchParams.get(`label_${cap[1]}`));
+      continue;
+    }
+    const cfile = key.match(/^c(\d+)_file$/i);
+    if (cfile) {
+      push(value, u.searchParams.get(`c${cfile[1]}_label`));
+    }
+  }
+  return subs;
+}
+
 async function fetchWithReferer(
   url: string,
   referer: string,
@@ -133,6 +170,12 @@ export async function getAnivexaStream(
         source: provider,
         referer,
       }));
+      for (const s of streams) {
+        if (s?.type !== "embed") continue;
+        for (const sub of extractEmbedSubtitles(s.url, provider)) {
+          if (!subtitles.some((x: any) => x.file === sub.file)) subtitles.push(sub);
+        }
+      }
 
       return {
         source: "anivexa",
