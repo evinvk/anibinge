@@ -26,7 +26,7 @@ video::-webkit-media-controls-fullscreen-button {
 
   /* visible keyboard focus, per accessibility floor */
   :focus-visible {
-    outline: 2px solid #A78BFA;
+    outline: 2px solid #FB7185;
     outline-offset: 2px;
     border-radius: 4px;
   }
@@ -63,7 +63,7 @@ video::-webkit-media-controls-fullscreen-button {
     inset: 0;
     padding: 1px;
     border-radius: inherit;
-    background: linear-gradient(135deg, #7C3AED, transparent 40%, transparent 60%, #A78BFA);
+    background: linear-gradient(135deg, #E11D48, transparent 40%, transparent 60%, #FB7185);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;

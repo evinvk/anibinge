@@ -19,7 +19,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   industry: "text-amber-400",
   trailer: "text-red-400",
   announcement: "text-green-400",
-  review: "text-purple-400",
+  review: "text-primary-400",
   editorial: "text-cyan-400",
 };
 

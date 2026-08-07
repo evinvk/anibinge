@@ -107,7 +107,7 @@ function EpisodeCard({ item }: { item: RecentEpisode }) {
   );
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(124,58,237,0.5)]">
+    <div className="group relative overflow-hidden rounded-2xl transition-all duration-300 hover:shadow-[0_8px_40px_-12px_rgba(225,29,72,0.5)]">
       {locked ? (
         <div className="relative block w-full overflow-hidden aspect-[2/3] cursor-not-allowed">{body}</div>
       ) : (

@@ -30,7 +30,7 @@ export default async function Image() {
             width: 600,
             height: 600,
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(124,58,237,0.3) 0%, transparent 70%)",
+            background: "radial-gradient(circle, rgba(225,29,72,0.3) 0%, transparent 70%)",
             top: "50%",
             left: "50%",
             transform: "translate(-50%, -50%)",
@@ -46,11 +46,11 @@ export default async function Image() {
         >
           <defs>
             <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#A78BFA" />
-              <stop offset="100%" stopColor="#7C3AED" />
+              <stop offset="0%" stopColor="#FB7185" />
+              <stop offset="100%" stopColor="#E11D48" />
             </linearGradient>
           </defs>
-          <circle cx="16" cy="16" r="15" fill="#0A0A0F" stroke="url(#g)" strokeWidth="1.5" />
+          <circle cx="16" cy="16" r="15" fill="#0A0A0D" stroke="url(#g)" strokeWidth="1.5" />
           <path
             d="M16 5 L18.5 12.5 L26 14 L19.5 18.5 L21 26 L16 21.5 L11 26 L12.5 18.5 L6 14 L13.5 12.5 Z"
             fill="url(#g)"
@@ -75,7 +75,7 @@ export default async function Image() {
           style={{
             position: "relative",
             fontSize: 24,
-            color: "#A78BFA",
+            color: "#FB7185",
             marginTop: 12,
             letterSpacing: 4,
             textTransform: "uppercase",
