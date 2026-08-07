@@ -1,0 +1,45 @@
+name: Healthcheck
+
+on:
+  schedule:
+    # Every 30 minutes
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Homepage
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://www.anibinge.fun/)
+          echo "homepage: $code"
+          test "$code" = "200"
+
+      - name: Browse page (SSR catalog)
+        run: |
+          body=$(curl -s --max-time 30 https://www.anibinge.fun/browse)
+          echo "$body" | grep -q 'href="/watch/' && echo "browse: OK"
+
+      - name: Search API
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "https://www.anibinge.fun/api/v1/search?q=naruto&page=1&scope=anime")
+          echo "search: $code"
+          test "$code" = "200"
+
+      - name: Subtitle API (probes anivexa providers)
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 40 "https://www.anibinge.fun/api/v1/streaming/subtitles?q=One%20Piece&ep=1&anilist_id=21&v=2")
+          echo "subtitles: $code"
+          test "$code" = "200"
+
+      - name: Stream API
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 40 "https://www.anibinge.fun/api/v1/streaming/anivexa/21/stream?ep=1&audio=sub")
+          echo "stream: $code"
+          test "$code" = "200"
+
+      - name: Watch page (player shell renders)
+        run: |
+          body=$(curl -s --max-time 30 "https://www.anibinge.fun/watch/one-piece-9vkb?ep=1")
+          echo "$body" | grep -q 'GogoAnimeWatchPlayer\|Episode 1\|watch/' && echo "watch: OK"

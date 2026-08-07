@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, Lock } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
+import { PlayerErrorBoundary } from "@/components/player-error-boundary";
 import { EpisodeComments } from "@/components/episode-comments";
 import { MonetagPopunder } from "@/components/monetag-popunder";
 import { TopTen } from "@/components/top-ten";
@@ -177,7 +178,9 @@ function WatchPageInner({ slug }: { slug: string }) {
             </span>
           </div>
         ) : (
-          <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={handleEpisodeChange} historyScope={historyScope} />
+          <PlayerErrorBoundary>
+            <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={handleEpisodeChange} historyScope={historyScope} />
+          </PlayerErrorBoundary>
         )}
 
         <div className="mt-4 flex items-center justify-between gap-2">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server } from "lucide-react";
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
@@ -27,6 +27,7 @@ function isEmbedUrl(url: string): boolean {
 
 export default function DonghuaWatchPage({ slug }: Props) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
 
   const [title, setTitle] = useState<string>("");
@@ -148,6 +149,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const goToEpisode = (ep: number) => {
     if (ep < 1) return;
     setCurrentEp(ep);
+    router.replace(`/donghua/watch/${slug}?ep=${ep}`, { scroll: false });
   };
 
   const resolvedUrl = (() => {

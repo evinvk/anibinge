@@ -18,7 +18,7 @@ export async function GET(req: Request) {
     if (!stream)
       return NextResponse.json({ error: "No stream found" }, { status: 404 });
     return NextResponse.json(stream, {
-      headers: { "Cache-Control": "public, s-maxage=21600, stale-while-revalidate=21600" },
+      headers: { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=1800" },
     });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 503 });

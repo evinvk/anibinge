@@ -3,6 +3,7 @@ import { Suspense, cache } from "react";
 import { Loader2 } from "lucide-react";
 import { fetchHtml, parseDetailAuto, resolveAnimeXinSeriesUrl } from "@/app/api/v1/donghua/_animexin";
 import DonghuaWatchPlayer from "@/components/donghua-watch-player";
+import { PlayerErrorBoundary } from "@/components/player-error-boundary";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun").replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
 
@@ -90,7 +91,9 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(videoJsonLd) }} />
-      <DonghuaWatchPlayer slug={slug} />
+      <PlayerErrorBoundary>
+        <DonghuaWatchPlayer slug={slug} />
+      </PlayerErrorBoundary>
     </>
   );
 }

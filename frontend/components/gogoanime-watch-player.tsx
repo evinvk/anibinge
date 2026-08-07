@@ -129,7 +129,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     return false;
   }, [slug, audio]);
 
-  const tryAnitsu = useCallback(async (ep: number, epAudio?: string): Promise<boolean> => {
+  const tryAnitsu = useCallback(async (ep: number, epAudio?: string, fresh = false): Promise<boolean> => {
     setStatusText("");
     try {
       const aid = resolvedAnilistRef.current;
@@ -137,7 +137,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
       let res: any;
 
       if (aid) {
-        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${useAudio}`;
+        const url = `${API_BASE}/api/v1/streaming/anivexa/${aid}/stream?ep=${ep}&audio=${useAudio}${fresh ? `&fresh=${Date.now()}` : ""}`;
         res = await fetch(url).then(r => {
           if (!r.ok) throw new Error("not ok");
           return r.json();
@@ -271,7 +271,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
     const currentSource = player.sourceRef.current;
     if (currentSource === "gogoanime") {
-      const ok = await tryAnitsu(currentEpRef.current);
+      const ok = await tryAnitsu(currentEpRef.current, undefined, true);
       if (!ok) {
         player.setError(friendlyError("Playback error: " + errorType));
         player.setLoadingStream(false);
@@ -483,7 +483,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
     };
   }, []);
 
-  const loadStream = useCallback(async (s: string, ep: number) => {
+  const loadStream = useCallback(async (s: string, ep: number, fresh = false) => {
     player.setLoadingStream(true);
     player.setError(null);
     subs.resetSubs();
@@ -540,7 +540,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
     let result: string | null = null;
     for (const s of order) {
-      const ok = s === "hindi" ? await tryHindi(ep) : s === "anitsu" ? await tryAnitsu(ep) : await tryGogoanime(ep);
+      const ok = s === "hindi" ? await tryHindi(ep) : s === "anitsu" ? await tryAnitsu(ep, undefined, fresh) : await tryGogoanime(ep);
       if (ok) { result = s; break; }
     }
     if (!result) {
@@ -600,7 +600,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   const handleRetry = useCallback(() => {
     player.resetPlayer();
-    loadStream(slug, currentEp);
+    loadStream(slug, currentEp, true);
   }, [slug, currentEp, loadStream]);
 
   return (
