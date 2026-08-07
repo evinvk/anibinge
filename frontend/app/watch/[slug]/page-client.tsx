@@ -1,8 +1,8 @@
 "use client";
 
-import { use, useState, useEffect, useRef, Suspense } from "react";
+import { use, useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, Lock } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { EpisodeComments } from "@/components/episode-comments";
@@ -19,6 +19,7 @@ interface PageProps {
 
 function WatchPageInner({ slug }: { slug: string }) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const initialEp = parseInt(searchParams.get("ep") || "1", 10) || 1;
   const { user } = useAuth();
   const historyScope = user?.id ?? "guest";
@@ -30,6 +31,14 @@ function WatchPageInner({ slug }: { slug: string }) {
   const [error, setError] = useState<string | null>(null);
   const [releaseLockUntil, setReleaseLockUntil] = useState<number | null>(null);
   const fetchedRef = useRef(false);
+
+  const handleEpisodeChange = useCallback(
+    (ep: number) => {
+      setCurrentEp(ep);
+      router.replace(`/watch/${slug}?ep=${ep}`, { scroll: false });
+    },
+    [router, slug]
+  );
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -136,13 +145,16 @@ function WatchPageInner({ slug }: { slug: string }) {
     <div className="min-h-screen bg-void">
       <MonetagPopunder />
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
-        <Link
-          href="/"
+        <button
+          onClick={() => {
+            if (window.history.length > 1) router.back();
+            else router.push("/");
+          }}
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-mist hover:text-paper transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back
-        </Link>
+        </button>
         {anilistId ? (
           <Link href={`/anime/${anilistId}`} className="mb-4 block font-display text-2xl font-bold text-paper hover:text-primary-400 transition-colors">{title}</Link>
         ) : (
@@ -165,7 +177,7 @@ function WatchPageInner({ slug }: { slug: string }) {
             </span>
           </div>
         ) : (
-          <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={setCurrentEp} historyScope={historyScope} />
+          <GogoAnimeWatchPlayer slug={slug} title={title} totalEps={totalEps} anilistId={anilistId} initialEp={initialEp} onEpisodeChange={handleEpisodeChange} historyScope={historyScope} />
         )}
 
         <div className="mt-4 flex items-center justify-between gap-2">
