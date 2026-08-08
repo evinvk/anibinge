@@ -182,6 +182,79 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
           </div>
         </section>
       )}
+
+      {/* Watch Order Guide */}
+      {detailTitle && (
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{
+              __html: JSON.stringify({
+                "@context": "https://schema.org",
+                "@type": "ItemList",
+                name: `${detailTitle} Watch Order`,
+                description: `Complete watch order for ${detailTitle} including TV series, movies, OVAs, and specials.`,
+                itemListElement: [
+                  {
+                    "@type": "ListItem",
+                    position: 1,
+                    name: detailTitle,
+                    url: `${SITE_URL}/anime/${id}`,
+                    description: `Main series — ${episodesCount} episodes`
+                  }
+                ]
+              })
+            }}
+          />
+          <div className="rounded-2xl border border-white/10 bg-surface-hi/50 p-6">
+            <h2 className="font-display text-xl font-bold">Watch Order Guide</h2>
+            <p className="mt-2 text-sm text-mist">
+              Recommended viewing order for {detailTitle}:
+            </p>
+            <ol className="mt-4 space-y-3 text-sm">
+              <li className="flex items-start gap-3">
+                <span className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-primary-600 text-xs font-bold text-white">1</span>
+                <div>
+                  <p className="font-medium text-paper">{detailTitle} (Main Series)</p>
+                  <p className="text-mist/70">{episodesCount} episodes</p>
+                </div>
+              </li>
+            </ol>
+            <p className="mt-4 text-xs text-mist/60">
+              Check related anime below for sequels, prequels, and spin-offs.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Filler Episodes */}
+      {detailTitle && episodesCount > 20 && (
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+          <div className="rounded-2xl border border-white/10 bg-surface-hi/50 p-6">
+            <h2 className="font-display text-xl font-bold">Filler Episodes</h2>
+            <p className="mt-2 text-sm text-mist">
+              {detailTitle} has a mix of canon and filler episodes. Below is a breakdown to help you decide what to watch.
+            </p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h3 className="font-medium text-emerald-400">Canon Episodes (Essential)</h3>
+                <p className="mt-1 text-sm text-mist">
+                  Episodes that advance the main story. Watch these for the complete narrative.
+                </p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+                <h3 className="font-medium text-amber-400">Filler Episodes (Optional)</h3>
+                <p className="mt-1 text-sm text-mist">
+                  Episodes not based on the original manga. Can be skipped without missing plot.
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-xs text-mist/60">
+              Detailed filler lists are updated per series. Check animefillerlist.com for the most current breakdown.
+            </p>
+          </div>
+        </section>
+      )}
     </>
   );
 }
