@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL, getSeasonPages, STUDIO_PAGES, episodeUploadDate } from "@/lib/seo";
 
+// Prerender the sitemap at build time and serve it as a static file (with ISR
+// refresh every 6h). Static files always respond instantly with 200 — no
+// serverless function execution that could time out or fail on a cold start,
+// which is what Google's "Couldn't fetch" hit before.
+export const dynamic = "force-static";
 export const revalidate = 21600; // regenerate every 6h (catalog churns daily)
 
 const API_BASE =
