@@ -100,22 +100,41 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
 
       // Resolve the gogoanime watch slug server-side so the episode list
       // below is crawlable (client-side resolution is invisible to Google).
+      // The search endpoint misses the main series for big titles, so check
+      // the latest catalog first (reliable slug<->title source), then search.
       try {
-        const searchRes = await fetch(
-          `${SITE_URL}/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(title)}`,
-          { signal: AbortSignal.timeout(10000) }
-        );
-        const searchData = await searchRes.json();
-        const items: any[] = searchData?.data ?? [];
-        if (items.length > 0) {
-          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
-          const target = norm(title);
+        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+        const target = norm(title);
+        let found: string | null = null;
+        for (const p of [1, 2, 3]) {
+          if (found) break;
+          const latestRes = await fetch(
+            `${SITE_URL}/api/v1/streaming/gogoanime/latest?page=${p}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          const latestData = await latestRes.json();
+          for (const a of latestData?.data ?? []) {
+            const t = norm(a.title_english || a.title || "");
+            if (t === target || (a.slug && norm(a.slug) === target)) {
+              found = a.slug;
+              break;
+            }
+          }
+        }
+        if (!found) {
+          const searchRes = await fetch(
+            `${SITE_URL}/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(title)}`,
+            { signal: AbortSignal.timeout(10000) }
+          );
+          const searchData = await searchRes.json();
+          const items: any[] = searchData?.data ?? [];
           const match =
             items.find((a: any) => a.title && norm(a.title) === target) ||
             items.find((a: any) => a.title_english && norm(a.title_english) === target) ||
             (episodesCount === 1 ? items[0] : null);
-          if (match?.slug) watchSlug = match.slug;
+          if (match?.slug) found = match.slug;
         }
+        watchSlug = found;
       } catch {}
     }
   } catch {}
