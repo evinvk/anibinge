@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-const INDEXNOW_KEY = "5734b58eddfb02e577f1631c0700dcfa";
+const INDEXNOW_KEY = "ba82636ed4b641558b53cbef2a9efdd7";
 
 export function GET() {
   return new NextResponse(INDEXNOW_KEY, {
