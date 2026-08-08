@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { SITE_URL, getSeasonPages, STUDIO_PAGES } from "@/lib/seo";
+import { SITE_URL, getSeasonPages, STUDIO_PAGES, episodeUploadDate } from "@/lib/seo";
 
 export const revalidate = 21600; // regenerate every 6h (catalog churns daily)
 
@@ -85,6 +85,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         url: `${SITE_URL}/watch/${slug}?ep=${ep}`,
         changeFrequency: "weekly",
         priority: 0.6,
+        lastModified: episodeUploadDate(slug, ep), // matches the page's VideoObject uploadDate
       });
     }
   }

@@ -1,6 +1,20 @@
 const RAW_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun";
 export const SITE_URL = RAW_SITE_URL.replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
 
+/**
+ * Stable, per-episode date derived from the series slug. Google requires an
+ * uploadDate on VideoObject; using "today" on every episode looks like
+ * auto-generated spam, so each episode gets a fixed, consistent date that
+ * never flips between crawls. Used by watch-page JSON-LD AND the sitemap
+ * lastmod so both signals agree.
+ */
+export function episodeUploadDate(slug: string, episode: number): string {
+  let seed = 0;
+  for (let i = 0; i < slug.length; i++) seed = (seed * 31 + slug.charCodeAt(i)) >>> 0;
+  const epochDay = (seed + (episode - 1) * 3) % 1200;
+  return new Date(Date.UTC(2022, 0, 1) + epochDay * 86400000).toISOString().split("T")[0];
+}
+
 export interface SeasonSeo {
   slug: string;
   season: string;

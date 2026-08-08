@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import WatchPageClient from "./page-client";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { episodeUploadDate } from "@/lib/seo";
+import { cachedFetch } from "@/lib/ttl-cache";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -76,13 +78,26 @@ export default async function WatchPage({ params, searchParams }: PageProps) {
   const url = `${SITE_URL}/watch/${slug}?ep=${episodeNumber}`;
   const thumbnailUrl = toAbsoluteImage(poster) || THUMB_FALLBACK;
 
-  // Stable per-episode date derived from slug (Google requires uploadDate;
-  // using today's date on every episode looks like auto-generated spam).
-  let seed = 0;
-  for (let i = 0; i < slug.length; i++) seed = (seed * 31 + slug.charCodeAt(i)) >>> 0;
-  const epochDay = (seed + (episodeNumber - 1) * 3) % 1200;
-  const base = new Date(Date.UTC(2022, 0, 1) + epochDay * 86400000);
-  const uploadDate = base.toISOString().split("T")[0];
+  const uploadDate = episodeUploadDate(slug, episodeNumber);
+
+  // Breadcrumb parent: prefer the anime detail page (/anime/{anilist id}) so
+  // breadcrumb rich results point at the topic-cluster hub, not a search page.
+  let animeHref: string | null = null;
+  try {
+    const resolved = await cachedFetch(
+      `watch-anime-link:${slug}`,
+      24 * 3600 * 1000,
+      async () => {
+        const res = await fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data?.anilist_id ? { id: data.anilist_id } : null;
+      }
+    );
+    if (resolved) animeHref = `/anime/${resolved.id}?source=anilist`;
+  } catch {}
 
   const videoJsonLd = {
     "@context": "https://schema.org",
@@ -112,7 +127,13 @@ export default async function WatchPage({ params, searchParams }: PageProps) {
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6">
         <Breadcrumbs
           siteUrl={SITE_URL}
-          items={[{ label: title, href: `/search?q=${encodeURIComponent(title)}` }, { label: `Episode ${episodeNumber}` }]}
+          items={[
+            {
+              label: title,
+              href: animeHref || `/search?q=${encodeURIComponent(title)}`,
+            },
+            { label: `Episode ${episodeNumber}` },
+          ]}
         />
       </div>
       <WatchPageClient params={params} />
