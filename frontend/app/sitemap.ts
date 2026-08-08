@@ -9,7 +9,7 @@ const API_BASE =
 const MAX_EPISODE_URLS_PER_TITLE = 24;
 const MAX_TITLES_FROM_GOGO = 60;
 
-async function fetchJson(url: string, timeoutMs = 15000): Promise<any> {
+async function fetchJson(url: string, timeoutMs = 8000): Promise<any> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
@@ -40,18 +40,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // Anime topic-cluster hubs: /anime/{id} (from MAL top-rated + trending)
+  // All catalog fetches run in parallel so even the cold-start sitemap build
+  // stays fast — a slow sequential build is what made Google's fetch fail.
+  const [rated1, rated2, trending, latest1, latest2, latest3, donghuaRes] = await Promise.all([
+    fetchJson(`${API_BASE}/api/v1/anime/top-rated?page=1`, 8000),
+    fetchJson(`${API_BASE}/api/v1/anime/top-rated?page=2`, 8000),
+    fetchJson(`${API_BASE}/api/v1/anime/trending?page=1`, 8000),
+    fetchJson(`${API_BASE}/api/v1/streaming/gogoanime/latest?page=1`, 8000),
+    fetchJson(`${API_BASE}/api/v1/streaming/gogoanime/latest?page=2`, 8000),
+    fetchJson(`${API_BASE}/api/v1/streaming/gogoanime/latest?page=3`, 8000),
+    fetchJson(`${API_BASE}/api/v1/donghua/browse?page=1`, 8000),
+  ]);
+
   const animeIds = new Set<number>();
-  for (const p of [1, 2]) {
-    const res = await fetchJson(`${API_BASE}/api/v1/anime/top-rated?page=${p}`);
+  for (const res of [rated1, rated2, trending]) {
     const list = Array.isArray(res?.data) ? res.data : [];
     for (const a of list) {
-      const id = Number(a?.id ?? a?.mal_id ?? a?.anilist_id);
-      if (Number.isInteger(id) && id > 0) animeIds.add(id);
-    }
-  }
-  const resT = await fetchJson(`${API_BASE}/api/v1/anime/trending?page=1`);
-  if (Array.isArray(resT?.data)) {
-    for (const a of resT.data) {
       const id = Number(a?.id ?? a?.mal_id ?? a?.anilist_id);
       if (Number.isInteger(id) && id > 0) animeIds.add(id);
     }
@@ -64,8 +68,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // These are the "[anime] episode N" long-tail pages. Capped per title to keep
   // the sitemap lean — Google crawls the freshest episodes, not all 1000+.
   const slugSet = new Map<string, { episodes: number; latest: number }>();
-  for (const p of [1, 2, 3]) {
-    const res = await fetchJson(`${API_BASE}/api/v1/streaming/gogoanime/latest?page=${p}`);
+  for (const res of [latest1, latest2, latest3]) {
     const list = Array.isArray(res?.data) ? res.data : [];
     for (const a of list) {
       if (slugSet.size >= MAX_TITLES_FROM_GOGO) break;
@@ -91,11 +94,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // Donghua catalog hubs
-  const resD = await fetchJson(`${API_BASE}/api/v1/donghua/browse?page=1`);
-  if (Array.isArray(resD?.data)) {
-    for (const d of resD.data) {
-      if (d?.slug) urls.push({ url: `${SITE_URL}/donghua/${d.slug}`, changeFrequency: "weekly", priority: 0.5 });
-    }
+  const donghuaList = Array.isArray(donghuaRes?.data) ? donghuaRes.data : [];
+  for (const d of donghuaList) {
+    if (d?.slug) urls.push({ url: `${SITE_URL}/donghua/${d.slug}`, changeFrequency: "weekly", priority: 0.5 });
   }
 
   return urls;
