@@ -6,6 +6,7 @@ import { Menu, X, Sparkles, User, Bookmark, LogIn, ChevronDown, FolderPlus } fro
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { RandomAnimeButton } from "@/components/random-anime-button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const LINKS = [
   { href: "/", label: "Anime" },
@@ -80,6 +81,7 @@ export function Navbar() {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <ThemeToggle />
           <RandomAnimeButton className="hidden md:flex" />
           <Link
             href="/watchlist"
@@ -148,6 +150,7 @@ export function Navbar() {
           </div>
           <div className="mt-1 flex items-center gap-2">
             <RandomAnimeButton />
+            <ThemeToggle />
           </div>
           <Link href="/watchlist" onClick={() => setOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-primary-400 hover:bg-white/5">
             My Watchlist

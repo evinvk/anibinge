@@ -3,11 +3,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server } from "lucide-react";
+import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server, SkipForward, Play } from "lucide-react";
 import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
 import { InjectedAdScript } from "@/components/injected-ad-script";
 import { VideoAdOverlay } from "@/components/video-ad-overlay";
+import { getSkipTimes, recordSkipIntro, recordSkipOutro, DEFAULT_INTRO_START, DEFAULT_INTRO_LENGTH, DEFAULT_OUTRO_LENGTH } from "@/lib/skip-intro";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -39,6 +40,12 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const [loadingStream, setLoadingStream] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [showSkipIntro, setShowSkipIntro] = useState(false);
+  const [showSkipOutro, setShowSkipOutro] = useState(false);
+  const lastSkipStateRef = useRef({ intro: false, outro: false });
+  const [autoPlayNext, setAutoPlayNext] = useState(true);
+  const [nextEpCountdown, setNextEpCountdown] = useState(0);
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [audio, setAudio] = useState<"sub" | "hindi">("sub");
   const [isHindiStream, setIsHindiStream] = useState(false);
@@ -174,6 +181,81 @@ export default function DonghuaWatchPage({ slug }: Props) {
     return () => { if (hls) hls.destroy(); };
   }, [resolvedUrl, isHls]);
 
+  const skipIntro = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const times = getSkipTimes(slug);
+    const end = (times.intro ?? DEFAULT_INTRO_START) + DEFAULT_INTRO_LENGTH;
+    recordSkipIntro(slug, v.currentTime);
+    v.currentTime = end;
+    v.play().catch(() => {});
+    setShowSkipIntro(false);
+  }, [slug]);
+
+  const skipOutro = useCallback(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    const d = v.duration || 0;
+    if (d > 0) {
+      recordSkipOutro(slug, v.currentTime);
+      v.currentTime = Math.max(0, d - 15);
+    }
+    setShowSkipOutro(false);
+  }, [slug]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !streamUrl) return;
+
+    const onTime = () => {
+      const t = video.currentTime;
+      const d = video.duration || 0;
+      const times = getSkipTimes(slug);
+      const introStart = times.intro ?? DEFAULT_INTRO_START;
+      const introEnd = introStart + DEFAULT_INTRO_LENGTH;
+      const introVisible = t >= introStart - 3 && t < introEnd;
+      const outroVisible = d > 180 && t >= d - DEFAULT_OUTRO_LENGTH && t < d - 5;
+      if (introVisible !== lastSkipStateRef.current.intro) {
+        lastSkipStateRef.current.intro = introVisible;
+        setShowSkipIntro(introVisible);
+      }
+      if (outroVisible !== lastSkipStateRef.current.outro) {
+        lastSkipStateRef.current.outro = outroVisible;
+        setShowSkipOutro(outroVisible);
+      }
+    };
+
+    const onEnded = () => {
+      if (!autoPlayNext) return;
+      const next = currentEp + 1;
+      if (totalEps && next > totalEps) return;
+      setNextEpCountdown(5);
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = setInterval(() => {
+        setNextEpCountdown((prev) => {
+          if (prev <= 1) {
+            if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+            countdownTimerRef.current = null;
+            goToEpisode(next);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    };
+
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("ended", onEnded);
+    return () => {
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("ended", onEnded);
+    };
+  }, [streamUrl, slug, currentEp, totalEps, autoPlayNext, goToEpisode]);
+
+  useEffect(() => {
+    return () => { if (countdownTimerRef.current) clearInterval(countdownTimerRef.current); };
+  }, []);
+
   return (
     <div className="min-h-screen bg-void">
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
@@ -239,6 +321,53 @@ export default function DonghuaWatchPage({ slug }: Props) {
               >
                 <p>Your browser does not support HTML video.</p>
               </video>
+              {showSkipOutro ? (
+                <button
+                  onClick={skipOutro}
+                  className="absolute bottom-20 right-3 z-20 flex items-center gap-1.5 rounded-md bg-black/70 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-black/90 animate-[slideUp_0.2s_ease-out]"
+                >
+                  Skip Outro
+                  <SkipForward className="h-3.5 w-3.5" />
+                </button>
+              ) : showSkipIntro ? (
+                <button
+                  onClick={skipIntro}
+                  className="absolute bottom-20 right-3 z-20 flex items-center gap-1.5 rounded-md bg-black/70 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur-sm transition hover:bg-black/90 animate-[slideUp_0.2s_ease-out]"
+                >
+                  Skip Intro
+                  <SkipForward className="h-3.5 w-3.5" />
+                </button>
+              ) : null}
+              {nextEpCountdown > 0 && (
+                <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/80">
+                  <p className="text-lg font-semibold text-white">Next episode in {nextEpCountdown}</p>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                        countdownTimerRef.current = null;
+                        setNextEpCountdown(0);
+                        goToEpisode(currentEp + 1);
+                      }}
+                      className="flex items-center gap-1.5 rounded-md bg-red-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-red-400"
+                    >
+                      <Play className="h-3 w-3" />
+                      Play now
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+                        countdownTimerRef.current = null;
+                        setNextEpCountdown(0);
+                        setAutoPlayNext(false);
+                      }}
+                      className="rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
             </>
           ) : resolvedUrl ? (
             <>
@@ -301,7 +430,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
         )}
 
         {/* Episode navigation */}
-        <div className="mt-6 flex items-center justify-between">
+        <div className="mt-6 flex items-center justify-between gap-2">
           <button
             onClick={() => goToEpisode(currentEp - 1)}
             disabled={currentEp <= 1}
@@ -334,6 +463,20 @@ export default function DonghuaWatchPage({ slug }: Props) {
           >
             Next
             <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="mt-3">
+          <button
+            onClick={() => setAutoPlayNext((p) => !p)}
+            className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition ${
+              autoPlayNext
+                ? "bg-red-500/20 text-red-300"
+                : "bg-white/5 text-mist hover:bg-white/10"
+            }`}
+          >
+            <Play className={`h-3 w-3 ${!autoPlayNext && "opacity-50"}`} />
+            {autoPlayNext ? "Auto-play on" : "Auto-play off"}
           </button>
         </div>
 

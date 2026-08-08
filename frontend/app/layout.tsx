@@ -8,6 +8,7 @@ import { NotificationsProvider } from "@/lib/notifications-context";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { PushPrompt } from "@/components/push-prompt";
 import { AnalyticsTracker } from "@/components/analytics-tracker";
 
 
@@ -120,6 +121,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <NotificationsProvider>
               <div className="relative min-h-screen bg-aura-gradient bg-fixed">
                 <ServiceWorkerRegister />
+                <PushPrompt />
                 <AnalyticsTracker />
                 <Navbar />
                 <main>{children}</main>
