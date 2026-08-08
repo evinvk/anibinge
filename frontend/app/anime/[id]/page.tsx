@@ -1,5 +1,6 @@
 ﻿import { AnimeDetailClient } from "./client";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import Link from "next/link";
 import { permanentRedirect, notFound } from "next/navigation";
 import { cache } from "react";
 import { resolveAnimeSlug } from "@/lib/resolve-anime-slug";
@@ -66,12 +67,15 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
 
   let jsonld: Record<string, any> | null = null;
   let detailTitle: string | null = null;
+  let watchSlug: string | null = null;
+  let episodesCount = 0;
   try {
     const res = await fetch(`${SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`, { cache: "no-store" });
     const { data } = await res.json();
     if (data) {
       const title = data.title_english || data.title || "";
       detailTitle = title;
+      episodesCount = Number(data.episodes) || 0;
       const isMovie = data.format === "MOVIE" || data.format === "movie";
       jsonld = {
         "@context": "https://schema.org",
@@ -93,8 +97,33 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
           },
         } : {}),
       };
+
+      // Resolve the gogoanime watch slug server-side so the episode list
+      // below is crawlable (client-side resolution is invisible to Google).
+      try {
+        const searchRes = await fetch(
+          `${SITE_URL}/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(title)}`,
+          { signal: AbortSignal.timeout(10000) }
+        );
+        const searchData = await searchRes.json();
+        const items: any[] = searchData?.data ?? [];
+        if (items.length > 0) {
+          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+          const target = norm(title);
+          const match =
+            items.find((a: any) => a.title && norm(a.title) === target) ||
+            items.find((a: any) => a.title_english && norm(a.title_english) === target) ||
+            (episodesCount === 1 ? items[0] : null);
+          if (match?.slug) watchSlug = match.slug;
+        }
+      } catch {}
     }
   } catch {}
+
+  const MAX_LINKS = 200;
+  const episodeLinks = watchSlug && episodesCount > 0
+    ? Array.from({ length: Math.min(episodesCount, MAX_LINKS) }, (_, i) => i + 1)
+    : [];
 
   return (
     <>
@@ -113,6 +142,27 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
         ) : null}
       </div>
       <AnimeDetailClient id={id} source={source || "mal"} />
+      {episodeLinks.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
+          <h2 className="font-display text-xl font-bold">
+            Watch {detailTitle} Episodes Online
+          </h2>
+          <p className="mt-1 text-sm text-mist">
+            Stream all {episodesCount} episodes free in HD — sub, dub and Hindi audio.
+          </p>
+          <div className="mt-5 grid grid-cols-5 gap-2 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-14">
+            {episodeLinks.map((n) => (
+              <Link
+                key={n}
+                href={`/watch/${watchSlug}?ep=${n}`}
+                className="rounded-lg bg-surface px-2 py-2 text-center text-sm font-medium text-paper transition-colors hover:bg-primary-600/30"
+              >
+                {n}
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </>
   );
 }
