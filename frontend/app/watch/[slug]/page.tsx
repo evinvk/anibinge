@@ -50,7 +50,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const { ep } = await searchParams;
   const episodeNumber = parseInt(ep || "1", 10) || 1;
   const { title } = await fetchAnimeMeta(slug);
-  const pageUrl = episodeNumber === 1 ? `${SITE_URL}/watch/${slug}` : `${SITE_URL}/watch/${slug}?ep=${episodeNumber}`;
+  const pageUrl = episodeNumber === 1 ? `${SITE_URL}/watch/${slug}` : `${SITE_URL}/watch/${slug}/episode-${episodeNumber}`;
 
   return {
     title: `Watch ${title} Episode ${episodeNumber} Online Free — Sub, Dub & Hindi`,
@@ -75,7 +75,7 @@ export default async function WatchPage({ params, searchParams }: PageProps) {
   const [{ slug }, { ep }] = await Promise.all([params, searchParams]);
   const { title, poster } = await fetchAnimeMeta(slug);
   const episodeNumber = parseInt(ep || "1", 10) || 1;
-  const url = `${SITE_URL}/watch/${slug}?ep=${episodeNumber}`;
+  const url = episodeNumber === 1 ? `${SITE_URL}/watch/${slug}` : `${SITE_URL}/watch/${slug}/episode-${episodeNumber}`;
   const thumbnailUrl = toAbsoluteImage(poster) || THUMB_FALLBACK;
 
   const uploadDate = episodeUploadDate(slug, episodeNumber);

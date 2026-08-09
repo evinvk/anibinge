@@ -25,6 +25,13 @@ const nextConfig = {
   compiler: {
     removeConsole: false,
   },
+  async rewrites() {
+    return [
+      { source: "/watch/:slug/episode-:ep", destination: "/watch/:slug?ep=:ep" },
+      { source: "/donghua/watch/:slug/episode-:ep", destination: "/donghua/watch/:slug?ep=:ep" },
+      { source: "/manhwa/read/:slug/chapter-:ch", destination: "/manhwa/read/:slug?ch=:ch" },
+    ];
+  },
   async headers() {
     return [
       {

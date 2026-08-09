@@ -102,7 +102,7 @@ export async function buildSitemapUrls(): Promise<MetadataRoute.Sitemap> {
     const count = Math.min(episodes, MAX_EPISODE_URLS_PER_TITLE);
     for (let ep = 1; ep <= count; ep++) {
       urls.push({
-        url: `${SITE_URL}/watch/${slug}?ep=${ep}`,
+        url: `${SITE_URL}/watch/${slug}/episode-${ep}`,
         changeFrequency: "weekly",
         priority: 0.6,
         lastModified: episodeUploadDate(slug, ep),
@@ -113,9 +113,41 @@ export async function buildSitemapUrls(): Promise<MetadataRoute.Sitemap> {
   for (const res of [donghua1, donghua2, donghua3]) {
     const list = Array.isArray(res?.data) ? res.data : [];
     for (const d of list) {
-      if (d?.slug) urls.push({ url: `${SITE_URL}/donghua/${d.slug}`, changeFrequency: "weekly", priority: 0.5 });
+      if (d?.slug) {
+        urls.push({ url: `${SITE_URL}/donghua/${d.slug}`, changeFrequency: "weekly", priority: 0.5 });
+        if (d?.episodes) {
+          const count = Math.min(Number(d.episodes), 200);
+          for (let ep = 1; ep <= count; ep++) {
+            urls.push({
+              url: `${SITE_URL}/donghua/watch/${d.slug}/episode-${ep}`,
+              changeFrequency: "weekly",
+              priority: 0.5,
+              lastModified: episodeUploadDate(d.slug, ep),
+            });
+          }
+        }
+      }
     }
   }
+
+  // Manhwa chapters
+  try {
+    const manhwaRes = await fetchJson(`${API_BASE}/api/v1/manhwa/browse?page=1`);
+    const manhwaList = Array.isArray(manhwaRes?.data) ? manhwaRes.data : [];
+    for (const m of manhwaList) {
+      if (m?.slug && m?.chapters) {
+        urls.push({ url: `${SITE_URL}/manhwa/${m.slug}`, changeFrequency: "weekly", priority: 0.5 });
+        const count = Math.min(Number(m.chapters), 500);
+        for (let ch = 1; ch <= count; ch++) {
+          urls.push({
+            url: `${SITE_URL}/manhwa/read/${m.slug}/chapter-${ch}`,
+            changeFrequency: "weekly",
+            priority: 0.5,
+          });
+        }
+      }
+    }
+  } catch {}
 
   return urls;
 }

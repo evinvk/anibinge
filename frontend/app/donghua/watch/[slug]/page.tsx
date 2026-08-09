@@ -73,7 +73,7 @@ async function DonghuaWatchPageInner({ params, searchParams }: { params: Promise
     description: detail.description?.slice(0, 300) || `Watch ${detail.title} episode ${episodeNumber} online free.`,
     thumbnailUrl: thumbnailUrl,
     uploadDate: uploadDate,
-    embedUrl: `${SITE_URL}/donghua/watch/${slug}?ep=${episodeNumber}`,
+    embedUrl: `${SITE_URL}/donghua/watch/${slug}/episode-${episodeNumber}`,
     inLanguage: "zh",
     isAccessibleForFree: true,
     partOfEpisode: {
