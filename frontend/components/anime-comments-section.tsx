@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MessageSquare, ThumbsUp, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api";
 import Link from "next/link";
 import clsx from "clsx";
 
@@ -40,16 +41,11 @@ export function AnimeCommentsSection({ animeId, source }: { animeId: number; sou
     setPosting(true);
     setError(null);
     try {
-      const res = await fetch("/api/v1/anime-comments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ anime_id: animeId, source, body }),
-      });
-      if (!res.ok) throw new Error("Failed to post");
+      await api.postAnimeComment(token, animeId, source, body);
       setDraft("");
       load();
-    } catch {
-      setError("Couldn't post your comment — try again");
+    } catch (err: any) {
+      setError(err?.message || "Couldn't post your comment — try again");
     } finally {
       setPosting(false);
     }
@@ -58,12 +54,7 @@ export function AnimeCommentsSection({ animeId, source }: { animeId: number; sou
   const like = async (id: number) => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/v1/anime-comments/${id}/like`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error();
-      const json = await res.json();
+      const json = await api.likeAnimeComment(token, id);
       setComments((prev) => prev.map((c) => (c.id === id ? { ...c, likes: json.likes, liked_by_me: json.liked } : c)));
     } catch {}
   };

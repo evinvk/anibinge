@@ -185,6 +185,11 @@ async function authedRequest<T>(
       });
       clearTimeout(timeout);
       if (!res.ok) {
+        if (res.status === 401) {
+          try { localStorage.removeItem("anibinge_token"); } catch {}
+          if (typeof window !== "undefined" && window.location) window.location.reload();
+          throw new ApiError(401, "Your session expired. Please log in again.");
+        }
         const body = await res.json().catch(() => ({}));
         throw new ApiError(res.status, body.detail || `Request to ${path} failed: ${res.status}`);
       }
@@ -523,6 +528,13 @@ export const api = {
     authedRequest<{ liked: boolean; likes: number }>(`/api/v1/comments/${commentId}/like`, token, {
       method: "POST",
     }),
+  postAnimeComment: (token: string, animeId: number, source: string, body: string) =>
+    authedRequest<any>("/api/v1/anime-comments", token, {
+      method: "POST",
+      body: JSON.stringify({ anime_id: animeId, source, body }),
+    }),
+  likeAnimeComment: (token: string, commentId: number) =>
+    authedRequest<any>(`/api/v1/anime-comments/${commentId}/like`, token, { method: "POST" }),
   resolveComment: (token: string, commentId: number) =>
     authedRequest<{ is_resolved: boolean }>(`/api/v1/comments/${commentId}/resolve`, token, {
       method: "PATCH",
