@@ -78,10 +78,10 @@ export default async function HomePage() {
             <div className="glass-card rounded-2xl p-4">
               <h2 className="font-display text-base font-bold text-paper">Explore</h2>
               <div className="mt-3 flex flex-wrap gap-1.5">
-                <Link href="/anime/movies" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Movies</Link>
-                <Link href="/anime/ova" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">OVA</Link>
-                <Link href="/anime/specials" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Specials</Link>
-                <Link href="/anime/ona" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">ONA</Link>
+                <Link href="/browse?type=movie" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Movies</Link>
+                <Link href="/browse?type=ova" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">OVA</Link>
+                <Link href="/browse?type=special" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Specials</Link>
+                <Link href="/browse?type=ona" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">ONA</Link>
                 <Link href="/az" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">A–Z Index</Link>
                 <Link href="/schedule" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Schedule</Link>
                 <Link href="/seasonal" className="rounded-full bg-white/5 border border-white/10 px-3 py-1 text-xs text-mist transition-colors hover:border-primary-400/30 hover:text-paper">Seasonal</Link>
