@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   title: "Watch Anime Online Free — Stream & Track Episodes",
   description:
     "Watch anime online free in HD. Stream sub & dub episodes, browse trending series, track your progress, and never miss new releases.",
+  alternates: { canonical: "https://www.anibinge.fun/" },
   openGraph: {
     title: "Watch Anime Online Free — Stream & Track Episodes",
     description:
@@ -60,6 +61,7 @@ export default async function HomePage() {
       )}
 
       <div className="pt-6">
+        <h1 className="sr-only">Watch Anime Online Free — Stream &amp; Track Episodes</h1>
         <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
           <div className="min-w-0 space-y-8">
             <HomeSearch />

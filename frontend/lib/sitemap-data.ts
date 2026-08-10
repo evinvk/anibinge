@@ -115,8 +115,9 @@ export async function buildSitemapUrls(): Promise<MetadataRoute.Sitemap> {
     for (const d of list) {
       if (d?.slug) {
         urls.push({ url: `${SITE_URL}/donghua/${d.slug}`, changeFrequency: "weekly", priority: 0.5 });
-        if (d?.episodes) {
-          const count = Math.min(Number(d.episodes), 200);
+        const eps = Number(d?.episode) || Number(d?.episodes) || 0;
+        if (eps > 0) {
+          const count = Math.min(eps, 200);
           for (let ep = 1; ep <= count; ep++) {
             urls.push({
               url: `${SITE_URL}/donghua/watch/${d.slug}/episode-${ep}`,
@@ -130,22 +131,22 @@ export async function buildSitemapUrls(): Promise<MetadataRoute.Sitemap> {
     }
   }
 
-  // Manhwa chapters
+  // Manhwa (MangaDex) — trending titles, real detail URLs
   try {
-    const manhwaRes = await fetchJson(`${API_BASE}/api/v1/manhwa/browse?page=1`);
-    const manhwaList = Array.isArray(manhwaRes?.data) ? manhwaRes.data : [];
-    for (const m of manhwaList) {
-      if (m?.slug && m?.chapters) {
-        urls.push({ url: `${SITE_URL}/manhwa/${m.slug}`, changeFrequency: "weekly", priority: 0.5 });
-        const count = Math.min(Number(m.chapters), 500);
-        for (let ch = 1; ch <= count; ch++) {
-          urls.push({
-            url: `${SITE_URL}/manhwa/read/${m.slug}/chapter-${ch}`,
-            changeFrequency: "weekly",
-            priority: 0.5,
-          });
-        }
+    const [mh1, mh2, mh3] = await Promise.all([
+      fetchJson(`${API_BASE}/api/v1/manhwa/trending?page=1`),
+      fetchJson(`${API_BASE}/api/v1/manhwa/trending?page=2`),
+      fetchJson(`${API_BASE}/api/v1/manhwa/trending?page=3`),
+    ]);
+    const manhwaIds = new Set<string>();
+    for (const res of [mh1, mh2, mh3]) {
+      const list = Array.isArray(res?.data) ? res.data : [];
+      for (const m of list) {
+        if (m?.id) manhwaIds.add(String(m.id));
       }
+    }
+    for (const id of manhwaIds) {
+      urls.push({ url: `${SITE_URL}/manhwa/${id}`, changeFrequency: "weekly", priority: 0.5 });
     }
   } catch {}
 
