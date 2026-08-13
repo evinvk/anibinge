@@ -1,0 +1,29 @@
+{
+  "name": "anibinge-containers",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-01",
+  "containers": [
+    {
+      "class_name": "AnibingeContainer",
+      "image": "../frontend/Dockerfile",
+      "image_build_context": "../frontend",
+      "image_vars": {
+        "NEXT_PUBLIC_SITE_URL": "https://www.anibinge.fun",
+        "NEXT_PUBLIC_API_URL": ""
+      },
+      "max_instances": 1,
+      "instance_type": { "vcpu": 1, "memory_mib": 4096, "disk_mb": 8000 }
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "ANIBINGE", "class_name": "AnibingeContainer" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["AnibingeContainer"] }
+  ],
+  "vars": {
+    "NODE_ENV": "production"
+  }
+}
