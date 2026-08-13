@@ -16,11 +16,11 @@ const nextConfig = {
       { protocol: "https", hostname: "cdn.asurascans.com" },
     ],
   },
+  outputFileTracingIncludes: {
+    "/api/v1/streaming/download": ["./node_modules/ffmpeg-static/**/*"],
+  },
   experimental: {
     optimizePackageImports: ["lucide-react"],
-    outputFileTracingIncludes: {
-      "/api/v1/streaming/download": ["./node_modules/ffmpeg-static/**/*"],
-    },
   },
   compiler: {
     removeConsole: false,
