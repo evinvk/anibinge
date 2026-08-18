@@ -47,7 +47,7 @@ async function buildFromAniListSchedule(page: number, limit: number) {
   } catch {}
 
   if (airing.length === 0) {
-    return raceTimeout(buildFromCatalog(page, limit), deadline);
+    return { data: [], page, has_next: false };
   }
 
   const start = (page - 1) * limit;
