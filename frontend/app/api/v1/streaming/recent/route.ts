@@ -32,16 +32,10 @@ async function buildRecent(page: number, limit: number) {
   const deadline = Date.now() + 12000;
 
   // PRIMARY: AniList airing schedule — only genuinely new episodes
-  const anilistResult = await raceTimeout(buildFromAniListSchedule(page, limit), deadline);
-  if (anilistResult.data.length > 0) {
-    return anilistResult;
-  }
-
-  // FALLBACK: GogoAnime catalog (newly added shows, batch uploads)
   try {
-    return await raceTimeout(buildFromCatalog(page, limit), deadline);
+    return await raceTimeout(buildFromAniListSchedule(page, limit), deadline);
   } catch {
-    return anilistResult;
+    return { data: [], page, has_next: false };
   }
 }
 
@@ -79,78 +73,6 @@ async function buildFromAniListSchedule(page: number, limit: number) {
     page,
     has_next: airing.length > start + limit,
   };
-}
-
-async function buildFromCatalog(page: number, limit: number) {
-  const data = await fetchGogoApi(`/api/search?keyword=&page=${page}`, 30000);
-  const items = Array.isArray(data) ? data : data.items || [];
-  const mapped = items
-    .map((e: any) => ({
-      title: e.title_english || e.title || "",
-      episode: e.latest_episode || 0,
-      poster: e.poster || null,
-      slug: e.slug || "",
-      aired_ago: 0,
-      genres: [],
-      anilist_id: null,
-    }))
-    .filter((e: any) => e.slug && e.episode > 0);
-  if (mapped.length === 0) throw new Error("empty catalog");
-  return {
-    data: mapped,
-    page,
-    has_next: items.length >= 30,
-  };
-}
-
-async function fetchAniListMetadata(titles: string[]): Promise<Map<string, { genres: string[]; anilist_id: number }>> {
-  const map = new Map<string, { genres: string[]; anilist_id: number }>();
-  if (titles.length === 0) return map;
-
-  // Batch query: search for all titles in chunks
-  const CHUNK_SIZE = 10;
-  for (let i = 0; i < titles.length; i += CHUNK_SIZE) {
-    const chunk = titles.slice(i, i + CHUNK_SIZE);
-    await Promise.all(
-      chunk.map(async (title) => {
-        try {
-          const query = `
-            query($search: String) {
-              Page(page: 1, perPage: 1) {
-                media(search: $search, type: ANIME) {
-                  id
-                  genres
-                  title { romaji english native }
-                }
-              }
-            }
-          `;
-          const resp = await fetch(GRAPHQL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "User-Agent": UA },
-            body: JSON.stringify({ query, variables: { search: title } }),
-            signal: AbortSignal.timeout(5000),
-          });
-          if (!resp.ok) return;
-          const data = await resp.json();
-          const media = data?.data?.Page?.media?.[0];
-          if (media) {
-            const normTitle = normalizeTitle(media.title?.english || media.title?.romaji || "");
-            map.set(normTitle, {
-              genres: media.genres || [],
-              anilist_id: media.id,
-            });
-            // Also index by original search title for better matching
-            map.set(normalizeTitle(title), {
-              genres: media.genres || [],
-              anilist_id: media.id,
-            });
-          }
-        } catch {}
-      })
-    );
-  }
-  return map;
 }
 
 async function fetchGogoSlugMap(titles: string[]): Promise<Map<string, string>> {
