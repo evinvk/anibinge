@@ -9,7 +9,8 @@
       "image_build_context": "../frontend",
       "image_vars": {
         "NEXT_PUBLIC_SITE_URL": "https://www.anibinge.fun",
-        "NEXT_PUBLIC_API_URL": ""
+        "NEXT_PUBLIC_API_URL": "",
+        "BUILD_ID": "2026-08-18-v2"
       },
       "max_instances": 1,
       "instance_type": { "vcpu": 1, "memory_mib": 4096, "disk_mb": 8000 }

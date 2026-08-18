@@ -5,6 +5,8 @@ RUN npm install --legacy-peer-deps
 
 FROM node:20-alpine AS builder
 WORKDIR /app
+ARG BUILD_ID
+ENV BUILD_ID=$BUILD_ID
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ARG NEXT_PUBLIC_SITE_URL
@@ -12,7 +14,6 @@ ARG NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NEXT_PRIVATE_BUILD_CACHE=false
 RUN rm -rf .next && npm run build
 
 FROM node:20-alpine AS runner
