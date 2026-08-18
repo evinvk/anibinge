@@ -31,48 +31,18 @@ export async function GET(req: Request) {
 async function buildRecent(page: number, limit: number) {
   const deadline = Date.now() + 12000;
 
-  // PRIMARY: GogoAnime /api/home → latest_episodes (real uploads with real slugs)
-  try {
-    const homeData = await raceTimeout(fetchGogoApi("/api/home"), deadline);
-    const latest = homeData?.latest_episodes || [];
-
-    if (latest.length > 0) {
-      // Enrich with AniList metadata (batch query)
-      const titles = latest
-        .map((e: any) => e.title)
-        .filter((t: string) => t && t.length > 0);
-
-      const anilistMap = await raceTimeout(fetchAniListMetadata(titles), deadline);
-
-      const start = (page - 1) * limit;
-      const pageItems = latest.slice(start, start + limit);
-
-      const items = pageItems.map((e: any) => {
-        const normTitle = normalizeTitle(e.title);
-        const enriched = anilistMap.get(normTitle) || {};
-        return {
-          title: e.title,
-          episode: e.episode,
-          poster: e.image,
-          slug: e.id, // REAL slug from GogoAnime
-          aired_ago: 0, // Unknown upload time, but sorted by real upload order
-          genres: enriched.genres || [],
-          anilist_id: enriched.anilist_id || null,
-        };
-      });
-
-      return {
-        data: items,
-        page,
-        has_next: latest.length > start + limit,
-      };
-    }
-  } catch (e) {
-    console.warn("GogoAnime /api/home failed, falling back to AniList:", e);
+  // PRIMARY: AniList airing schedule — only genuinely new episodes
+  const anilistResult = await raceTimeout(buildFromAniListSchedule(page, limit), deadline);
+  if (anilistResult.data.length > 0) {
+    return anilistResult;
   }
 
-  // FALLBACK: AniList airing schedule (current logic - Japanese broadcast times)
-  return raceTimeout(buildFromAniListSchedule(page, limit), deadline);
+  // FALLBACK: GogoAnime catalog (newly added shows, batch uploads)
+  try {
+    return await raceTimeout(buildFromCatalog(page, limit), deadline);
+  } catch {
+    return anilistResult;
+  }
 }
 
 async function buildFromAniListSchedule(page: number, limit: number) {
