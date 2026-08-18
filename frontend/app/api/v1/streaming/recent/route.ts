@@ -29,15 +29,59 @@ export async function GET(req: Request) {
 }
 
 async function buildRecent(page: number, limit: number) {
-  // Hard ceiling so the route always responds before the platform function limit.
+  const deadline = Date.now() + 12000;
+
+  // PRIMARY: GogoAnime /api/home → latest_episodes (real uploads with real slugs)
+  try {
+    const homeData = await raceTimeout(fetchGogoApi("/api/home"), deadline);
+    const latest = homeData?.latest_episodes || [];
+
+    if (latest.length > 0) {
+      // Enrich with AniList metadata (batch query)
+      const titles = latest
+        .map((e: any) => e.title)
+        .filter((t: string) => t && t.length > 0);
+
+      const anilistMap = await raceTimeout(fetchAniListMetadata(titles), deadline);
+
+      const start = (page - 1) * limit;
+      const pageItems = latest.slice(start, start + limit);
+
+      const items = pageItems.map((e: any) => {
+        const normTitle = normalizeTitle(e.title);
+        const enriched = anilistMap.get(normTitle) || {};
+        return {
+          title: e.title,
+          episode: e.episode,
+          poster: e.image,
+          slug: e.id, // REAL slug from GogoAnime
+          aired_ago: 0, // Unknown upload time, but sorted by real upload order
+          genres: enriched.genres || [],
+          anilist_id: enriched.anilist_id || null,
+        };
+      });
+
+      return {
+        data: items,
+        page,
+        has_next: latest.length > start + limit,
+      };
+    }
+  } catch (e) {
+    console.warn("GogoAnime /api/home failed, falling back to AniList:", e);
+  }
+
+  // FALLBACK: AniList airing schedule (current logic - Japanese broadcast times)
+  return raceTimeout(buildFromAniListSchedule(page, limit), deadline);
+}
+
+async function buildFromAniListSchedule(page: number, limit: number) {
   const deadline = Date.now() + 12000;
   let airing: any[] = [];
   try {
     airing = await raceTimeout(fetchAiringSchedule(page), deadline);
   } catch {}
 
-  // Fallback: if AniList is down/unreachable, use the GogoAnime catalog
-  // (sorted by last update time = real uploads with real slugs).
   if (airing.length === 0) {
     return raceTimeout(buildFromCatalog(page, limit), deadline);
   }
@@ -67,15 +111,6 @@ async function buildRecent(page: number, limit: number) {
   };
 }
 
-async function raceTimeout<T>(promise: Promise<T>, deadline: number): Promise<T> {
-  const remaining = deadline - Date.now();
-  if (remaining <= 0) throw new Error("deadline exceeded");
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("deadline exceeded")), remaining)),
-  ]);
-}
-
 async function buildFromCatalog(page: number, limit: number) {
   const data = await fetchGogoApi(`/api/search?keyword=&page=${page}`, 30000);
   const items = Array.isArray(data) ? data : data.items || [];
@@ -96,6 +131,56 @@ async function buildFromCatalog(page: number, limit: number) {
     page,
     has_next: items.length >= 30,
   };
+}
+
+async function fetchAniListMetadata(titles: string[]): Promise<Map<string, { genres: string[]; anilist_id: number }>> {
+  const map = new Map<string, { genres: string[]; anilist_id: number }>();
+  if (titles.length === 0) return map;
+
+  // Batch query: search for all titles in chunks
+  const CHUNK_SIZE = 10;
+  for (let i = 0; i < titles.length; i += CHUNK_SIZE) {
+    const chunk = titles.slice(i, i + CHUNK_SIZE);
+    await Promise.all(
+      chunk.map(async (title) => {
+        try {
+          const query = `
+            query($search: String) {
+              Page(page: 1, perPage: 1) {
+                media(search: $search, type: ANIME) {
+                  id
+                  genres
+                  title { romaji english native }
+                }
+              }
+            }
+          `;
+          const resp = await fetch(GRAPHQL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "User-Agent": UA },
+            body: JSON.stringify({ query, variables: { search: title } }),
+            signal: AbortSignal.timeout(5000),
+          });
+          if (!resp.ok) return;
+          const data = await resp.json();
+          const media = data?.data?.Page?.media?.[0];
+          if (media) {
+            const normTitle = normalizeTitle(media.title?.english || media.title?.romaji || "");
+            map.set(normTitle, {
+              genres: media.genres || [],
+              anilist_id: media.id,
+            });
+            // Also index by original search title for better matching
+            map.set(normalizeTitle(title), {
+              genres: media.genres || [],
+              anilist_id: media.id,
+            });
+          }
+        } catch {}
+      })
+    );
+  }
+  return map;
 }
 
 async function fetchGogoSlugMap(titles: string[]): Promise<Map<string, string>> {
@@ -170,6 +255,15 @@ function similarity(a: string, b: string): number {
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim();
+}
+
+async function raceTimeout<T>(promise: Promise<T>, deadline: number): Promise<T> {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) throw new Error("deadline exceeded");
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("deadline exceeded")), remaining)),
+  ]);
 }
 
 async function fetchAiringSchedule(page: number): Promise<any[]> {
