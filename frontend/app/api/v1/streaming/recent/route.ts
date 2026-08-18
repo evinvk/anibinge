@@ -17,16 +17,16 @@ export async function GET(req: Request) {
 
   try {
     const payload = await cachedFetch(
-      `recent:v2:${page}:${limit}`,
+      `recent:v3:${page}:${limit}`,
       120000,
       () => buildRecent(page, limit),
       60000
     );
-    return NextResponse.json(payload, {
+    return NextResponse.json({ ...payload, _version: "v3-releasing-only" }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
   } catch {
-    return NextResponse.json({ data: [], page, has_next: false }, {
+    return NextResponse.json({ data: [], page, has_next: false, _version: "v3-error" }, {
       headers: { "Cache-Control": "no-store, max-age=0" },
     });
   }
