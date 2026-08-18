@@ -17,14 +17,18 @@ export async function GET(req: Request) {
 
   try {
     const payload = await cachedFetch(
-      `recent:${page}:${limit}`,
+      `recent:v2:${page}:${limit}`,
       120000,
       () => buildRecent(page, limit),
       60000
     );
-    return NextResponse.json(payload);
+    return NextResponse.json(payload, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   } catch {
-    return NextResponse.json({ data: [], page, has_next: false });
+    return NextResponse.json({ data: [], page, has_next: false }, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
   }
 }
 
@@ -189,11 +193,11 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
     const data = await resp.json();
     const schedules = data?.data?.Page?.airingSchedules || [];
     const now = Math.floor(Date.now() / 1000);
-    const SEVEN_DAYS = 7 * 24 * 60 * 60;
+    const ONE_DAY = 24 * 60 * 60;
 
     return schedules
       .filter((s: any) => s.media && !s.media.isAdult && (s.media.status === "RELEASING" || s.media.status === "NOT_YET_RELEASED"))
-      .filter((s: any) => (now - s.airingAt) < SEVEN_DAYS)
+      .filter((s: any) => (now - s.airingAt) < ONE_DAY)
       .map((s: any) => {
         const m = s.media;
         return {
