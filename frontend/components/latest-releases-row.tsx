@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { ChevronRight, ChevronLeft, Play, Clock, Loader2, Lock } from "lucide-react";
 import { needsUnoptimized } from "@/lib/utils";
 import { releaseLockUntil } from "@/lib/release-lock";
@@ -144,6 +144,26 @@ function EpisodeCard({ item }: { item: RecentEpisode }) {
 }
 
 export function LatestReleasesRow({ items, loading, loadingMore, hasNext, onLoadMore }: LatestReleasesRowProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const scroll = useCallback((direction: "left" | "right") => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const cardWidth = el.querySelector<HTMLElement>(":scope > *")?.offsetWidth ?? 180;
+    el.scrollBy({ left: direction === "left" ? -(cardWidth + 16) : cardWidth + 16, behavior: "smooth" });
+  }, []);
+
+  const cards = loading
+    ? Array.from({ length: 8 }).map((_, i) => (
+        <SkeletonCard key={i} />
+      ))
+    : items.map((item, idx) => (
+        <EpisodeCard
+          key={`${item.anilist_id}-${item.episode}-${idx}`}
+          item={item}
+        />
+      ));
+
   return (
     <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
       <div className="mb-8 flex items-end justify-between">
@@ -164,17 +184,41 @@ export function LatestReleasesRow({ items, loading, loadingMore, hasNext, onLoad
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-        {loading
-          ? Array.from({ length: 8 }).map((_, i) => (
-              <SkeletonCard key={i} />
-            ))
-          : items.map((item, idx) => (
-              <EpisodeCard
-                key={`${item.anilist_id}-${item.episode}-${idx}`}
-                item={item}
-              />
-            ))}
+      {/* Carousel — mobile only */}
+      <div className="relative sm:hidden">
+        <button
+          onClick={() => scroll("left")}
+          aria-label="Scroll left"
+          className="absolute -left-3 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-void/80 border border-white/10 text-paper shadow-lg backdrop-blur-md transition-all hover:bg-primary-600/80 hover:scale-110"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <button
+          onClick={() => scroll("right")}
+          aria-label="Scroll right"
+          className="absolute -right-3 top-1/2 z-30 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-void/80 border border-white/10 text-paper shadow-lg backdrop-blur-md transition-all hover:bg-primary-600/80 hover:scale-110"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </button>
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-20 w-6 bg-gradient-to-r from-void to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-6 bg-gradient-to-l from-void to-transparent" />
+        <div
+          ref={scrollRef}
+          className="flex gap-3 overflow-x-auto pb-2 scrollbar-thin snap-x snap-mandatory"
+        >
+          {cards.map((card, i) => (
+            <div key={i} className="w-[140px] shrink-0 snap-start">
+              {card}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid — sm+ */}
+      <div className="hidden sm:grid sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
+        {cards.map((card, i) => (
+          <div key={i}>{card}</div>
+        ))}
       </div>
 
       {/* Load More */}
