@@ -169,6 +169,7 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
               media{
               id
               isAdult
+              status
               title{english romaji}
               coverImage{large}
               genres
@@ -188,9 +189,11 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
     const data = await resp.json();
     const schedules = data?.data?.Page?.airingSchedules || [];
     const now = Math.floor(Date.now() / 1000);
+    const SEVEN_DAYS = 7 * 24 * 60 * 60;
 
     return schedules
-      .filter((s: any) => s.media && !s.media.isAdult)
+      .filter((s: any) => s.media && !s.media.isAdult && (s.media.status === "RELEASING" || s.media.status === "NOT_YET_RELEASED"))
+      .filter((s: any) => (now - s.airingAt) < SEVEN_DAYS)
       .map((s: any) => {
         const m = s.media;
         return {
