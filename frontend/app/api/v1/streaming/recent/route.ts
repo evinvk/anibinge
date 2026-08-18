@@ -164,19 +164,19 @@ async function raceTimeout<T>(promise: Promise<T>, deadline: number): Promise<T>
 
 async function fetchAiringSchedule(page: number): Promise<any[]> {
   try {
+    // Get currently airing anime, sorted by most recently updated
     const query = `
       query($page:Int){
         Page(page:$page,perPage:50){
-          airingSchedules(notYetAired:false,sort:TIME_DESC){
-            episode
-            airingAt
-              media{
-              id
-              isAdult
-              status
-              title{english romaji}
-              coverImage{large}
-              genres
+          media(status:RELEASING,type:ANIME,sort:UPDATED_AT_DESC,isAdult:false){
+            id
+            title{english romaji}
+            coverImage{large}
+            genres
+            nextAiringEpisode{episode airingAt}
+            airingSchedule(notYetAired:false,sort:TIME_DESC,perPage:1){
+              episode
+              airingAt
             }
           }
         }
@@ -191,19 +191,23 @@ async function fetchAiringSchedule(page: number): Promise<any[]> {
     if (!resp.ok) return [];
 
     const data = await resp.json();
-    const schedules = data?.data?.Page?.airingSchedules || [];
+    const media = data?.data?.Page?.media || [];
     const now = Math.floor(Date.now() / 1000);
-    const ONE_DAY = 24 * 60 * 60;
+    const THREE_DAYS = 3 * 24 * 60 * 60;
 
-    return schedules
-      .filter((s: any) => s.media && !s.media.isAdult && (s.media.status === "RELEASING" || s.media.status === "NOT_YET_RELEASED"))
-      .filter((s: any) => (now - s.airingAt) < ONE_DAY)
-      .map((s: any) => {
-        const m = s.media;
+    return media
+      .filter((m: any) => {
+        // Must have a recent last aired episode (within 3 days)
+        const lastAired = m.airingSchedule?.[0]?.airingAt;
+        if (!lastAired) return false;
+        return (now - lastAired) < THREE_DAYS;
+      })
+      .map((m: any) => {
+        const lastAired = m.airingSchedule[0];
         return {
           title: m.title?.english || m.title?.romaji || "",
-          episode: s.episode,
-          aired_ago: now - s.airingAt,
+          episode: lastAired.episode,
+          aired_ago: now - lastAired.airingAt,
           poster: m.coverImage?.large || null,
           genres: m.genres || [],
           anilist_id: m.id,
