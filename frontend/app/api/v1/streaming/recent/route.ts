@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   try {
     const payload = await cachedFetch(
-      `recent:v3:${page}:${limit}`,
+      `recent:v4:${page}:${limit}`,
       120000,
       () => buildRecent(page, limit),
       60000
