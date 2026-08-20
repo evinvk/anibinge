@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
+import { ManhwaLatestSection } from "@/components/manhwa-latest-section";
 import { HomeSearch } from "@/components/home-search";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
 import { LoginPopup } from "@/components/login-popup";
@@ -70,6 +71,7 @@ export default async function HomePage() {
               <AnimeSectionTabs />
             </div>
             <LatestReleasesSection />
+            <ManhwaLatestSection />
           </div>
 
           <aside className="min-w-0 space-y-6">
