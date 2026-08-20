@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "edge";
-
 const BLOCKED_HOSTS = new Set([
   "localhost",
   "127.0.0.1",

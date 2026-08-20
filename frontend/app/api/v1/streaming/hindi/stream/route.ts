@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { getHindiStream } from "@/lib/hindi";
 
-export const runtime = "edge";
-
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const anilistId = parseInt(url.searchParams.get("anilist_id") || "");

@@ -1,0 +1,9 @@
+name = "anibinge-frontend"
+main = ".open-next/worker.js"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "c338c9b30231695280681c52f1fd33e6"
+
+[assets]
+directory = ".open-next/assets"
+binding = "ASSETS"
