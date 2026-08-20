@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseDetailAuto, resolveAnimeXinSeriesUrl } from "../../_animexin";
+import { fetchHtml, parseDetailFromMarkdown, resolveAnimeXinSeriesUrl } from "../../_animexin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -9,7 +12,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       return NextResponse.json({ error: "Donghua not found" }, { status: 404 });
     }
     const html = await fetchHtml(resolvedPath);
-    const detail = parseDetailAuto(html, slug);
+    const detail = parseDetailFromMarkdown(html, slug);
     return NextResponse.json({ data: detail });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 503 });

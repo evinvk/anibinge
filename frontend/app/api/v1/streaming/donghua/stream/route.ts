@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import {
   fetchHtml,
-  parseEpisodeServersAuto,
-  parseDetailAuto,
+  parseEpisodeServersFromMarkdown,
+  parseDetailFromMarkdown,
   resolveAnimeXinSeriesUrl,
   filterLiveServers,
   BASE,
 } from "../../../donghua/_animexin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const EP_URL_PATTERNS = [
   (s: string, e: number) => `/${s}-episode-${e}-indonesia-english-sub/`,
@@ -18,7 +21,7 @@ async function tryFetchEpPage(slug: string, ep: number): Promise<string | null> 
   for (const pattern of EP_URL_PATTERNS) {
     try {
       const html = await fetchHtml(pattern(slug, ep));
-      const parsed = parseEpisodeServersAuto(html);
+      const parsed = parseEpisodeServersFromMarkdown(html);
       if (parsed.servers?.length > 0) return html;
     } catch {}
   }
@@ -36,11 +39,11 @@ export async function GET(req: Request) {
     const resolvedPath = await resolveAnimeXinSeriesUrl(slug);
     if (resolvedPath) {
       const html = await fetchHtml(resolvedPath);
-      const detail = parseDetailAuto(html, slug);
+      const detail = parseDetailFromMarkdown(html, slug);
       const epEntry = detail.episode_list?.find((e: any) => e.number === ep);
       if (epEntry?.url) {
         const epPage = await fetchHtml(epEntry.url.replace(BASE, ""));
-        const parsed = parseEpisodeServersAuto(epPage);
+        const parsed = parseEpisodeServersFromMarkdown(epPage);
         const servers = await filterLiveServers(parsed.servers || []);
         if (servers.length) {
           return NextResponse.json({
@@ -58,7 +61,7 @@ export async function GET(req: Request) {
 
   const epPage = await tryFetchEpPage(slug, ep);
   if (epPage) {
-    const parsed = parseEpisodeServersAuto(epPage);
+    const parsed = parseEpisodeServersFromMarkdown(epPage);
     const servers = await filterLiveServers(parsed.servers || []);
     if (servers.length) {
       return NextResponse.json({

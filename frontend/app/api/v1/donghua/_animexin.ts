@@ -1,4 +1,3 @@
-import * as cheerio from "cheerio";
 import { fetchViaCfProxy } from "@/lib/cf-proxy";
 
 export const BASE = "https://animexin.dev";
@@ -10,82 +9,25 @@ function abs(url: string): string {
   return url;
 }
 
-function parseCard(el: any) {
-  const $ = cheerio.load(el);
-  const link = $("a").first();
-  const href = link.attr("href") || "";
-  const title =
-    link.find(".eggtitle").text().trim() ||
-    link.find(".tt").contents().first().text().trim() ||
-    link.find(".tt h2").text().replace(/\s+Episode\s*\d+.*$/i, "").trim() ||
-    link.attr("title") ||
-    "";
-  const poster = abs(link.find("img").attr("src") || "");
-  const epText = link.find(".epx").text().trim() || link.find(".eggepisode").text().trim();
-  const epMatch = epText.match(/(\d+)/);
-  const episode = epMatch ? parseInt(epMatch[1]) : null;
-  const subType = link.find(".sb").text().trim() || "Sub";
-  const mediaType = link.find(".typez").text().trim() || "ONA";
-  const releasedAt = $("time[datetime]").attr("datetime") || null;
-  let slug = href.replace(/\/$/, "").split("/").pop() || "";
-  slug = slug.replace(/-episode-\d+.*$/, "").replace(/-(?:indonesia|english|subtitle).*$/i, "");
-  return { slug, title, poster, episode, sub_type: subType, type: mediaType, url: href, released_at: releasedAt };
-}
-
-export function parseCards(html: string): any[] {
-  const $ = cheerio.load(html);
-  const items: any[] = [];
-  $(".bs").each((_: any, el: any) => {
-    const item = parseCard(cheerio.load(el).html() || "");
-    if (item.title) items.push(item);
-  });
-  return items;
-}
-
-async function fetchDirect(url: string): Promise<Response> {
-  return fetch(url, {
-    headers: {
-      "User-Agent": UA,
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-      "Cache-Control": "no-cache",
-      Referer: "https://animexin.dev/",
-    },
-    signal: AbortSignal.timeout(6000),
-    next: { revalidate: 3600 },
-  });
-}
-
-// Extract donghua items from markdown link lines (Jina AI output)
-// Expected format:
-//   [TYPE Ep N SUBTITLE ![ALT](IMG_URL) TITLE ## ...](PAGE_URL "...")
-// or:
-//   [Sub TITLE TYPE Episode N ![ALT](IMG_URL) ## ...](PAGE_URL "...")
 function parseMarkdownLine(line: string): any | null {
-  // Match markdown link: [text](url "title")
   const linkMatch = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
   if (!linkMatch) return null;
   const fullText = linkMatch[1];
   const url = linkMatch[2].replace(/".*$/, "").trim();
   if (!url || url === "#" || url.startsWith("http://animexin.dev/#")) return null;
 
-  // Extract image URL from markdown image syntax
   const imgMatch = fullText.match(/!\[[^\]]*\]\(([^)]+)\)/);
   const poster = imgMatch ? imgMatch[1] : "";
 
-  // Extract episode number
   const epMatch = fullText.match(/Ep(?:isode)?\s*(\d+)/i);
   const episode = epMatch ? parseInt(epMatch[1]) : null;
 
-  // Extract subtitle type
   const subMatch = fullText.match(/^(Sub|Dub)\b/i);
   const subType = subMatch ? subMatch[1] : "Sub";
 
-  // Extract media type (ONA, Movie, etc.)
   const typeMatch = fullText.match(/\b(ONA|Movie|OVA|Special|TV)\b/i);
   const mediaType = typeMatch ? typeMatch[1] : "ONA";
 
-  // Extract title - text between image and ##, or after ##
   let title = "";
   const afterImg = fullText.replace(/!\[[^\]]*\]\([^)]+\)\s*/, "");
   const hashSplit = afterImg.split("##");
@@ -101,7 +43,6 @@ function parseMarkdownLine(line: string): any | null {
   }
   title = title.replace(/\[[^\]]*\]$/, "").trim();
 
-  // Some titles have " ## " in them
   if (!title) {
     const textParts = fullText.split("##");
     if (textParts.length > 1) {
@@ -109,24 +50,20 @@ function parseMarkdownLine(line: string): any | null {
     }
   }
 
-  // Clean up the title
   title = title.replace(/^\d+\s+/, "").replace(/\s*\[.*$/, "").trim();
   if (!title) {
-    // Try getting title from URL
     const urlParts = url.replace(/\/$/, "").split("/");
     title = decodeURIComponent(urlParts[urlParts.length - 1] || "")
       .replace(/-/g, " ")
       .replace(/\b\w/g, (c: string) => c.toUpperCase());
   }
 
-  // Extract slug from URL
   let slug = url.replace(/\/$/, "").split("/").pop() || "";
   slug = slug.replace(/-episode-\d+.*$/, "").replace(/-(?:indonesia|english|subtitle).*$/i, "");
 
   return { slug, title, poster, episode, sub_type: subType, type: mediaType, url: abs(url) };
 }
 
-// Parse markdown homepage output from Jina AI
 export function parseHomepageFromMarkdown(text: string) {
   const popular: any[] = [];
   const latest: any[] = [];
@@ -155,14 +92,12 @@ export function parseHomepageFromMarkdown(text: string) {
   return { popular, latest };
 }
 
-// Parse markdown list/cards output from Jina AI (for paginated pages)
 export function parseCardsFromMarkdown(text: string): any[] {
   const items: any[] = [];
   const lines = text.split("\n");
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed.startsWith("[")) continue;
-    // Skip navigation links
     if (/^\[(Next|Prev|View All|1|2|3)\]/.test(trimmed)) continue;
     const item = parseMarkdownLine(trimmed);
     if (item && item.title) items.push(item);
@@ -179,12 +114,11 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
       "User-Agent": UA,
       Accept: "text/plain",
     },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(12000),
     next: { revalidate: 3600 },
   });
   if (!resp.ok) throw new Error(`Jina AI ${resp.status}`);
   const text = await resp.text();
-  // Jina AI wraps the content in markdown, extract from Markdown Content: section
   const mdMatch = text.match(/Markdown Content:\s*\n([\s\S]*)/);
   return mdMatch ? mdMatch[1].trim() : text;
 }
@@ -194,7 +128,6 @@ const HTML_TTL_MS = 60 * 60 * 1000;
 
 export async function fetchHtml(path: string, params?: Record<string, string>): Promise<string> {
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
-  const url = BASE + path + qs;
   const key = path + qs;
 
   const cached = htmlCache.get(key);
@@ -202,27 +135,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
 
   const errors: string[] = [];
 
-  // Try direct fetch first
-  const resp = await fetchDirect(url);
-  if (resp.ok) {
-    const text = await resp.text();
-    htmlCache.set(key, { html: text, at: Date.now() });
-    return text;
-  }
-  errors.push(`Direct ${resp.status}`);
-
-  // Fallback: Cloudflare Worker proxy (not blocked by animexin.dev's Cloudflare)
-  try {
-    const html = await fetchViaCfProxy(url);
-    if (html?.length > 100) {
-      htmlCache.set(key, { html, at: Date.now() });
-      return html;
-    }
-  } catch (e: any) {
-    errors.push(e.message || "CF Proxy failed");
-  }
-
-  // Fallback: try Jina AI (returns markdown)
+  // Try Jina first (returns markdown, works reliably in CF Workers)
   try {
     const md = await fetchViaJina(path, params);
     if (md?.length > 50) {
@@ -234,6 +147,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   }
 
   // Fallback: AllOrigins proxy
+  const url = BASE + path + qs;
   try {
     const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
       headers: { "User-Agent": UA },
@@ -252,107 +166,18 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
     errors.push(e.message || "AllOrigins failed");
   }
 
+  // Fallback: Cloudflare Worker proxy
+  try {
+    const html = await fetchViaCfProxy(url);
+    if (html?.length > 100) {
+      htmlCache.set(key, { html, at: Date.now() });
+      return html;
+    }
+  } catch (e: any) {
+    errors.push(e.message || "CF Proxy failed");
+  }
+
   throw new Error(`AnimeXin fetch failed: ${errors.join(", ")}`);
-}
-
-export function parseHomepage(html: string) {
-  const $ = cheerio.load(html);
-  const popular: any[] = [];
-  const latest: any[] = [];
-  $(".popularslider .bs").each((_: any, el: any) => {
-    const item = parseCard(cheerio.load(el).html() || "");
-    if (item.title) popular.push(item);
-  });
-  $(".listupd .bs").each((_: any, el: any) => {
-    const item = parseCard(cheerio.load(el).html() || "");
-    if (item.title) latest.push(item);
-  });
-  return { popular, latest };
-}
-
-export function parseDetail(html: string, slug: string) {
-  const $ = cheerio.load(html);
-  const title =
-    $(".infox h1").first().text().trim() ||
-    $("h1").first().text().trim() ||
-    slug;
-  const poster = abs($(".thumb img").attr("src") || $(".bigcontent img").attr("src") || "");
-  const scoreText = $(".rating strong").text().trim();
-  const scoreMatch = scoreText.match(/([\d.]+)/);
-  const score = scoreMatch ? parseFloat(scoreMatch[1]) : null;
-  const meta: Record<string, string> = {};
-  $(".spe span").each((_: any, el: any) => {
-    const text = $(el).text().trim();
-    if (text.includes(":")) {
-      const [k, ...v] = text.split(":");
-      meta[k.trim().toLowerCase()] = v.join(":").trim();
-    }
-  });
-  const genres: string[] = [];
-  $(".genxed a").each((_: any, el: any) => {
-    genres.push($(el).text().trim());
-  });
-  $(".desc .colap, .desc b").remove();
-  let description = $(".desc").text().trim();
-  const watchMatch = description.match(/^Watch streaming\s+.*?on AnimeXin\.\s*(.*)/i);
-  if (watchMatch) description = watchMatch[1].trim();
-  if (!description) description = $(".infox .ninfo").text().trim();
-  const epText = meta["episodes"] || "";
-  const epMatchNum = epText.match(/(\d+)/);
-  const episodes = epMatchNum ? parseInt(epMatchNum[1]) : null;
-  const episodeList: any[] = [];
-  $(".eplister a[href], #episodeLists a[href]").each((_: any, el: any) => {
-    const epHref = $(el).attr("href") || "";
-    const epNumText = $(el).find(".epl-num").text().trim();
-    let epNum: number | null = null;
-    const epNumMatch = epNumText.match(/(\d+)/);
-    if (epNumMatch) epNum = parseInt(epNumMatch[1]);
-    if (!epNum) {
-      const urlMatch = epHref.match(/episode-(\d+)/i);
-      if (urlMatch) epNum = parseInt(urlMatch[1]);
-    }
-    if (epNum) {
-      const epTitle = $(el).find(".epl-title").text().trim() || `Episode ${epNum}`;
-      const epDate = $(el).find(".epl-date").text().trim() || null;
-      episodeList.push({
-        number: epNum,
-        title: epTitle,
-        url: epHref,
-        slug: epHref.replace(/\/$/, "").split("/").pop() || "",
-        date: epDate,
-      });
-    }
-  });
-  episodeList.sort((a: any, b: any) => a.number - b.number);
-  const status = meta["status"] || "Ongoing";
-  return {
-    slug,
-    title,
-    title_alt: null,
-    poster,
-    score,
-    status,
-    genres,
-    description,
-    episodes: episodes || episodeList.length || null,
-    type: meta["type"] || "ONA",
-    country: meta["country"] || "China",
-    released: meta["released"] || null,
-    duration: meta["duration"] || null,
-    episode_list: episodeList,
-    url: `${BASE}/${slug}/`,
-  };
-}
-
-export function parseSearch(html: string): any[] {
-  const $ = cheerio.load(html);
-  const items: any[] = [];
-  const container = $(".listupd").length ? $(".listupd") : $("body");
-  container.find(".bs").each((_: any, el: any) => {
-    const item = parseCard(cheerio.load(el).html() || "");
-    if (item.title) items.push(item);
-  });
-  return items;
 }
 
 function parseWpPost(p: any) {
@@ -381,7 +206,6 @@ function parseWpPost(p: any) {
   };
 }
 
-// Fetch latest release posts from the WordPress REST API (has exact publish dates)
 export async function fetchLatestWp(page = 1): Promise<any[] | null> {
   const url = `${BASE}/wp-json/wp/v2/posts?per_page=30&page=${page}`;
   let data: any = null;
@@ -411,54 +235,27 @@ export async function fetchLatestWp(page = 1): Promise<any[] | null> {
   return items.length ? items : null;
 }
 
-// Auto-detect content format and parse accordingly
-export function parseCardsAuto(content: string): any[] {
-  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
-    return parseCards(content);
-  }
-  return parseCardsFromMarkdown(content);
-}
-
-export function parseHomepageAuto(content: string) {
-  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
-    return parseHomepage(content);
-  }
-  return parseHomepageFromMarkdown(content);
-}
-
-export function parseSearchAuto(content: string): any[] {
-  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
-    return parseSearch(content);
-  }
-  return parseCardsFromMarkdown(content);
-}
-
-// Parse donghua detail from Jina AI markdown output
 export function parseDetailFromMarkdown(text: string, slug: string) {
   const lines = text.split("\n");
 
-  // Title — first h1 after markdown content
   let title = slug;
   for (const line of lines) {
     const m = line.match(/^#\s+(.+)/);
     if (m) { title = m[1].trim(); break; }
   }
 
-  // Poster — first image URL
   let poster = "";
   for (const line of lines) {
     const m = line.match(/!\[.*?\]\(([^)]+)\)/);
     if (m) { poster = abs(m[1]); break; }
   }
 
-  // Rating
   let score: number | null = null;
   for (const line of lines) {
     const m = line.match(/\*\*Rating\s*([\d.]+)\*\*/);
     if (m) { score = parseFloat(m[1]); break; }
   }
 
-  // Metadata line (Status, Type, Episodes, Released, Duration, Country)
   const meta: Record<string, string> = {};
   const metaLine = lines.find(l => l.includes("**Status:**") && l.includes("**Type:**"));
   if (metaLine) {
@@ -470,7 +267,6 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
     }
   }
 
-  // Genres — line with genre links
   const genres: string[] = [];
   for (const line of lines) {
     if (line.includes("https://animexin.dev/genres/")) {
@@ -483,7 +279,6 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
     }
   }
 
-  // Description — after "Synopsis" header
   let description = "";
   let inSynopsis = false;
   for (const line of lines) {
@@ -496,7 +291,6 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
   }
   description = description.trim();
 
-  // Episode list
   const episodeList: any[] = [];
   let inEpisodes = false;
   for (const line of lines) {
@@ -504,7 +298,6 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
     if (/^###?\s+Watch/i.test(trimmed)) { inEpisodes = true; continue; }
     if (inEpisodes && /^###?\s/.test(trimmed)) break;
     if (!inEpisodes) continue;
-    // Match: * [N Title ...](url)
     const itemMatch = trimmed.match(/^\*\s+\[(\d+)\s+(.+?)\]\(([^)]+)\)/);
     if (itemMatch) {
       const epNum = parseInt(itemMatch[1]);
@@ -540,12 +333,10 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
   };
 }
 
-// Parse donghua episode servers from Jina AI markdown output
 export function parseEpisodeServersFromMarkdown(text: string) {
   const lines = text.split("\n");
   const servers: { label: string; stream_url: string }[] = [];
 
-  // Match [Video N](url), [Server N](url), [Player N](url), or plain embed URLs (dailymotion, etc.)
   const knownEmbedPatterns = [
     /^\[(?:Video|Server|Player)\s*(\d*)\s*\]\(([^)]+)\)/i,
     /dailymotion\.com\/(?:video|embed)\/([a-zA-Z0-9]+)/,
@@ -563,7 +354,6 @@ export function parseEpisodeServersFromMarkdown(text: string) {
         if (pattern === knownEmbedPatterns[0]) {
           url = m[2].trim();
         } else {
-          // Construct embed URL from the matched ID
           const id = m[1];
           if (trimmed.includes("dailymotion")) url = `https://www.dailymotion.com/embed/video/${id}`;
           else if (trimmed.includes("ok.ru")) url = `https://ok.ru/videoembed/${id}`;
@@ -572,12 +362,11 @@ export function parseEpisodeServersFromMarkdown(text: string) {
         if (url && !servers.some(s => s.stream_url === url)) {
           servers.push({ label: `Server ${servers.length + 1}`, stream_url: url });
         }
-        break; // matched this line, move to next
+        break;
       }
     }
   }
 
-  // Prev/Next
   let prev_url: string | null = null;
   let next_url: string | null = null;
   for (const line of lines) {
@@ -591,78 +380,28 @@ export function parseEpisodeServersFromMarkdown(text: string) {
   return { servers, prev_url, next_url };
 }
 
-// Auto-detect content format for detail
 export function parseDetailAuto(content: string, slug: string) {
-  if (content.includes("<") && (content.includes("<div") || content.includes("<article") || content.includes("<html") || content.includes("class="))) {
-    return parseDetail(content, slug);
-  }
   return parseDetailFromMarkdown(content, slug);
 }
 
-// Auto-detect content format for episode servers
-export function parseEpisodeServersAuto(content: string) {
-  if (content.includes("<") && (content.includes("<div") || content.includes("<iframe") || content.includes("<html") || content.includes("class=") || content.includes("option"))) {
-    return parseEpisodeServers(content);
-  }
+function parseEpisodeServersAuto(content: string) {
   return parseEpisodeServersFromMarkdown(content);
 }
 
-export function parseEpisodeServers(html: string): {
-  servers: { label: string; stream_url: string }[];
-  prev_url: string | null;
-  next_url: string | null;
-} {
-  const $ = cheerio.load(html);
-  const servers: { label: string; stream_url: string }[] = [];
-  $("div.option, .server, .playex, .embed-responsive iframe").each((_: any, el: any) => {
-    const iframe = $(el).is("iframe") ? $(el) : $(el).find("iframe");
-    const src = iframe.attr("src") || iframe.attr("data-src") || "";
-    if (src) {
-      const label = $(el).find(".label, .server-title, span").first().text().trim() || "Server " + (servers.length + 1);
-      servers.push({ label, stream_url: src });
-    }
-  });
-  if (servers.length === 0) {
-    $("iframe").each((_: any, el: any) => {
-      const src = $(el).attr("src") || $(el).attr("data-src") || "";
-      if (src && !src.includes("google") && !src.includes("facebook")) {
-        servers.push({ label: "Server " + (servers.length + 1), stream_url: src });
-      }
-    });
-  }
-
-  // Parse <select><option value="base64">Label</option></select> server lists
-  // (common on AnimeXin: each option value is base64-encoded iframe HTML)
-  $("select option").each((_: any, el: any) => {
-    const raw = $(el).attr("value") || "";
-    if (!raw) return;
-    let decoded = "";
-    try {
-      const bin = atob(raw);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      decoded = new TextDecoder().decode(bytes);
-    } catch {
-      return;
-    }
-    if (!decoded.toLowerCase().includes("<iframe")) return;
-    const srcMatch = decoded.match(/src="([^"]+)"/i);
-    if (!srcMatch) return;
-    const src = srcMatch[1];
-    if (src && !servers.some((s) => s.stream_url === src)) {
-      const label = $(el).text().trim() || "Server " + (servers.length + 1);
-      servers.push({ label, stream_url: src });
-    }
-  });
-
-  const prevLink = $("a.prev, .prev_link, .navigation a:contains('Prev')").attr("href") || null;
-  const nextLink = $("a.next, .next_link, .navigation a:contains('Next')").attr("href") || null;
-  return { servers, prev_url: prevLink, next_url: nextLink };
+function parseCardsAuto(content: string): any[] {
+  return parseCardsFromMarkdown(content);
 }
 
-const dmCache = new Map<string, boolean>();
+function parseHomepageAuto(content: string) {
+  return parseHomepageFromMarkdown(content);
+}
 
-// Check whether a Dailymotion embed URL still points to a live (non-deleted) video
+function parseSearchAuto(content: string): any[] {
+  return parseCardsFromMarkdown(content);
+}
+
+export const dmCache = new Map<string, boolean>();
+
 export async function isDailymotionVideoAlive(url: string): Promise<boolean> {
   const m = url.match(/dailymotion\.com\/(?:embed|video)\/([a-zA-Z0-9]+)/);
   if (!m) return true;
@@ -682,11 +421,10 @@ export async function isDailymotionVideoAlive(url: string): Promise<boolean> {
     dmCache.set(id, alive);
     return alive;
   } catch {
-    return true; // assume alive on network error so we never block streaming
+    return true;
   }
 }
 
-// Drop dead Dailymotion servers (keeps ordering, non-Dailymotion servers untouched)
 export async function filterLiveServers(servers: { label: string; stream_url: string }[]): Promise<{ label: string; stream_url: string }[]> {
   const results = await Promise.all(
     servers.map(async (s) => ({ s, alive: await isDailymotionVideoAlive(s.stream_url) }))
@@ -694,7 +432,6 @@ export async function filterLiveServers(servers: { label: string; stream_url: st
   return results.filter((r) => r.alive).map((r) => r.s);
 }
 
-// Search AnimeXin and return parsed items
 export async function searchAnimeXin(query: string): Promise<any[]> {
   const html = await fetchHtml("/", { s: query });
   return parseSearchAuto(html);
@@ -746,8 +483,8 @@ export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | n
   }
   if (!result) {
     const queries = [slug.replace(/-/g, " ")];
-    const misspelled = slug.replace(/rou/g, "ro");
-    if (misspelled !== slug) queries.push(misspelled.replace(/-/g, " "));
+    const misspelled2 = slug.replace(/rou/g, "ro");
+    if (misspelled2 !== slug) queries.push(misspelled2.replace(/-/g, " "));
     for (const query of queries) {
       try {
         const items = await searchAnimeXin(query);

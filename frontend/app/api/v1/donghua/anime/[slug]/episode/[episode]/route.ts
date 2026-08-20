@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseEpisodeServersAuto, parseDetailAuto, filterLiveServers, BASE } from "../../../../_animexin";
+import { fetchHtml, parseEpisodeServersFromMarkdown, parseDetailFromMarkdown, filterLiveServers, BASE } from "../../../../_animexin";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(
   req: Request,
@@ -11,12 +14,12 @@ export async function GET(
 
   try {
     const detailRes = await fetchHtml(`/${slug}/`);
-    const detail = parseDetailAuto(detailRes, slug);
+    const detail = parseDetailFromMarkdown(detailRes, slug);
     const epEntry = detail.episode_list?.find((e: any) => e.number === epNum);
     const epUrl = epEntry?.url?.replace(BASE, "") || `/${slug}-episode-${epNum}-indonesia-english-sub/`;
 
     const html = await fetchHtml(epUrl);
-    const parsed = parseEpisodeServersAuto(html);
+    const parsed = parseEpisodeServersFromMarkdown(html);
     const servers = await filterLiveServers(parsed.servers || []);
 
     if (servers.length) {
