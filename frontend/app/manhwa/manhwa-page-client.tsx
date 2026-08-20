@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Search, Loader2 } from "lucide-react";
 import { api, type ManhwaItem } from "@/lib/api";
 import { ManhwaCard } from "@/components/manhwa-card";
+import { ManhwaLatestRow } from "@/components/manhwa-latest-row";
 import { Pagination } from "@/components/pagination";
 
 interface ManhwaPageClientProps {
@@ -17,6 +18,16 @@ export default function ManhwaPageClient({ initialItems, currentPage, totalPages
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchedFor, setSearchedFor] = useState("");
+  const [latestItems, setLatestItems] = useState<ManhwaItem[]>([]);
+  const [latestLoading, setLatestLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .manhwaLatest(1)
+      .then((res) => setLatestItems(res.data || []))
+      .catch(() => setLatestItems([]))
+      .finally(() => setLatestLoading(false));
+  }, []);
 
   const handleSearch = useCallback(async (q: string) => {
     if (!q.trim()) { setSearchResults(null); return; }
@@ -82,33 +93,40 @@ export default function ManhwaPageClient({ initialItems, currentPage, totalPages
         )}
 
         {searchResults === null && (
-          <section className="mb-12">
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
-                  <Search className="h-4 w-4 text-emerald-400" />
-                </div>
-                <h2 className="font-display text-xl font-bold text-paper">All Manhwa</h2>
-              </div>
-              <span className="text-xs text-mist">Page {currentPage} of {totalPages}</span>
-            </div>
-            {items.length === 0 ? (
-              <p className="text-mist">No manhwa available.</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {items.map((item) => (
-                  <div key={item.id} className="w-full">
-                    <ManhwaCard item={item} />
-                  </div>
-                ))}
-              </div>
+          <>
+            {/* New Chapters Slider */}
+            {latestItems.length > 0 && (
+              <ManhwaLatestRow items={latestItems} loading={latestLoading} />
             )}
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              buildHref={(p) => (p === 1 ? "/manhwa" : `/manhwa?page=${p}`)}
-            />
-          </section>
+
+            <section className="mb-12 mt-4">
+              <div className="mb-6 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20">
+                    <Search className="h-4 w-4 text-emerald-400" />
+                  </div>
+                  <h2 className="font-display text-xl font-bold text-paper">All Manhwa</h2>
+                </div>
+                <span className="text-xs text-mist">Page {currentPage} of {totalPages}</span>
+              </div>
+              {items.length === 0 ? (
+                <p className="text-mist">No manhwa available.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                  {items.map((item) => (
+                    <div key={item.id} className="w-full">
+                      <ManhwaCard item={item} />
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                buildHref={(p) => (p === 1 ? "/manhwa" : `/manhwa?page=${p}`)}
+              />
+            </section>
+          </>
         )}
       </div>
     </div>
