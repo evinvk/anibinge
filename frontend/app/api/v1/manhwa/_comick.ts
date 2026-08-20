@@ -1,6 +1,4 @@
 import { fetchViaCfProxy, hasCfProxy } from "@/lib/cf-proxy";
-import http from "node:http";
-import https from "node:https";
 
 const API = "https://api.comick.dev";
 const COVER_CDN = "https://meo.comick.pictures";
@@ -124,35 +122,12 @@ export interface ChapterData {
   externalUrl: string | null;
 }
 
-function fetchHttp1(path: string, timeoutMs = 20000): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`${API}${path}`);
-    const lib = url.protocol === "https:" ? https : http;
-    const req = lib.request(
-      {
-        host: url.hostname,
-        port: url.port || undefined,
-        path: url.pathname + url.search,
-        method: "GET",
-        servername: url.hostname,
-        headers: { ...HEADERS, "Accept-Encoding": "identity" },
-      },
-      (res) => {
-        if (res.statusCode && res.statusCode >= 400) {
-          res.resume();
-          reject(new Error(`ComicK HTTP ${res.statusCode}: ${path}`));
-          return;
-        }
-        let body = "";
-        res.setEncoding("utf8");
-        res.on("data", (d) => (body += d));
-        res.on("end", () => resolve(body));
-      }
-    );
-    req.setTimeout(timeoutMs, () => req.destroy(new Error(`ComicK timeout: ${path}`)));
-    req.on("error", reject);
-    req.end();
+async function fetchHttp1(path: string, _timeoutMs = 20000): Promise<string> {
+  const res = await fetch(`${API}${path}`, {
+    headers: { ...HEADERS, "Accept-Encoding": "identity" },
   });
+  if (!res.ok) throw new Error(`ComicK HTTP ${res.status}: ${path}`);
+  return res.text();
 }
 
 async function fetchComick(path: string, revalidate = 60): Promise<any> {

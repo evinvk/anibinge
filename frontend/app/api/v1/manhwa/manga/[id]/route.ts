@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getMangaDetail as getMangaDetailMD, getMangaRating, CACHE_HEADERS } from "../../_mangadex";
 import { getMangaDetail as getMangaDetailCK, resolveHidByTitle } from "../../_comick";
 
-export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

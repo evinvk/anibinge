@@ -9,7 +9,8 @@ import { getChapters as getChaptersCK, resolveHidByTitle } from "../../../_comic
 import { getChapters as getChaptersAS, resolveSeriesByTitle } from "../../../_asura";
 import { getChapters as getChaptersWC, resolveSeriesByTitle as resolveSeriesWC } from "../../../_weebcentral";
 
-export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function chapterKey(ch: ChapterData): string {
   const n = parseFloat(ch.chapter);

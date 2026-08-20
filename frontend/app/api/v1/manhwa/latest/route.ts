@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getLatest as getLatestMD, CACHE_HEADERS } from "../_mangadex";
 import { getLatest as getLatestCK } from "../_comick";
 
-export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
