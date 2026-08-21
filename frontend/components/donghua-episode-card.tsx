@@ -55,15 +55,9 @@ export function DonghuaEpisodeCard({ item, priority = false }: Props) {
         </div>
 
         <div className="absolute inset-x-0 bottom-0 z-10 p-3">
-          <Link
-            href={infoHref}
-            onClick={(e) => e.stopPropagation()}
-            className="block"
-          >
-            <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 hover:text-red-300 transition-colors">
+            <h3 className="font-display text-sm font-bold leading-snug text-white line-clamp-2 group-hover:text-red-300 transition-colors">
               {item.title}
             </h3>
-          </Link>
           <div className="mt-1.5 flex items-center gap-2">
             <span className="text-[10px] font-medium uppercase tracking-wider text-mist">{item.type || "ONA"}</span>
             {item.released_at && (

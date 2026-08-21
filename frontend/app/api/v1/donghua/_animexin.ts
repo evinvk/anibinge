@@ -10,47 +10,42 @@ function abs(url: string): string {
 }
 
 function parseMarkdownLine(line: string): any | null {
-  const linkMatch = line.match(/\[([^\]]+)\]\(([^)]+)\)/);
-  if (!linkMatch) return null;
-  const fullText = linkMatch[1];
-  const url = linkMatch[2].replace(/".*$/, "").trim();
+  const urlMatches = [...line.matchAll(/\]\(([^)]+)\)/g)];
+  if (urlMatches.length === 0) return null;
+  let url = urlMatches[urlMatches.length - 1][1].replace(/".*$/, "").trim();
   if (!url || url === "#" || url.startsWith("http://animexin.dev/#")) return null;
 
-  const imgMatch = fullText.match(/!\[[^\]]*\]\(([^)]+)\)/);
+  const imgMatch = line.match(/!\[[^\]]*\]\(([^)]+)\)/);
   const poster = imgMatch ? imgMatch[1] : "";
 
-  const epMatch = fullText.match(/Ep(?:isode)?\s*(\d+)/i);
+  const lastMatch = urlMatches[urlMatches.length - 1];
+  const afterUrl = line.substring(lastMatch.index! + lastMatch[0].length).trim();
+
+  const epMatch = afterUrl.match(/Ep(?:isode)?\s*(\d+)/i) || line.match(/Ep(?:isode)?\s*(\d+)/i);
   const episode = epMatch ? parseInt(epMatch[1]) : null;
 
-  const subMatch = fullText.match(/^(Sub|Dub)\b/i);
+  const subMatch = afterUrl.match(/^(Sub|Dub)\b/i);
   const subType = subMatch ? subMatch[1] : "Sub";
 
-  const typeMatch = fullText.match(/\b(ONA|Movie|OVA|Special|TV)\b/i);
+  const typeMatch = afterUrl.match(/\b(ONA|Movie|OVA|Special|TV)\b/i);
   const mediaType = typeMatch ? typeMatch[1] : "ONA";
 
-  let title = "";
-  const afterImg = fullText.replace(/!\[[^\]]*\]\([^)]+\)\s*/, "");
-  const hashSplit = afterImg.split("##");
-  if (hashSplit.length > 1) {
-    title = hashSplit[0]
-      .replace(/^(Sub|Dub)\s+/i, "")
-      .replace(/\s+(ONA|Movie|OVA|Special|TV)\b.*$/i, "")
-      .replace(/\s+Ep(?:isode)?\s*\d+.*$/i, "")
-      .trim();
-    if (!title) title = hashSplit[1].trim();
-  } else {
-    title = afterImg.trim();
-  }
-  title = title.replace(/\[[^\]]*\]$/, "").trim();
+  let title = afterUrl
+    .replace(/\s+Ep(?:isode)?\s*\d+.*$/i, "")
+    .replace(/^(Sub|Dub)\s+/i, "")
+    .replace(/\s+(ONA|Movie|OVA|Special|TV)\b.*$/i, "")
+    .replace(/\[[^\]]*\]$/, "")
+    .trim();
 
   if (!title) {
-    const textParts = fullText.split("##");
-    if (textParts.length > 1) {
-      title = textParts[textParts.length - 1].trim();
+    const innerText = line.substring(0, lastMatch.index!);
+    const innerLinks = [...innerText.matchAll(/\[([^\]]+)\]\([^)]+\)/g)];
+    for (const il of innerLinks) {
+      const t = il[1].replace(/!\[[^\]]*\]\([^)]+\)\s*/g, "").trim();
+      if (t && !t.startsWith("!")) { title = t; break; }
     }
   }
 
-  title = title.replace(/^\d+\s+/, "").replace(/\s*\[.*$/, "").trim();
   if (!title) {
     const urlParts = url.replace(/\/$/, "").split("/");
     title = decodeURIComponent(urlParts[urlParts.length - 1] || "")
@@ -138,6 +133,15 @@ export async function fetchRawHtml(path: string): Promise<string> {
 
 const htmlCache = new Map<string, { html: string; at: number }>();
 const HTML_TTL_MS = 60 * 60 * 1000;
+const MAX_CACHE_SIZE = 200;
+
+function cacheSet<K, V>(map: Map<K, V>, key: K, value: V) {
+  if (map.size >= MAX_CACHE_SIZE) {
+    const oldest = map.keys().next().value;
+    if (oldest !== undefined) map.delete(oldest);
+  }
+  map.set(key, value);
+}
 
 export async function fetchHtmlFast(path: string): Promise<string> {
   const key = "fast:" + path;
@@ -145,7 +149,7 @@ export async function fetchHtmlFast(path: string): Promise<string> {
   if (cached && Date.now() - cached.at < HTML_TTL_MS) return cached.html;
   const md = await fetchViaJina(path);
   if (md?.length > 50) {
-    htmlCache.set(key, { html: md, at: Date.now() });
+    cacheSet(htmlCache, key, { html: md, at: Date.now() });
     return md;
   }
   throw new Error("Fast fetch failed");
@@ -164,7 +168,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   try {
     const md = await fetchViaJina(path, params);
     if (md?.length > 50) {
-      htmlCache.set(key, { html: md, at: Date.now() });
+      cacheSet(htmlCache, key, { html: md, at: Date.now() });
       return md;
     }
   } catch (e: any) {
@@ -181,7 +185,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
     if (r.ok) {
       const text = await r.text();
       if (text?.length > 100) {
-        htmlCache.set(key, { html: text, at: Date.now() });
+        cacheSet(htmlCache, key, { html: text, at: Date.now() });
         return text;
       }
     }
@@ -194,7 +198,7 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
   try {
     const html = await fetchViaCfProxy(url);
     if (html?.length > 100) {
-      htmlCache.set(key, { html, at: Date.now() });
+      cacheSet(htmlCache, key, { html, at: Date.now() });
       return html;
     }
   } catch (e: any) {
@@ -271,7 +275,12 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
   let poster = "";
   for (const line of lines) {
     const m = line.match(/!\[.*?\]\(([^)]+)\)/);
-    if (m) { poster = abs(m[1]); break; }
+    if (m) {
+      const imgUrl = m[1].toLowerCase();
+      if (imgUrl.includes("logo") || imgUrl.includes("favicon") || imgUrl.includes("icon")) continue;
+      poster = abs(m[1]);
+      break;
+    }
   }
 
   let score: number | null = null;
@@ -377,6 +386,8 @@ export function parseEpisodeServersFromMarkdown(text: string) {
         let url = "";
         if (pattern === knownEmbedPatterns[0]) {
           url = m[2].trim();
+          const dmWatch = url.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
+          if (dmWatch) url = `https://www.dailymotion.com/embed/video/${dmWatch[1]}`;
         } else {
           const id = m[1];
           if (trimmed.includes("dailymotion")) url = `https://www.dailymotion.com/embed/video/${id}`;
@@ -462,12 +473,12 @@ export async function searchAnimeXin(query: string): Promise<any[]> {
 }
 
 function looksLikeEpisodePage(detail: any): boolean {
-  if (detail.episode_list?.length >= 8) return false;
-  if (/\bepisode\s+\d+/i.test(detail.title || "")) {
-    if (detail.episode_list?.length > 1 && detail.episodes && detail.episodes <= detail.episode_list.length) return false;
+  if (/\bEpisode\s+\d+/i.test(detail.title || "")) {
+    if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes <= detail.episode_list.length) return false;
+    if (detail.episode_list?.length >= 8) return false;
     return true;
   }
-  if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length) return true;
+  if (detail.episode_list?.length > 0 && detail.episodes && detail.episodes > detail.episode_list.length * 2) return true;
   return false;
 }
 
@@ -482,8 +493,11 @@ export function parseEpisodeServersFromRawHtml(html: string) {
   while ((m = iframeRe.exec(html)) !== null) {
     const src = m[1];
     if (!src || src.includes("facebook") || src.includes("google") || src.includes("analytics")) continue;
-    if (!servers.some(s => s.stream_url === src)) {
-      servers.push({ label: `Server ${servers.length + 1}`, stream_url: src });
+    let normalized = src;
+    const dmWatch = src.match(/dailymotion\.com\/video\/([a-zA-Z0-9]+)/);
+    if (dmWatch) normalized = `https://www.dailymotion.com/embed/video/${dmWatch[1]}`;
+    if (!servers.some(s => s.stream_url === normalized)) {
+      servers.push({ label: `Server ${servers.length + 1}`, stream_url: normalized });
     }
   }
   const jsRe = /(?:dailymotion\.com\/(?:video|embed)\/([a-zA-Z0-9]+)|ok\.ru\/(?:video|embed)\/(\d+)|youtube\.com\/embed\/([a-zA-Z0-9_-]+))/g;
@@ -534,11 +548,11 @@ export async function resolveAnimeXinSeriesUrlFast(slug: string): Promise<string
   }
 
   if (best) {
-    resolveCache.set("fast:" + slug, { url: best.path, at: Date.now() });
+    cacheSet(resolveCache, "fast:" + slug, { url: best.path, at: Date.now() });
     return best.path;
   }
 
-  resolveCache.set("fast:" + slug, { url: null, at: Date.now() });
+  cacheSet(resolveCache, "fast:" + slug, { url: null, at: Date.now() });
   return null;
 }
 
@@ -601,6 +615,6 @@ export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | n
     }
   }
 
-  resolveCache.set(slug, { url: result, at: Date.now() });
+  cacheSet(resolveCache, slug, { url: result, at: Date.now() });
   return result;
 }

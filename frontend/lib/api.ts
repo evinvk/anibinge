@@ -467,7 +467,7 @@ export const api = {
     `${API_BASE}/api/v1/donghua/stream?slug=${encodeURIComponent(slug)}&episode=${episode}&server=${server}`,
   donghuaServers: (slug: string, episode: number) =>
     request<{ data: { title: string; servers: DonghuaServer[]; prev_url: string | null; next_url: string | null } }>(
-      `/api/v1/donghua/anime/${encodeURIComponent(slug)}/episode/${episode}`, 60
+      `/api/v1/donghua/anime/${encodeURIComponent(slug)}/episode/${episode}`, 60, 1, 30000
     ),
   donghuaProxy: (url: string, referer: string = "") =>
     `${API_BASE}/api/v1/donghua/proxy?url=${encodeURIComponent(url)}${referer ? `&referer=${encodeURIComponent(referer)}` : ""}`,

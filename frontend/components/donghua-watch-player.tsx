@@ -317,7 +317,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
                 controls
                 autoPlay
                 playsInline
-                src={!isHls ? resolvedUrl : undefined}
+                src={resolvedUrl}
               >
                 <p>Your browser does not support HTML video.</p>
               </video>

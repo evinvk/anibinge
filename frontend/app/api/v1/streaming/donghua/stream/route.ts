@@ -74,6 +74,7 @@ export async function GET(req: Request) {
   const ep = parseInt(url.searchParams.get("ep") || "1");
 
   if (!slug) return NextResponse.json({ error: "No slug" }, { status: 400 });
+  if (isNaN(ep) || ep < 1) return NextResponse.json({ error: "Invalid episode" }, { status: 400 });
 
   const resolvedPath = await resolveAnimeXinSeriesUrlFast(slug);
   const resolvedSlug = resolvedPath ? extractAnimexinSlug(resolvedPath) : null;
