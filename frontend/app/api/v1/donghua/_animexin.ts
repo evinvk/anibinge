@@ -24,10 +24,10 @@ function parseMarkdownLine(line: string): any | null {
   const epMatch = afterUrl.match(/Ep(?:isode)?\s*(\d+)/i) || line.match(/Ep(?:isode)?\s*(\d+)/i);
   const episode = epMatch ? parseInt(epMatch[1]) : null;
 
-  const subMatch = afterUrl.match(/^(Sub|Dub)\b/i);
-  const subType = subMatch ? subMatch[1] : "Sub";
+  const subMatch = afterUrl.match(/^(Sub|Dub)\b/i) || line.match(/Ep(?:isode)?\s*\d+\s+(Sub|Dub)\b/i);
+  const subType = subMatch ? subMatch[subMatch.length - 1] : "Sub";
 
-  const typeMatch = afterUrl.match(/\b(ONA|Movie|OVA|Special|TV)\b/i);
+  const typeMatch = afterUrl.match(/\b(ONA|Movie|OVA|Special|TV)\b/i) || line.match(/^\[(\w+)/i);
   const mediaType = typeMatch ? typeMatch[1] : "ONA";
 
   let title = afterUrl
@@ -37,12 +37,13 @@ function parseMarkdownLine(line: string): any | null {
     .replace(/\[[^\]]*\]$/, "")
     .trim();
 
-  if (!title) {
-    const innerText = line.substring(0, lastMatch.index!);
-    const innerLinks = [...innerText.matchAll(/\[([^\]]+)\]\([^)]+\)/g)];
-    for (const il of innerLinks) {
-      const t = il[1].replace(/!\[[^\]]*\]\([^)]+\)\s*/g, "").trim();
-      if (t && !t.startsWith("!")) { title = t; break; }
+  if (!title && poster) {
+    const posterEnd = line.indexOf(poster) + poster.length + 1;
+    const hashIdx = line.indexOf(" ## ", posterEnd);
+    const outerIdx = lastMatch.index!;
+    if (posterEnd > 0 && posterEnd < outerIdx) {
+      const titleArea = line.substring(posterEnd, hashIdx > 0 ? hashIdx : outerIdx);
+      title = titleArea.trim();
     }
   }
 
@@ -222,14 +223,20 @@ function parseWpPost(p: any) {
   cleanSlug = cleanSlug.replace(/-(?:indonesia|english|subtitle|subbed?|dubbed?)(?:-|$).*$/i, "");
   const dateRaw: string = p.date_gmt || p.date || "";
   const releasedAt = dateRaw ? dateRaw.replace(/Z$/, "") + "Z" : null;
+  const postLink: string = p.link || `${BASE}/${slug}/`;
+  let linkSlug = "";
+  if (postLink) {
+    linkSlug = postLink.replace(/^https?:\/\/[^/]+\/?/, "").replace(/-episode-\d+.*$/i, "").replace(/-(?:indonesia|english|subtitle|subbed?|dubbed?)(?:-|$).*$/i, "");
+  }
   return {
     slug: cleanSlug,
+    link_slug: linkSlug && linkSlug !== cleanSlug ? linkSlug : undefined,
     title: cleanTitle || title,
     poster,
     episode,
     sub_type: "Sub",
     type: "ONA",
-    url: p.link || `${BASE}/${slug}/`,
+    url: postLink,
     released_at: releasedAt,
   };
 }
@@ -261,6 +268,26 @@ export async function fetchLatestWp(page = 1): Promise<any[] | null> {
   if (!Array.isArray(data) || !data.length) return null;
   const items = data.map(parseWpPost).filter((i: any) => i.slug && i.title);
   return items.length ? items : null;
+}
+
+export async function resolveSlugFromWp(slug: string): Promise<string | null> {
+  const url = `${BASE}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug)}`;
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": UA, Accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    const post = data[0];
+    const link: string = post.link || "";
+    if (!link) return null;
+    const linkSlug = link.replace(/^https?:\/\/[^/]+\/?/, "").replace(/-episode-\d+.*$/i, "").replace(/-(?:indonesia|english|subtitle|subbed?|dubbed?)(?:-|$).*$/i, "");
+    return linkSlug || null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseDetailFromMarkdown(text: string, slug: string) {

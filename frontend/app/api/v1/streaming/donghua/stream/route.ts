@@ -5,6 +5,7 @@ import {
   parseEpisodeServersFromMarkdown,
   parseEpisodeServersFromRawHtml,
   resolveAnimeXinSeriesUrlFast,
+  resolveSlugFromWp,
 } from "../../../donghua/_animexin";
 
 export const dynamic = "force-dynamic";
@@ -85,7 +86,15 @@ export async function GET(req: Request) {
   if (!slugCandidates.includes(slug)) slugCandidates.push(slug);
   if (misspelled !== slug && !slugCandidates.includes(misspelled)) slugCandidates.push(misspelled);
 
-  const directServers = await tryDirectFetch(slugCandidates, ep);
+  let directServers = await tryDirectFetch(slugCandidates, ep);
+
+  if (!directServers) {
+    const wpSlug = await resolveSlugFromWp(slug);
+    if (wpSlug && wpSlug !== slug && !slugCandidates.includes(wpSlug)) {
+      slugCandidates.unshift(wpSlug);
+      directServers = await tryDirectFetch([wpSlug], ep);
+    }
+  }
   if (directServers?.length) {
     return NextResponse.json({ data: { servers: directServers } });
   }
