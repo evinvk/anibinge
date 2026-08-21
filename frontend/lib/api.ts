@@ -447,22 +447,22 @@ export const api = {
   donghuaStream: (q: string, ep: number, audio = "sub", anilistId?: number) => {
     let path = `/api/v1/streaming/donghua/stream?q=${encodeURIComponent(q)}&ep=${ep}&audio=${audio}`;
     if (anilistId) path += `&anilist_id=${anilistId}`;
-    return fetchWithTimeout<{ data: DonghuaStreamData }>(`${API_BASE}${path}`, 60000);
+    return fetchWithTimeout<{ data: DonghuaStreamData }>(`${API_BASE}${path}`, 30000);
   },
   donghuaResolve: (q: string) =>
     request<{ data: any[]; query: string }>(`/api/v1/streaming/donghua/resolve?q=${encodeURIComponent(q)}`, 300),
 
   // AnimeXin donghua section
   donghuaTrending: () =>
-    request<{ data: DonghuaItem[] }>(`/api/v1/donghua/trending`, 300),
+    request<{ data: DonghuaItem[] }>(`/api/v1/donghua/trending`, 300, 1, 20000),
   donghuaLatest: (page = 1) =>
-    request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/latest?page=${page}`, 300),
+    request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/latest?page=${page}`, 300, 1, 20000),
   donghuaSearch: (q: string) =>
-    request<{ data: DonghuaItem[]; query: string }>(`/api/v1/donghua/search?q=${encodeURIComponent(q)}`, 60),
+    request<{ data: DonghuaItem[]; query: string }>(`/api/v1/donghua/search?q=${encodeURIComponent(q)}`, 60, 1, 20000),
   donghuaBrowse: (page = 1) =>
-    request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/browse?page=${page}`, 300),
+    request<{ data: DonghuaItem[]; page: number }>(`/api/v1/donghua/browse?page=${page}`, 300, 1, 20000),
   donghuaDetail: (slug: string) =>
-    request<{ data: DonghuaDetail }>(`/api/v1/donghua/anime/${encodeURIComponent(slug)}`, 600),
+    request<{ data: DonghuaDetail }>(`/api/v1/donghua/anime/${encodeURIComponent(slug)}`, 600, 1, 20000),
   donghuaStreamUrl: (slug: string, episode: number, server = 0) =>
     `${API_BASE}/api/v1/donghua/stream?slug=${encodeURIComponent(slug)}&episode=${episode}&server=${server}`,
   donghuaServers: (slug: string, episode: number) =>

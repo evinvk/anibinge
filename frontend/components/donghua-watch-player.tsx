@@ -260,7 +260,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
     <div className="min-h-screen bg-void">
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <Link
-          href={`/donghua/${slug}`}
+          href="/donghua"
           className="mb-4 inline-flex items-center gap-1.5 text-sm text-mist hover:text-paper transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />

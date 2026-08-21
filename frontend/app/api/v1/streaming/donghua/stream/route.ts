@@ -1,29 +1,69 @@
 import { NextResponse } from "next/server";
 import {
-  fetchHtml,
+  fetchHtmlFast,
+  fetchRawHtml,
   parseEpisodeServersFromMarkdown,
-  parseDetailFromMarkdown,
-  resolveAnimeXinSeriesUrl,
-  filterLiveServers,
-  BASE,
+  parseEpisodeServersFromRawHtml,
+  resolveAnimeXinSeriesUrlFast,
 } from "../../../donghua/_animexin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const EP_URL_PATTERNS = [
-  (s: string, e: number) => `/${s}-episode-${e}-indonesia-english-sub/`,
-  (s: string, e: number) => `/${s}-episode-${e}-subtitle-indonesia-english/`,
-  (s: string, e: number) => `/${s}-episode-${e}-indonesia-english/`,
-];
+function normalizeServers(raw: { label: string; stream_url: string }[]) {
+  return raw.map((s) => ({
+    label: s.label || "Server",
+    stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
+  }));
+}
 
-async function tryFetchEpPage(slug: string, ep: number): Promise<string | null> {
-  for (const pattern of EP_URL_PATTERNS) {
-    try {
-      const html = await fetchHtml(pattern(slug, ep));
-      const parsed = parseEpisodeServersFromMarkdown(html);
-      if (parsed.servers?.length > 0) return html;
-    } catch {}
+function extractAnimexinSlug(resolvedPath: string): string {
+  return resolvedPath.replace(/^\/anime\//, "").replace(/\/$/, "");
+}
+
+function buildEpisodePatterns(slug: string, ep: number) {
+  return [
+    `/${slug}-episode-${ep}-indonesia-english-sub/`,
+    `/${slug}-episode-${ep}-subtitle-indonesia-english/`,
+    `/${slug}-episode-${ep}-indonesia-english/`,
+    `/${slug}-ep${ep}/`,
+    `/${slug}-episode-${ep}/`,
+  ];
+}
+
+async function tryDirectFetch(slugs: string[], ep: number) {
+  for (const slug of slugs) {
+    const patterns = buildEpisodePatterns(slug, ep);
+    for (const path of patterns) {
+      try {
+        const html = await fetchRawHtml(path);
+        if (html.length < 200) continue;
+        const servers = parseEpisodeServersFromRawHtml(html);
+        if (servers.length) return normalizeServers(servers);
+      } catch {}
+    }
+  }
+  return null;
+}
+
+async function tryJinaFetch(slugs: string[], ep: number) {
+  for (const slug of slugs) {
+    const patterns = buildEpisodePatterns(slug, ep);
+    const results = await Promise.allSettled(
+      patterns.map(async (path) => {
+        try {
+          const html = await fetchHtmlFast(path);
+          const parsed = parseEpisodeServersFromMarkdown(html);
+          if (parsed.servers?.length) return parsed.servers;
+        } catch {}
+        return null;
+      })
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value?.length) {
+        return normalizeServers(r.value);
+      }
+    }
   }
   return null;
 }
@@ -35,44 +75,23 @@ export async function GET(req: Request) {
 
   if (!slug) return NextResponse.json({ error: "No slug" }, { status: 400 });
 
-  try {
-    const resolvedPath = await resolveAnimeXinSeriesUrl(slug);
-    if (resolvedPath) {
-      const html = await fetchHtml(resolvedPath);
-      const detail = parseDetailFromMarkdown(html, slug);
-      const epEntry = detail.episode_list?.find((e: any) => e.number === ep);
-      if (epEntry?.url) {
-        const epPage = await fetchHtml(epEntry.url.replace(BASE, ""));
-        const parsed = parseEpisodeServersFromMarkdown(epPage);
-        const servers = await filterLiveServers(parsed.servers || []);
-        if (servers.length) {
-          return NextResponse.json({
-            data: {
-              servers: servers.map((s: any) => ({
-                label: s.label || "Server",
-                stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
-              })),
-            },
-          });
-        }
-      }
-    }
-  } catch {}
+  const resolvedPath = await resolveAnimeXinSeriesUrlFast(slug);
+  const resolvedSlug = resolvedPath ? extractAnimexinSlug(resolvedPath) : null;
 
-  const epPage = await tryFetchEpPage(slug, ep);
-  if (epPage) {
-    const parsed = parseEpisodeServersFromMarkdown(epPage);
-    const servers = await filterLiveServers(parsed.servers || []);
-    if (servers.length) {
-      return NextResponse.json({
-        data: {
-          servers: servers.map((s: any) => ({
-            label: s.label || "Server",
-            stream_url: s.stream_url.startsWith("//") ? `https:${s.stream_url}` : s.stream_url,
-          })),
-        },
-      });
-    }
+  const misspelled = slug.replace(/rou/g, "ro");
+  const slugCandidates: string[] = [];
+  if (resolvedSlug) slugCandidates.push(resolvedSlug);
+  if (!slugCandidates.includes(slug)) slugCandidates.push(slug);
+  if (misspelled !== slug && !slugCandidates.includes(misspelled)) slugCandidates.push(misspelled);
+
+  const directServers = await tryDirectFetch(slugCandidates, ep);
+  if (directServers?.length) {
+    return NextResponse.json({ data: { servers: directServers } });
+  }
+
+  const jinaServers = await tryJinaFetch(slugCandidates, ep);
+  if (jinaServers?.length) {
+    return NextResponse.json({ data: { servers: jinaServers } });
   }
 
   return NextResponse.json({ error: "No stream found" }, { status: 404 });

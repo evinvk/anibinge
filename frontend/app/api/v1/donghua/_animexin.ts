@@ -115,7 +115,6 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
       Accept: "text/plain",
     },
     signal: AbortSignal.timeout(12000),
-    next: { revalidate: 3600 },
   });
   if (!resp.ok) throw new Error(`Jina AI ${resp.status}`);
   const text = await resp.text();
@@ -123,8 +122,34 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
   return mdMatch ? mdMatch[1].trim() : text;
 }
 
+export async function fetchRawHtml(path: string): Promise<string> {
+  const url = BASE + path;
+  const resp = await fetch(url, {
+    headers: {
+      "User-Agent": UA,
+      Accept: "text/html,application/xhtml+xml",
+    },
+    signal: AbortSignal.timeout(10000),
+    redirect: "follow",
+  });
+  if (!resp.ok) throw new Error(`Direct fetch ${resp.status}`);
+  return resp.text();
+}
+
 const htmlCache = new Map<string, { html: string; at: number }>();
 const HTML_TTL_MS = 60 * 60 * 1000;
+
+export async function fetchHtmlFast(path: string): Promise<string> {
+  const key = "fast:" + path;
+  const cached = htmlCache.get(key);
+  if (cached && Date.now() - cached.at < HTML_TTL_MS) return cached.html;
+  const md = await fetchViaJina(path);
+  if (md?.length > 50) {
+    htmlCache.set(key, { html: md, at: Date.now() });
+    return md;
+  }
+  throw new Error("Fast fetch failed");
+}
 
 export async function fetchHtml(path: string, params?: Record<string, string>): Promise<string> {
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
@@ -152,7 +177,6 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
     const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`, {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(5000),
-      next: { revalidate: 3600 },
     });
     if (r.ok) {
       const text = await r.text();
@@ -297,9 +321,9 @@ export function parseDetailFromMarkdown(text: string, slug: string) {
     const trimmed = line.trim();
     if (/^###?\s+Watch/i.test(trimmed)) { inEpisodes = true; continue; }
     if (inEpisodes && /^###?\s/.test(trimmed)) break;
-    if (!inEpisodes) continue;
     const itemMatch = trimmed.match(/^\*\s+\[(\d+)\s+(.+?)\]\(([^)]+)\)/);
     if (itemMatch) {
+      if (!inEpisodes) inEpisodes = true;
       const epNum = parseInt(itemMatch[1]);
       const epTitle = itemMatch[2].trim();
       const epUrl = abs(itemMatch[3]);
@@ -447,8 +471,76 @@ function looksLikeEpisodePage(detail: any): boolean {
   return false;
 }
 
+function extractAnimexinSlugFromPath(path: string): string {
+  return path.replace(/^\/anime\//, "").replace(/\/$/, "");
+}
+
+export function parseEpisodeServersFromRawHtml(html: string) {
+  const servers: { label: string; stream_url: string }[] = [];
+  const iframeRe = /<iframe[^>]*\ssrc=["']([^"']+)["'][^>]*>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = iframeRe.exec(html)) !== null) {
+    const src = m[1];
+    if (!src || src.includes("facebook") || src.includes("google") || src.includes("analytics")) continue;
+    if (!servers.some(s => s.stream_url === src)) {
+      servers.push({ label: `Server ${servers.length + 1}`, stream_url: src });
+    }
+  }
+  const jsRe = /(?:dailymotion\.com\/(?:video|embed)\/([a-zA-Z0-9]+)|ok\.ru\/(?:video|embed)\/(\d+)|youtube\.com\/embed\/([a-zA-Z0-9_-]+))/g;
+  while ((m = jsRe.exec(html)) !== null) {
+    let url = "";
+    if (m[1]) url = `https://www.dailymotion.com/embed/video/${m[1]}`;
+    else if (m[2]) url = `https://ok.ru/videoembed/${m[2]}`;
+    else if (m[3]) url = `https://www.youtube.com/embed/${m[3]}`;
+    if (url && !servers.some(s => s.stream_url === url)) {
+      servers.push({ label: `Server ${servers.length + 1}`, stream_url: url });
+    }
+  }
+  return servers;
+}
+
 const resolveCache = new Map<string, { url: string | null; at: number }>();
 const RESOLVE_TTL_MS = 60 * 60 * 1000;
+
+export async function resolveAnimeXinSeriesUrlFast(slug: string): Promise<string | null> {
+  const cached = resolveCache.get("fast:" + slug);
+  if (cached && Date.now() - cached.at < RESOLVE_TTL_MS) return cached.url;
+
+  const misspelled = slug.replace(/rou/g, "ro");
+  const paths = misspelled !== slug
+    ? [`/${slug}/`, `/anime/${slug}/`, `/${misspelled}/`, `/anime/${misspelled}/`]
+    : [`/${slug}/`, `/anime/${slug}/`];
+
+  const results = await Promise.allSettled(
+    paths.map(async (path) => {
+      try {
+        const html = await fetchHtmlFast(path);
+        const detail = parseDetailAuto(html, slug);
+        if (detail.title && !looksLikeEpisodePage(detail)) {
+          return { path, slug: extractAnimexinSlugFromPath(path), episodeCount: detail.episode_list?.length || 0 };
+        }
+      } catch {}
+      return null;
+    })
+  );
+
+  let best: { path: string; slug: string; episodeCount: number } | null = null;
+  for (const r of results) {
+    if (r.status === "fulfilled" && r.value) {
+      if (!best || r.value.episodeCount > best.episodeCount) {
+        best = r.value;
+      }
+    }
+  }
+
+  if (best) {
+    resolveCache.set("fast:" + slug, { url: best.path, at: Date.now() });
+    return best.path;
+  }
+
+  resolveCache.set("fast:" + slug, { url: null, at: Date.now() });
+  return null;
+}
 
 export async function resolveAnimeXinSeriesUrl(slug: string): Promise<string | null> {
   const cached = resolveCache.get(slug);
