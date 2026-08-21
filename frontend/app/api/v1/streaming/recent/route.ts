@@ -101,9 +101,9 @@ function parseEpisodesFromHtml(html: string): GogoEpisode[] {
   const episodes: GogoEpisode[] = [];
   const seen = new Set<string>();
 
-  // Strategy 1: Find each "ep N" badge and work backwards to find the closest /anime/SLUG link
-  // The HTML has cards structured as:
-  // <div class="...">...<img src="POSTER" alt="TITLE" ...>...>ep N</div>...<a href="/anime/SLUG">...<h3 ... title="TITLE">
+  // HTML card structure order:
+  // <img src="POSTER" alt="TITLE"> ... >ep N</div> ... <a href="/anime/SLUG"><h3 title="TITLE">
+  // So: poster comes BEFORE badge, slug comes AFTER badge
   const epBadgeRegex = />(ep \d+)<\/(?:div|span)>/gi;
   let match;
 
@@ -111,24 +111,27 @@ function parseEpisodesFromHtml(html: string): GogoEpisode[] {
     const epNum = parseInt(match[1].replace("ep ", ""));
     const badgePos = match.index;
 
-    // Look backwards up to 5000 chars for the anime slug and poster
-    const lookbackStart = Math.max(0, badgePos - 5000);
+    // Look backwards for the closest img src (poster)
+    const lookbackStart = Math.max(0, badgePos - 3000);
     const before = html.slice(lookbackStart, badgePos);
-
-    // Find the LAST href="/anime/SLUG" before this badge (closest match)
-    const slugMatches = [...before.matchAll(/href="\/anime\/([^"]+)"/g)];
-    if (slugMatches.length === 0) continue;
-    const slug = slugMatches[slugMatches.length - 1][1];
-    if (seen.has(slug)) continue;
-
-    // Find the LAST img src before this badge (closest match)
     const imgMatches = [...before.matchAll(/src="(https?:\/\/[^"]+(?:\.jpg|\.png|\.webp|\.jpeg)[^"]*)"/g)];
     const image = imgMatches.length > 0 ? imgMatches[imgMatches.length - 1][1] : "";
 
-    // Find title from title="TITLE" or alt="TITLE" near the slug link
-    const titleFromSlug = before.match(new RegExp(`href="/anime/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}">[^<]*<h3[^>]*title="([^"]+)"`));
-    const titleFromAlt = before.match(/alt="([^"]+)"/);
-    const title = titleFromSlug?.[1] || titleFromAlt?.[1] || slug.replace(/-/g, " ");
+    // Get title from the closest alt="TITLE" before the badge
+    const altMatches = [...before.matchAll(/alt="([^"]+)"/g)];
+    const titleFromAlt = altMatches.length > 0 ? altMatches[altMatches.length - 1][1] : "";
+
+    // Look FORWARD for the closest href="/anime/SLUG" (comes after the badge)
+    const lookaheadEnd = Math.min(html.length, badgePos + 3000);
+    const after = html.slice(badgePos, lookaheadEnd);
+    const slugMatch = after.match(/href="\/anime\/([^"]+)"/);
+    if (!slugMatch) continue;
+    const slug = slugMatch[1];
+    if (seen.has(slug)) continue;
+
+    // Get title from h3 title="TITLE" near the slug link
+    const titleFromH3 = after.match(new RegExp(`href="/anime/${slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}">[^<]*<h3[^>]*title="([^"]+)"`));
+    const title = titleFromH3?.[1] || titleFromAlt || slug.replace(/-/g, " ");
 
     seen.add(slug);
     episodes.push({ slug, title, image, episode: epNum });

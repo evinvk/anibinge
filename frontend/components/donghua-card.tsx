@@ -10,7 +10,7 @@ interface DonghuaCardProps {
 }
 
 export function DonghuaCard({ item, priority = false }: DonghuaCardProps) {
-  const href = `/donghua/${item.slug}`;
+  const href = item.episode ? `/donghua/watch/${item.slug}?ep=${item.episode}` : `/donghua/watch/${item.slug}?ep=1`;
 
   return (
     <Link href={href} className="group block h-full">

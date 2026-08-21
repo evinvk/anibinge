@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Loader2, Flame, Clock, ChevronDown } from "lucide-react";
 import { api, type DonghuaItem } from "@/lib/api";
 import { DonghuaCard, DonghuaCardSkeleton } from "@/components/donghua-card";
+import { DonghuaPopularRow } from "@/components/donghua-popular-row";
 import { DonghuaEpisodeCard, DonghuaEpisodeCardSkeleton } from "@/components/donghua-episode-card";
 
 export default function DonghuaPage() {
@@ -144,51 +145,45 @@ export default function DonghuaPage() {
         {/* Trending */}
         {searchResults === null && (
           <>
+            {/* Popular Today — Slider */}
             <section className="mb-12">
-              <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
-                    <Flame className="h-4 w-4 text-red-400" />
-                  </div>
-                  <h2 className="font-display text-xl font-bold text-paper">Popular Today</h2>
-                </div>
-              </div>
               {loadingTrending ? (
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                  {Array.from({ length: 6 }).map((_, i) => (
-                    <DonghuaCardSkeleton key={i} />
-                  ))}
-                </div>
-              ) : trending.length === 0 ? (
-                <p className="text-mist">No trending donghua available.</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                    {trending.map((item) => (
-                      <div key={item.slug} className="w-full">
-                        <DonghuaCard item={item} />
-                      </div>
+                <div>
+                  <div className="mb-4 flex items-center gap-3">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/20">
+                      <Flame className="h-4 w-4 text-red-400" />
+                    </div>
+                    <h2 className="font-display text-xl font-bold text-paper">Popular Today</h2>
+                  </div>
+                  <div className="flex gap-4 overflow-x-auto pb-2">
+                    {Array.from({ length: 6 }).map((_, i) => (
+                      <DonghuaCardSkeleton key={i} />
                     ))}
                   </div>
-                  {!noMoreTrending ? (
-                    <div className="mt-8 flex justify-center">
-                      <button
-                        onClick={loadMoreTrending}
-                        disabled={loadingMoreTrending}
-                        className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-paper backdrop-blur-md transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
-                      >
-                        {loadingMoreTrending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                        {loadingMoreTrending ? "Loading..." : "Load More"}
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="mt-6 text-center text-xs text-mist/50">No more results</p>
-                  )}
-                </>
+                </div>
+              ) : trending.length > 0 ? (
+                <DonghuaPopularRow items={trending} />
+              ) : (
+                <p className="text-mist">No trending donghua available.</p>
+              )}
+              {!noMoreTrending && trending.length > 0 && (
+                <div className="mt-6 flex justify-center">
+                  <button
+                    onClick={loadMoreTrending}
+                    disabled={loadingMoreTrending}
+                    className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-6 py-3 text-sm font-medium text-paper backdrop-blur-md transition-all hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                  >
+                    {loadingMoreTrending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                    {loadingMoreTrending ? "Loading..." : "Load More"}
+                  </button>
+                </div>
+              )}
+              {noMoreTrending && trending.length > 0 && (
+                <p className="mt-4 text-center text-xs text-mist/50">No more results</p>
               )}
             </section>
 
