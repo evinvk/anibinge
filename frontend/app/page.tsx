@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import { Suspense } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
 import { LatestReleasesSection } from "@/components/latest-releases-section";
 import { HomeSearch } from "@/components/home-search";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
@@ -26,40 +24,9 @@ export const metadata: Metadata = {
 
 const SITE_URL = "https://www.anibinge.fun";
 
-async function safeFetch<T>(fn: () => Promise<T>): Promise<T | null> {
-  try { return await fn(); } catch { return null; }
-}
-
 export default async function HomePage() {
-  const trendingRes = await safeFetch(() => api.trending(1));
-  const trendingData = trendingRes?.data ?? [];
-
-  const itemList = trendingData.slice(0, 10).map((item: any, i: number) => ({
-    "@type": "ListItem",
-    position: i + 1,
-    url: `${SITE_URL}/anime/${item.id || item.mal_id}?source=${item.source || "mal"}`,
-    name: item.title_english || item.title || "",
-    image: item.image || undefined,
-  }));
-
   return (
     <>
-      {itemList.length > 0 && (
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "ItemList",
-              name: "Trending Anime",
-              description: "Trending anime on Anibinge",
-              numberOfItems: itemList.length,
-              itemListElement: itemList,
-            }),
-          }}
-        />
-      )}
-
       <div className="pt-6">
         <h1 className="sr-only">Watch Anime Online Free — Stream &amp; Track Episodes</h1>
         <div className="grid gap-8 lg:grid-cols-[1fr_300px]">

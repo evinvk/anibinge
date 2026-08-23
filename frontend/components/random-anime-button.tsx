@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dices, Loader2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { fetchTopRated, fetchTrending } from "@/lib/anilist-client";
 import { cn } from "@/lib/utils";
 
 function pickFrom(items: any[]): string | null {
@@ -25,16 +25,12 @@ export function RandomAnimeButton({ className }: { className?: string }) {
       let href: string | null = null;
       const page = 1 + Math.floor(Math.random() * 80);
       try {
-        const res = await api.topRated(page);
-        href = pickFrom(res?.data);
+        const list = await fetchTopRated(page, 30);
+        href = pickFrom(list);
       } catch { /* try next */ }
       if (!href) {
-        const res = await api.trending(1 + Math.floor(Math.random() * 5));
-        href = pickFrom(res?.data);
-      }
-      if (!href) {
-        const res = await api.search("anime", { order_by: "popularity" });
-        href = pickFrom(res?.data);
+        const list = await fetchTrending(1 + Math.floor(Math.random() * 5), 30);
+        href = pickFrom(list);
       }
       if (href) router.push(href);
     } catch {

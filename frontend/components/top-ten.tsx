@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Flame, Star } from "lucide-react";
-import { api, AnimeSummary } from "@/lib/api";
+import { fetchTopRated, fetchTrending } from "@/lib/anilist-client";
+import type { AnimeSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 export function TopTen() {
@@ -15,19 +16,11 @@ export function TopTen() {
     (async () => {
       let list: AnimeSummary[] = [];
       try {
-        const res = await api.topRated(1);
-        list = res?.data ?? [];
+        list = await fetchTopRated(1, 10);
       } catch { /* fall through */ }
       if (list.length === 0) {
         try {
-          const res = await api.trending(1);
-          list = res?.data ?? [];
-        } catch { /* fall through */ }
-      }
-      if (list.length === 0) {
-        try {
-          const res = await api.search("", { order_by: "popularity" });
-          list = res?.data ?? [];
+          list = await fetchTrending(1, 10);
         } catch { /* give up */ }
       }
       if (!cancelled) {

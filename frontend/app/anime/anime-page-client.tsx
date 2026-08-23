@@ -2,9 +2,21 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, Loader2, Flame, Radio, ChevronDown } from "lucide-react";
-import { api, type AnimeSummary } from "@/lib/api";
+import { fetchTrending, fetchAiring, fetchAnilistGql, TRENDING_QUERY } from "@/lib/anilist-client";
+import type { AnimeSummary } from "@/lib/api";
 import { AnimeCard, AnimeCardSkeleton, AnimeGrid } from "@/components/anime-card";
 import { AnimeSectionTabs } from "@/components/anime-section-tabs";
+
+const SEARCH_QUERY = `query($search:String){
+  Page(page:1,perPage:30){
+    media(search:$search,type:ANIME,countryOfOrigin:JP,isAdult:false){
+      id idMal title{english romaji native}
+      coverImage{large} bannerImage
+      averageScore popularity episodes status genres description
+      startDate{year month day} season format
+    }
+  }
+}`;
 
 export default function AnimePage() {
   const [popular, setPopular] = useState<AnimeSummary[]>([]);
@@ -23,15 +35,13 @@ export default function AnimePage() {
   const seenKey = (i: AnimeSummary) => `${i.source}:${i.id}`;
 
   useEffect(() => {
-    api.trending(1).then((r) => {
-      const items = r.data || [];
+    fetchTrending(1, 30).then((items) => {
       items.forEach((i) => seenIdsRef.current.add(seenKey(i)));
       setPopular(items);
       setLoadingPopular(false);
     }).catch(() => setLoadingPopular(false));
 
-    api.airing(1).then((r) => {
-      const items = (r.data || []) as AnimeSummary[];
+    fetchAiring(1, 30).then((items) => {
       items.forEach((i) => seenIdsRef.current.add(seenKey(i)));
       setAiring(items);
       setLoadingAiring(false);
@@ -42,13 +52,13 @@ export default function AnimePage() {
     if (loadingMorePopular || noMorePopular) return;
     setLoadingMorePopular(true);
     try {
-      const r = await api.trending(popularPage + 1);
-      const items = (r.data || []).filter((i) => !seenIdsRef.current.has(seenKey(i)));
-      items.forEach((i) => seenIdsRef.current.add(seenKey(i)));
-      if (items.length === 0) {
+      const items = await fetchTrending(popularPage + 1, 30);
+      const filtered = items.filter((i) => !seenIdsRef.current.has(seenKey(i)));
+      filtered.forEach((i) => seenIdsRef.current.add(seenKey(i)));
+      if (filtered.length === 0) {
         setNoMorePopular(true);
       } else {
-        setPopular((prev) => [...prev, ...items]);
+        setPopular((prev) => [...prev, ...filtered]);
         setPopularPage((p) => p + 1);
       }
     } catch {
@@ -61,8 +71,8 @@ export default function AnimePage() {
     if (!q.trim()) { setSearchResults(null); return; }
     setSearching(true);
     try {
-      const r = await api.search(q);
-      setSearchResults(r.data || []);
+      const results = await fetchAnilistGql(SEARCH_QUERY, { search: q });
+      setSearchResults(results);
     } catch {
       setSearchResults([]);
     }

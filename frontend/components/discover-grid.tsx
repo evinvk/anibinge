@@ -2,13 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimeCard, AnimeCardSkeleton, AnimeGrid } from "@/components/anime-card";
+import { fetchTrending } from "@/lib/anilist-client";
 import type { AnimeSummary } from "@/lib/api";
 
 interface DiscoverGridProps {
   initialItems: AnimeSummary[];
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function DiscoverGrid({ initialItems }: DiscoverGridProps) {
   const [items, setItems] = useState<AnimeSummary[]>(initialItems);
@@ -22,10 +21,7 @@ export function DiscoverGrid({ initialItems }: DiscoverGridProps) {
     setLoading(true);
     try {
       const nextPage = page + 1;
-      const res = await fetch(`${API_BASE}/api/v1/anime/trending?page=${nextPage}`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const json = await res.json();
-      const newItems: AnimeSummary[] = json.data ?? [];
+      const newItems = await fetchTrending(nextPage, 30);
 
       if (newItems.length === 0) {
         setHasMore(false);
