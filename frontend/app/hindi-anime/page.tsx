@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Languages } from "lucide-react";
-import { HINDI_ANIME } from "@/lib/hindi-seo";
-import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { Breadcrumbs } from "@/components/breadcrumbs";
-import type { AnimeSummary } from "@/lib/api";
+import { HindiAnimeGrid } from "@/components/hindi-anime-grid";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun").replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
 
@@ -41,60 +39,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-static";
 export const revalidate = 86400;
 
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-
-async function fetchHindiAnime(): Promise<AnimeSummary[]> {
-  const ids = HINDI_ANIME.map((h) => h.anilistId);
-  const query = `query($ids:[Int]){
-    Page(page:1,perPage:50){
-      media(id_in:$ids,type:ANIME,countryOfOrigin:JP){
-        id idMal title{english romaji native}
-        coverImage{large} bannerImage
-        averageScore popularity episodes status genres description
-        startDate{year month day} season format
-      }
-    }
-  }`;
-  try {
-    const resp = await fetch("https://graphql.anilist.co", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "User-Agent": UA },
-      body: JSON.stringify({ query, variables: { ids } }),
-      next: { revalidate: 86400 },
-    });
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    const media = data?.data?.Page?.media || [];
-    return media
-      .filter((m: any) => m.title?.english || m.title?.romaji)
-      .map((m: any): AnimeSummary => ({
-        id: m.idMal || m.id,
-        source: "anilist",
-        title: m.title?.english || m.title?.romaji || "",
-        title_english: m.title?.english || null,
-        image: m.coverImage?.large || null,
-        banner: m.bannerImage || null,
-        score: m.averageScore ? m.averageScore / 10 : null,
-        popularity: m.popularity || null,
-        episodes: m.episodes || null,
-        status: m.status || null,
-        genres: m.genres || [],
-        synopsis: m.description?.replace(/<[^>]*>/g, "")?.slice(0, 500) || null,
-        year: m.startDate?.year || null,
-        season: m.season || null,
-        format: m.format || null,
-        start_date: m.startDate
-          ? `${m.startDate.year}-${String(m.startDate.month || 1).padStart(2, "0")}-${String(m.startDate.day || 1).padStart(2, "0")}`
-          : null,
-      }));
-  } catch {
-    return [];
-  }
-}
-
-export default async function HindiAnimePage() {
-  const items = await fetchHindiAnime();
-
+export default function HindiAnimePage() {
   const jsonld = {
     "@context": "https://schema.org",
     "@type": "CollectionPage",
@@ -107,11 +52,6 @@ export default async function HindiAnimePage() {
       name: "Anibinge",
       url: SITE_URL,
     },
-    hasPart: items.slice(0, 12).map((a) => ({
-      "@type": "TVSeries",
-      name: a.title_english || a.title,
-      url: `${SITE_URL}/anime/${a.id}`,
-    })),
   };
 
   return (
@@ -167,21 +107,7 @@ export default async function HindiAnimePage() {
           <h2 className="font-display text-lg font-bold">Popular Hindi Dubbed Anime</h2>
         </div>
 
-        {items.length > 0 ? (
-          <AnimeGrid className="mt-4">
-            {items.map((a) => (
-              <AnimeCard key={a.id} anime={a} />
-            ))}
-          </AnimeGrid>
-        ) : (
-          <p className="mt-8 text-mist">
-            We're refreshing the Hindi catalog. Check back soon or{" "}
-            <Link href="/browse" className="text-primary-400 hover:underline">
-              browse the full catalog
-            </Link>
-            .
-          </p>
-        )}
+        <HindiAnimeGrid />
 
         <div className="mt-12 max-w-3xl">
           <h2 className="font-display text-lg font-bold text-paper">What does "anime in Hindi" mean?</h2>
