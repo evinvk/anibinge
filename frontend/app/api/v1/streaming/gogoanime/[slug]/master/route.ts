@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
-import { fetchGogoApi, GOGO_BASE, UA } from "../../_gogoanime";
+import { fetchGogoApi, resolveGogoSlug, GOGO_BASE, UA } from "../../_gogoanime";
 
 function dubSlug(slug: string, audio: string): string {
   return audio === "dub" ? (slug.endsWith("-dub") ? slug : `${slug}-dub`) : slug.replace(/-dub$/, "");
+}
+
+function extractStreamFromProxyUrl(proxyUrl: string): string {
+  try {
+    if (proxyUrl.startsWith("/api/proxy")) {
+      const u = new URL(proxyUrl, GOGO_BASE);
+      return u.searchParams.get("url") || proxyUrl;
+    }
+    return proxyUrl;
+  } catch {
+    return proxyUrl;
+  }
 }
 
 export async function GET(req: Request) {
@@ -12,16 +24,18 @@ export async function GET(req: Request) {
   const rawSlug = segments[slugIdx];
   const ep = parseInt(url.searchParams.get("ep") || "1");
   const audio = url.searchParams.get("audio") || "sub";
-  const slug = dubSlug(rawSlug, audio);
 
-  if (!slug) return NextResponse.json({ error: "Missing slug" }, { status: 400 });
+  if (!rawSlug) return NextResponse.json({ error: "Missing slug" }, { status: 400 });
 
   try {
+    const resolved = await resolveGogoSlug(rawSlug);
+    const slug = dubSlug(resolved, audio);
     const data = await fetchGogoApi(`/api/episode/${slug}/ep-${ep}`, 15000);
     const streamingUrl = data?.defaultStreamingUrl;
     if (!streamingUrl) return NextResponse.json({ error: "No stream URL" }, { status: 404 });
 
-    const m3u8Resp = await fetch(new URL(streamingUrl, GOGO_BASE).href, {
+    const actualUrl = extractStreamFromProxyUrl(streamingUrl);
+    const m3u8Resp = await fetch(actualUrl, {
       headers: { "User-Agent": UA, Referer: `${GOGO_BASE}/` },
       signal: AbortSignal.timeout(15000),
     });

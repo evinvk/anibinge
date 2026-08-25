@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchGogoApi, GOGO_BASE } from "../../_gogoanime";
+import { fetchGogoApi, resolveGogoSlug, GOGO_BASE } from "../../_gogoanime";
 import { getAnivexaStream } from "@/lib/anivexa";
 
 function dubSlug(slug: string, audio: string): string {
@@ -12,6 +12,20 @@ function anilistIdFromServerId(serverId: string | null | undefined): number | nu
   return m ? parseInt(m[1]) : null;
 }
 
+function extractStreamFromProxyUrl(proxyUrl: string): { url: string; referer: string } | null {
+  try {
+    if (proxyUrl.startsWith("/api/proxy")) {
+      const u = new URL(proxyUrl, GOGO_BASE);
+      const actual = u.searchParams.get("url");
+      const referer = u.searchParams.get("referer") || "";
+      if (actual) return { url: actual, referer };
+    }
+    return { url: proxyUrl, referer: `${GOGO_BASE}/` };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const segments = url.pathname.split("/").filter(Boolean);
@@ -19,11 +33,12 @@ export async function GET(req: Request) {
   const rawSlug = segments[slugIdx];
   const ep = parseInt(url.searchParams.get("ep") || "1");
   const audio = url.searchParams.get("audio") || "sub";
-  const slug = dubSlug(rawSlug, audio);
 
-  if (!slug) return NextResponse.json({ data: null });
+  if (!rawSlug) return NextResponse.json({ data: null });
 
   try {
+    const resolved = await resolveGogoSlug(rawSlug);
+    const slug = dubSlug(resolved, audio);
     const data = await fetchGogoApi(`/api/episode/${slug}/ep-${ep}`, 30000);
     if (!data) return NextResponse.json({ data: null });
 
@@ -39,19 +54,32 @@ export async function GET(req: Request) {
       }
     }
 
-    if (data.sources?.length) {
-      result.qualities = data.sources.map((s: any) => ({
-        quality: s.label || s.quality || "Auto",
-        url: s.url || s.file,
-      }));
-      result.master_m3u8 = data.sources.map((s: any) =>
-        `#EXT-X-STREAM-INF:BANDWIDTH=${s.bandwidth || 0},RESOLUTION=${s.label || ""}\n${s.url || s.file}`
-      ).join("\n");
-    } else if (data.defaultStreamingUrl) {
-      result.direct_stream = { stream_url: new URL(data.defaultStreamingUrl, GOGO_BASE).href, referer: `${GOGO_BASE}/` };
+    if (data.server?.qualities?.length) {
+      const serverList: any[] = [];
+      for (const quality of data.server.qualities) {
+        for (const server of quality.serverList || []) {
+          serverList.push({
+            quality: `${quality.title} • ${server.title}`,
+            name: server.name,
+            serverId: server.serverId,
+          });
+        }
+      }
+      if (serverList.length) result.servers = serverList;
+    }
+
+    if (data.defaultStreamingUrl) {
+      const parsed = extractStreamFromProxyUrl(data.defaultStreamingUrl);
+      if (parsed) {
+        result.direct_stream = { stream_url: parsed.url, referer: parsed.referer };
+      }
     } else if (data.embed_url) {
       result.embed_url = data.embed_url;
     }
+
+    result.title = data.title || null;
+    result.has_next = data.hasNextEpisode || false;
+    result.has_prev = data.hasPrevEpisode || false;
 
     return NextResponse.json({ data: Object.keys(result).length ? result : null });
   } catch {

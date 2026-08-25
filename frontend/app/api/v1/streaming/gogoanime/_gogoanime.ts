@@ -60,4 +60,40 @@ async function fetchGogoApiFresh(path: string, timeoutMs: number): Promise<any> 
   }
 }
 
+async function searchGogoAnime(query: string): Promise<any[]> {
+  const data = await fetchGogoApi(`/api/search/live?q=${encodeURIComponent(query)}`);
+  return Array.isArray(data) ? data : data?.data || [];
+}
+
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export async function resolveGogoSlug(slug: string): Promise<string> {
+  const episodeData = await fetchGogoApi(`/api/episode/${slug}/ep-1`).catch(() => null);
+  if (episodeData?.animeId) return slug;
+
+  const searchQuery = slug.replace(/-/g, " ");
+  const results = await searchGogoAnime(searchQuery).catch(() => []);
+
+  for (const r of results) {
+    if (r.slug && slugify(r.title) === slugify(searchQuery)) return r.slug;
+  }
+  for (const r of results) {
+    const rSlugBase = r.slug?.replace(/-[a-z0-9]{5}$/, "") || "";
+    if (r.slug && (slug.startsWith(rSlugBase) || rSlugBase.startsWith(slug))) return r.slug;
+  }
+  for (const r of results) {
+    if (r.slug && slugify(r.title).includes(slugify(searchQuery).slice(0, 8))) return r.slug;
+  }
+  if (results.length > 0 && results[0].slug) return results[0].slug;
+
+  return slug;
+}
+
 export { GOGO_BASE, UA };
