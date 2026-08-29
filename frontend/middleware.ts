@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { resolveAnimeSlug, animeIdExists } from "./lib/resolve-anime-slug";
+import { resolveAnimeSlugStatus, animeIdExists } from "./lib/resolve-anime-slug";
 
 const MAINTENANCE_VAR = "MAINTENANCE_MODE";
 const BYPASS_PARAM = "maintenance_bypass";
@@ -51,9 +51,14 @@ export default async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    const resolution = await resolveAnimeSlug(segment);
-    if (!resolution) {
+    const resolution = await resolveAnimeSlugStatus(segment);
+    if (resolution.status === "missing") {
       return NextResponse.rewrite(new URL("/404", request.url), { status: 404 });
+    }
+    if (resolution.status === "error") {
+      // AniList unreachable from the edge — pass through so the page decides
+      // (it re-resolves server-side and fails open via the API route).
+      return NextResponse.next();
     }
 
     const url = request.nextUrl.clone();

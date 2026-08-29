@@ -24,9 +24,27 @@ export function slugToQuery(slug: string): string {
     .trim();
 }
 
+type Existence = "found" | "not-found" | "error";
+
+export type SlugStatus =
+  | { status: "found"; id: number; source: "mal" | "anilist" }
+  | { status: "missing" }
+  | { status: "error" };
+
 export async function resolveAnimeSlug(slug: string): Promise<SlugResolution | null> {
+  const result = await resolveAnimeSlugStatus(slug);
+  return result.status === "found" ? { id: result.id, source: result.source } : null;
+}
+
+/**
+ * Resolve a slug like "one-piece" to its numeric AniList / MAL id.
+ * Returns a tri-state so callers can distinguish a definitive "no such
+ * anime" from "AniList unreachable" (which must fail open, since AniList
+ * 403s from the CF Workers edge).
+ */
+export async function resolveAnimeSlugStatus(slug: string): Promise<SlugStatus> {
   const q = slugToQuery(slug);
-  if (!q) return null;
+  if (!q) return { status: "missing" };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -39,23 +57,23 @@ export async function resolveAnimeSlug(slug: string): Promise<SlugResolution | n
       cache: "no-store",
     });
     clearTimeout(timeout);
-    if (!resp.ok) return null;
+    if (!resp.ok) return { status: "error" };
     const data = await resp.json();
-    if (data.errors) return null;
+    if (data.errors) return { status: "error" };
     const media = data?.data?.Page?.media || [];
     const m = media[0];
-    if (!m) return null;
+    if (!m) return { status: "missing" };
 
     const id = m.idMal || m.id;
     const source = m.idMal ? "mal" : "anilist";
-    return { id, source };
+    return { status: "found", id, source };
   } catch {
     clearTimeout(timeout);
-    return null;
+    return { status: "error" };
   }
 }
 
-async function queryExists(query: string, vars: Record<string, number>): Promise<boolean> {
+async function queryExists(query: string, vars: Record<string, number>): Promise<Existence> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
@@ -67,26 +85,35 @@ async function queryExists(query: string, vars: Record<string, number>): Promise
       cache: "no-store",
     });
     clearTimeout(timeout);
-    if (!resp.ok) return false;
+    if (!resp.ok) return "error";
     const data = await resp.json();
-    if (data.errors) return false;
-    return !!data?.data?.Media;
+    if (data.errors) return "error";
+    return data?.data?.Media ? "found" : "not-found";
   } catch {
     clearTimeout(timeout);
-    return false;
+    return "error";
   }
 }
 
+/**
+ * Check whether an anime exists by id. Returns true when AniList confirms it
+ * exists, or when AniList could NOT be reached (fail open). Only returns false
+ * when every query definitively says the anime does not exist.
+ */
 export async function animeIdExists(id: number, source: "mal" | "anilist" = "mal"): Promise<boolean> {
   if (!Number.isInteger(id) || id <= 0) return false;
 
   if (source === "anilist") {
     const byId = await queryExists(EXIST_BY_ID, { id });
-    if (byId) return true;
-    return queryExists(EXIST_BY_MAL, { idMal: id });
+    if (byId === "found") return true;
+    const byMal = await queryExists(EXIST_BY_MAL, { idMal: id });
+    if (byMal === "found") return true;
+    return !(byId === "not-found" && byMal === "not-found");
   }
 
   const byMal = await queryExists(EXIST_BY_MAL, { idMal: id });
-  if (byMal) return true;
-  return queryExists(EXIST_BY_ID, { id });
+  if (byMal === "found") return true;
+  const byId = await queryExists(EXIST_BY_ID, { id });
+  if (byId === "found") return true;
+  return !(byMal === "not-found" && byId === "not-found");
 }
