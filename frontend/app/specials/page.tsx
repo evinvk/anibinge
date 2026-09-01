@@ -18,15 +18,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function SpecialsPage() {
-  const initialItems = await fetch(
-    `${SITE_URL}/api/v1/search?q=anime&type=special&order_by=popularity&page=1`,
-    { next: { revalidate: 300 } }
-  ).then((r) => r.ok ? r.json() : { data: [] }).then((j) => j.data ?? []).catch(() => []);
-
+export default function SpecialsPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <FormatCatalog type="special" label="Specials" initialItems={initialItems} />
+      <FormatCatalog type="special" label="Specials" />
     </div>
   );
 }

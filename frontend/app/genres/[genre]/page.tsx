@@ -3,8 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Sparkles } from "lucide-react";
 import { GENRE_PAGES, findGenreBySlug } from "@/lib/genre-seo";
-import { api } from "@/lib/api";
-import { AnimeCard, AnimeGrid } from "@/components/anime-card";
+import { GenreGrid } from "@/components/genre-grid";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 
 const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.anibinge.fun").replace(/^https?:\/\/anibinge\.fun(?=$|\/)/, "https://www.anibinge.fun");
@@ -37,25 +36,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 export const dynamic = "force-static";
 export const revalidate = 86400;
 
-async function fetchGenreAnime(genre: string) {
-  try {
-    const res = await api.search("anime", {
-      genres: genre,
-      order_by: "popularity",
-      sort: "desc",
-    });
-    return (res.data || []).filter((a: any) => a?.id && a?.title);
-  } catch {
-    return [];
-  }
-}
-
 export default async function GenrePage({ params }: PageProps) {
   const { genre } = await params;
   const g = findGenreBySlug(genre);
   if (!g) notFound();
-
-  const items = await fetchGenreAnime(g.name);
 
   const jsonld = {
     "@context": "https://schema.org",
@@ -68,11 +52,6 @@ export default async function GenrePage({ params }: PageProps) {
       name: "Anibinge",
       url: SITE_URL,
     },
-    hasPart: items.slice(0, 12).map((a: any) => ({
-      "@type": "TVSeries",
-      name: a.title_english || a.title,
-      url: `${SITE_URL}/anime/${a.id}`,
-    })),
   };
 
   return (
@@ -126,21 +105,7 @@ export default async function GenrePage({ params }: PageProps) {
         </Link>
       </div>
 
-      {items.length > 0 ? (
-        <AnimeGrid className="mt-4">
-          {items.map((a: any) => (
-            <AnimeCard key={a.id} anime={a} />
-          ))}
-        </AnimeGrid>
-      ) : (
-        <p className="mt-8 text-mist">
-          We're refreshing titles in this genre. Check back soon or{" "}
-          <Link href="/browse" className="text-primary-400 hover:underline">
-            browse the full catalog
-          </Link>
-          .
-        </p>
-      )}
+      <GenreGrid genre={g.name} />
     </div>
   );
 }

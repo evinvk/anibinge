@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Search, Mic, X, Clock } from "lucide-react";
 import type { AnimeSummary } from "@/lib/api";
+import { searchAnimeClient } from "@/lib/anilist-client";
 
 const RECENT_KEY = "anibinge:recent-searches";
 
@@ -29,11 +30,12 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
     }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
-      const res = await fetch(
-        `${""}/api/v1/search?q=${encodeURIComponent(query)}`
-      );
-      const json = await res.json();
-      setResults(json.data?.slice(0, 8) ?? []);
+      try {
+        const results = await searchAnimeClient({ query, perPage: 8 });
+        setResults(results);
+      } catch {
+        setResults([]);
+      }
     }, 250);
     return () => clearTimeout(debounceRef.current);
   }, [query]);

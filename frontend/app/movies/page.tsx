@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { FormatCatalog } from "@/components/format-catalog";
 import { SITE_URL } from "@/lib/seo";
 
-export const revalidate = 300;
-
 export const metadata: Metadata = {
   title: "Anime Movies — Watch Full-Length Films Free",
   description:
@@ -18,15 +16,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function MoviesPage() {
-  const initialItems = await fetch(
-    `${SITE_URL}/api/v1/search?q=anime&type=movie&order_by=popularity&page=1`,
-    { next: { revalidate: 300 } }
-  ).then((r) => r.ok ? r.json() : { data: [] }).then((j) => j.data ?? []).catch(() => []);
-
+export default function MoviesPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <FormatCatalog type="movie" label="Movies" initialItems={initialItems} />
+      <FormatCatalog type="movie" label="Movies" />
     </div>
   );
 }

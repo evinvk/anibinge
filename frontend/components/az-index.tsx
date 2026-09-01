@@ -3,7 +3,8 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { Star, Loader2 } from "lucide-react";
-import { api, AnimeSummary } from "@/lib/api";
+import { AnimeSummary } from "@/lib/api";
+import { searchAnimeClient } from "@/lib/anilist-client";
 import { cn } from "@/lib/utils";
 
 const LETTERS = ["0-9", ...Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))];
@@ -26,10 +27,10 @@ export function AzIndex() {
     const query = l === "0-9" ? "0" : l;
     const pages = await Promise.all(
       [1, 2, 3].map((p) =>
-        api.search(query, { order_by: "title", sort: "asc", page: p }).catch(() => ({ data: [] as AnimeSummary[] }))
+        searchAnimeClient({ query, orderBy: "title", sort: "asc", page: p }).catch(() => [] as AnimeSummary[])
       )
     );
-    const all = pages.flatMap((r) => r.data ?? []);
+    const all = pages.flat();
     const seen = new Set<number | string>();
     const deduped = all.filter((m) => {
       const key = String(m.id);

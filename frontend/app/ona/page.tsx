@@ -18,15 +18,10 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function OnaPage() {
-  const initialItems = await fetch(
-    `${SITE_URL}/api/v1/search?q=anime&type=ona&order_by=popularity&page=1`,
-    { next: { revalidate: 300 } }
-  ).then((r) => r.ok ? r.json() : { data: [] }).then((j) => j.data ?? []).catch(() => []);
-
+export default function OnaPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <FormatCatalog type="ona" label="ONA" initialItems={initialItems} />
+      <FormatCatalog type="ona" label="ONA" />
     </div>
   );
 }

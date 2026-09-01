@@ -1,15 +1,13 @@
 "use client";
 
 import { InfiniteAnimeGrid } from "@/components/infinite-anime-grid";
-import type { AnimeSummary } from "@/lib/api";
 
 interface FormatCatalogProps {
   type: string;
   label: string;
-  initialItems: AnimeSummary[];
 }
 
-export function FormatCatalog({ type, label, initialItems }: FormatCatalogProps) {
+export function FormatCatalog({ type, label }: FormatCatalogProps) {
   return (
     <>
       <div className="flex items-center gap-3">
@@ -25,7 +23,7 @@ export function FormatCatalog({ type, label, initialItems }: FormatCatalogProps)
       </div>
 
       <div className="mt-8">
-        <InfiniteAnimeGrid initialItems={initialItems} query="anime" filters={{ type, order_by: "popularity" }} />
+        <InfiniteAnimeGrid initialItems={[]} query="anime" filters={{ type, order_by: "popularity" }} />
       </div>
     </>
   );
