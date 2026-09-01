@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchLatestWp, fetchHtml, parseCardsFromMarkdown } from "../_animexin";
+import { fetchLatestWp, fetchHtml, parseCardsAuto } from "../_animexin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     }
     const path = page > 1 ? `/page/${page}/` : "/";
     const html = await fetchHtml(path);
-    const items = parseCardsFromMarkdown(html);
+    const items = parseCardsAuto(html);
     return NextResponse.json({ data: items, page });
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 503 });

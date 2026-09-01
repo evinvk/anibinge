@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseCardsFromMarkdown, fetchLatestWp } from "../_animexin";
+import { fetchHtml, parseCardsAuto, fetchLatestWp } from "../_animexin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,13 +25,13 @@ export async function GET(req: Request) {
     }
     const path = page > 1 ? `/page/${page}/` : "/";
     const html = await fetchHtml(path);
-    const items = parseCardsFromMarkdown(html);
+    const items = parseCardsAuto(html);
     return NextResponse.json({ data: dedupeBySlug(items), page });
   } catch (e: any) {
     try {
       const path = page > 1 ? `/page/${page}/` : "/";
       const html = await fetchHtml(path);
-      const items = parseCardsFromMarkdown(html);
+      const items = parseCardsAuto(html);
       return NextResponse.json({ data: dedupeBySlug(items), page });
     } catch (e2: any) {
       return NextResponse.json({ error: e2.message }, { status: 503 });

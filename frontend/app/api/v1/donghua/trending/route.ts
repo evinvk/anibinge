@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { parseHomepageFromMarkdown, parseCardsFromMarkdown, fetchHtml, fetchLatestWp } from "../_animexin";
+import { parseHomepageAuto, parseCardsAuto, fetchHtml, fetchLatestWp } from "../_animexin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,12 +18,12 @@ function dedupeBySlug(items: any[]): any[] {
 export async function GET() {
   try {
     const html = await fetchHtml("/");
-    const { popular, latest } = parseHomepageFromMarkdown(html);
+    const { popular, latest } = parseHomepageAuto(html);
     const items = popular.length > 0 ? popular : latest;
     if (items.length > 0) {
       return NextResponse.json({ data: dedupeBySlug(items).slice(0, 30) });
     }
-    const cards = parseCardsFromMarkdown(html);
+    const cards = parseCardsAuto(html);
     if (cards.length > 0) {
       return NextResponse.json({ data: dedupeBySlug(cards).slice(0, 30) });
     }

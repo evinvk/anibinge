@@ -101,6 +101,126 @@ export function parseCardsFromMarkdown(text: string): any[] {
   return items;
 }
 
+function cleanSeriesTitle(full: string): string {
+  return full
+    .replace(/\s+Ep(?:isode)?\s*\d+[^]*$/i, "")
+    .replace(/^(?:Sub|Dub)\s+/i, "")
+    .replace(/\s+(?:ONA|Movie|OVA|Special|TV)\b.*$/i, "")
+    .trim();
+}
+
+function looksLikeHtml(content: string): boolean {
+  return (
+    content.trimStart().startsWith("<") ||
+    content.includes("<!DOCTYPE") ||
+    /<article[^>]*class="bs/i.test(content) ||
+    /<(?:html|body|head)\b/i.test(content)
+  );
+}
+
+function extractArticleBlocks(segment: string): string[] {
+  const blocks: string[] = [];
+  const re = /<article[^>]*class="bs[^>]*>[\s\S]*?<\/article>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(segment)) !== null) blocks.push(m[0]);
+  return blocks;
+}
+
+function cardFromArticle(article: string): any | null {
+  const hrefMatch = article.match(/<a[^>]*href="([^"]+)"/i);
+  if (!hrefMatch) return null;
+  const url = abs(hrefMatch[1]);
+  const pathParts = url.replace(BASE, "").replace(/\/$/, "").split("/").filter(Boolean);
+  const lastPart = decodeURIComponent(pathParts[pathParts.length - 1] || "");
+
+  const imgMatch = article.match(/<img[^>]*src="([^"]+)"/i);
+  const poster = imgMatch ? imgMatch[1] : "";
+
+  const headlineMatch = article.match(/itemprop="headline"[^>]*>([\s\S]*?)<\/h2>/i);
+  const fullTitle = headlineMatch ? headlineMatch[1].replace(/<[^>]+>/g, "").trim() : "";
+  const eggTitle = article.match(/class="eggtitle">([\s\S]*?)<\/div>/i);
+  let title = eggTitle ? eggTitle[1].replace(/<[^>]+>/g, "").trim() : "";
+  if (!title) {
+    const ttMatch = article.match(/class="tt"[^>]*>([\s\S]*?)<h2/i);
+    if (ttMatch) title = ttMatch[1].replace(/<[^>]+>/g, "").trim();
+  }
+  if (!title && fullTitle) title = cleanSeriesTitle(fullTitle);
+  if (!title) title = lastPart.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+  const epInUrl = lastPart.match(/^(.*?)-episode-(\d+)/i);
+  let slug = epInUrl ? epInUrl[1] : lastPart;
+  slug = slug.replace(/-(?:indonesia|english|subtitle|subbed?|dubbed?)(?:-|$).*$/i, "");
+  if (!slug) return null;
+
+  const eggEpisode = article.match(/class="eggepisode">\s*Episode\s*(\d+)/i);
+  const epx = article.match(/class="epx">\s*Ep\s*(\d+)/i);
+  const episode = epInUrl
+    ? parseInt(epInUrl[2])
+    : eggEpisode
+      ? parseInt(eggEpisode[1])
+      : epx
+        ? parseInt(epx[1])
+        : null;
+
+  const subMatch = article.match(/class="sb\s+(\w+)"/i);
+  const typeMatch = article.match(/class="(?:eggtype|typez)\s+(\w+)"/i);
+
+  return {
+    slug,
+    title,
+    poster,
+    episode,
+    sub_type: subMatch && /^(Sub|Dub)$/i.test(subMatch[1]) ? subMatch[1] : "Sub",
+    type: typeMatch ? typeMatch[1] : null,
+    url,
+  };
+}
+
+export function parseCardsFromHtml(html: string): any[] {
+  const listStart = html.indexOf('class="listupd');
+  const region = listStart > -1 ? html.slice(listStart) : html;
+  return extractArticleBlocks(region)
+    .map(cardFromArticle)
+    .filter((x: any) => x && x.slug && x.title);
+}
+
+export function parseCardsAuto(content: string): any[] {
+  return looksLikeHtml(content) ? parseCardsFromHtml(content) : parseCardsFromMarkdown(content);
+}
+
+export function parseHomepageFromHtml(html: string) {
+  const popular: any[] = [];
+  const latest: any[] = [];
+  const popIdx = html.indexOf('class="listupd popularslider"');
+  const latestIdx = html.indexOf('class="listupd normal"');
+
+  if (popIdx > -1) {
+    const sliceEnd = latestIdx > popIdx ? latestIdx : popIdx + 100000;
+    for (const b of extractArticleBlocks(html.slice(popIdx, sliceEnd))) {
+      const item = cardFromArticle(b);
+      if (item) popular.push(item);
+    }
+  }
+  if (latestIdx > -1) {
+    const nextStart = html.indexOf('class="listupd', latestIdx + 10);
+    const region = html.slice(latestIdx, nextStart > -1 ? nextStart : latestIdx + 100000);
+    for (const b of extractArticleBlocks(region)) {
+      const item = cardFromArticle(b);
+      if (item) latest.push(item);
+    }
+  } else if (popular.length === 0) {
+    for (const b of extractArticleBlocks(html)) {
+      const item = cardFromArticle(b);
+      if (item) latest.push(item);
+    }
+  }
+  return { popular, latest };
+}
+
+export function parseHomepageAuto(text: string) {
+  return looksLikeHtml(text) ? parseHomepageFromHtml(text) : parseHomepageFromMarkdown(text);
+}
+
 async function fetchViaJina(path: string, params?: Record<string, string>): Promise<string> {
   const qs = params ? "?" + new URLSearchParams(params).toString() : "";
   const targetUrl = BASE + path + qs;
@@ -118,18 +238,22 @@ async function fetchViaJina(path: string, params?: Record<string, string>): Prom
   return mdMatch ? mdMatch[1].trim() : text;
 }
 
-export async function fetchRawHtml(path: string): Promise<string> {
-  const url = BASE + path;
+export async function fetchRawHtml(path: string, params?: Record<string, string>): Promise<string> {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const url = BASE + path + qs;
   const resp = await fetch(url, {
     headers: {
       "User-Agent": UA,
       Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
     },
-    signal: AbortSignal.timeout(10000),
+    signal: AbortSignal.timeout(12000),
     redirect: "follow",
   });
   if (!resp.ok) throw new Error(`Direct fetch ${resp.status}`);
-  return resp.text();
+  const text = await resp.text();
+  if (!text || text.length < 50) throw new Error("Direct fetch returned empty page");
+  return text;
 }
 
 const htmlCache = new Map<string, { html: string; at: number }>();
@@ -148,6 +272,13 @@ export async function fetchHtmlFast(path: string): Promise<string> {
   const key = "fast:" + path;
   const cached = htmlCache.get(key);
   if (cached && Date.now() - cached.at < HTML_TTL_MS) return cached.html;
+  try {
+    const html = await fetchRawHtml(path);
+    if (html.length > 100) {
+      cacheSet(htmlCache, key, { html, at: Date.now() });
+      return html;
+    }
+  } catch {}
   const md = await fetchViaJina(path);
   if (md?.length > 50) {
     cacheSet(htmlCache, key, { html: md, at: Date.now() });
@@ -165,7 +296,19 @@ export async function fetchHtml(path: string, params?: Record<string, string>): 
 
   const errors: string[] = [];
 
-  // Try Jina first (returns markdown, works reliably in CF Workers)
+  // Direct fetch first (reliable from CF Workers; returns raw HTML)
+  try {
+    const html = await fetchRawHtml(path, params);
+    if (html.length > 100) {
+      cacheSet(htmlCache, key, { html, at: Date.now() });
+      return html;
+    }
+    errors.push("Direct short");
+  } catch (e: any) {
+    errors.push(e.message || "Direct failed");
+  }
+
+  // Jina AI (returns markdown; may 429 with rate limits)
   try {
     const md = await fetchViaJina(path, params);
     if (md?.length > 50) {
@@ -442,24 +585,127 @@ export function parseEpisodeServersFromMarkdown(text: string) {
   return { servers, prev_url, next_url };
 }
 
-export function parseDetailAuto(content: string, slug: string) {
-  return parseDetailFromMarkdown(content, slug);
+const MONTHS = "(?:January|February|March|April|May|June|July|August|September|October|November|December)";
+
+export function parseDetailFromHtml(html: string, slug: string) {
+  const thumb = html.match(/<div class="thumb">[\s\S]*?<img[^>]*src="([^"]+)"/i);
+  const poster = thumb ? abs(thumb[1]) : "";
+
+  const thumbTitle = html.match(/<div class="thumb">[\s\S]*?<img[^>]*title="([^"]+)"/i);
+  let title = (thumbTitle ? thumbTitle[1] : "").replace(/<[^>]+>/g, "").trim();
+  if (!title) {
+    const h1 = html.match(/<h1[^>]*class="entry-title"[^>]*>([\s\S]*?)<\/h1>/i);
+    if (h1) title = cleanSeriesTitle(h1[1].replace(/<[^>]+>/g, "").trim());
+  }
+  if (!title) title = slug.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+  const rating = html.match(/class="rating">[\s\S]*?<strong>\s*(?:Rating\s*)?([\d.]+)/i);
+  const score = rating ? parseFloat(rating[1]) : null;
+
+  const infoStart = html.indexOf('class="info-content"');
+  const infoHtml = infoStart > -1 ? html.slice(infoStart) : "";
+  const infoEnd = infoHtml.indexOf('<div class="desc');
+  const infoBlock = infoEnd > -1 ? infoHtml.slice(0, infoEnd) : infoHtml;
+
+  const meta: Record<string, string> = {};
+  const spanRe = /<span[^>]*>.*?<b>([^<]+):<\/b>([\s\S]*?)<\/span>/g;
+  let sm: RegExpExecArray | null;
+  while ((sm = spanRe.exec(infoBlock)) !== null) {
+    const key = sm[1].replace(/:$/, "").trim().toLowerCase();
+    const val = sm[2].replace(/<[^>]+>/g, "").trim();
+    if (key && val) meta[key] = val;
+  }
+
+  const genres: string[] = [];
+  const gx = infoBlock.match(/class="genxed">([\s\S]*?)(?:<\/div>)/);
+  if (gx) {
+    const gRe = /href="https:\/\/animexin\.dev\/genres\/[^"]+"[^>]*>([\s\S]*?)<\/a>/g;
+    let gm: RegExpExecArray | null;
+    while ((gm = gRe.exec(gx[1])) !== null) {
+      const g = gm[1].replace(/<[^>]+>/g, "").trim();
+      if (g && !genres.includes(g)) genres.push(g);
+    }
+  }
+
+  let description = "";
+  const descStart = html.indexOf('class="desc');
+  if (descStart > -1) {
+    const gt = html.indexOf(">", descStart);
+    let seg = html.slice(gt + 1, descStart + 5000);
+    const close = seg.search(/<\/div>\s*<\/div>/);
+    if (close > -1) seg = seg.slice(0, close);
+    const indIdx = seg.toLowerCase().indexOf("indonesia ");
+    if (indIdx > 20) seg = seg.slice(0, indIdx);
+    description = seg.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").replace(/^[^A-Za-z"']+/, "").trim().slice(0, 700);
+  }
+
+  const episodeList: any[] = [];
+  const elMatch = html.match(/class="episodelist">\s*<ul>([\s\S]*?)<\/ul>/i);
+  if (elMatch) {
+    const region = elMatch[1];
+    const liRe = /<li[\s\S]*?<\/li>/g;
+    let lm: RegExpExecArray | null;
+    while ((lm = liRe.exec(region)) !== null) {
+      const li = lm[0];
+      const href = li.match(/<a[^>]*href="([^"]+)"/i);
+      if (!href) continue;
+      const epUrl = abs(href[1]);
+      const epPath = epUrl.replace(BASE, "");
+      const patherMatch = epPath.match(/-episode-(\d+)/i);
+      const liText = li.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      const spanNum = liText.match(/\bEp(?:isode)?s?\s*(\d+)/i);
+      const number = patherMatch ? parseInt(patherMatch[1]) : spanNum ? parseInt(spanNum[1]) : episodeList.length + 1;
+      const titleMatch = li.match(/<h3>([\s\S]*?)<\/h3>/i);
+      const epTitle = titleMatch
+        ? titleMatch[1].replace(/<[^>]+>/g, "").trim()
+        : `Episode ${number}`;
+      const dateMatch = liText.match(new RegExp(`\\b${MONTHS}\\s+\\d{1,2},\\s+\\d{4}`, "i"));
+      episodeList.push({
+        number,
+        title: epTitle.replace(/\s+Episode\s*\d+.*$/i, "").trim() || `Episode ${number}`,
+        url: epUrl,
+        slug: epPath.replace(/^\//, "").replace(/\/$/, ""),
+        date: dateMatch ? dateMatch[0] : null,
+      });
+    }
+  }
+  episodeList.sort((a, b) => a.number - b.number);
+
+  const totalEpisodes = meta["episodes"] ? parseInt(meta["episodes"]) || null : null;
+
+  return {
+    slug,
+    title,
+    title_alt: null,
+    poster,
+    score,
+    status: meta["status"] || "Ongoing",
+    genres,
+    description,
+    episodes: totalEpisodes || episodeList.length || null,
+    type: meta["type"] || "ONA",
+    country: meta["country"] || "China",
+    released: meta["released"] || null,
+    duration: meta["duration"] || null,
+    episode_list: episodeList,
+    url: `${BASE}/${slug}/`,
+  };
 }
 
-function parseEpisodeServersAuto(content: string) {
+export function parseDetailAuto(content: string, slug: string) {
+  return looksLikeHtml(content) ? parseDetailFromHtml(content, slug) : parseDetailFromMarkdown(content, slug);
+}
+
+export function parseEpisodeServersAuto(content: string) {
+  if (looksLikeHtml(content)) {
+    const servers = parseEpisodeServersFromRawHtml(content);
+    return { servers, prev_url: null, next_url: null };
+  }
   return parseEpisodeServersFromMarkdown(content);
 }
 
-function parseCardsAuto(content: string): any[] {
-  return parseCardsFromMarkdown(content);
-}
-
-function parseHomepageAuto(content: string) {
-  return parseHomepageFromMarkdown(content);
-}
-
 function parseSearchAuto(content: string): any[] {
-  return parseCardsFromMarkdown(content);
+  return parseCardsAuto(content);
 }
 
 export const dmCache = new Map<string, boolean>();
@@ -474,14 +720,19 @@ export async function isDailymotionVideoAlive(url: string): Promise<boolean> {
       headers: { "User-Agent": UA },
       signal: AbortSignal.timeout(4000),
     });
+    // The DM API is unreliable from the CF edge (non-OK/rate-limited). Only drop a
+    // server when the API explicitly reports the video as unavailable.
     if (!r.ok) {
+      dmCache.set(id, true);
+      return true;
+    }
+    const j: any = await r.json();
+    if (j?.error && !j?.id) {
       dmCache.set(id, false);
       return false;
     }
-    const j: any = await r.json();
-    const alive = !!j?.id && !j?.error;
-    dmCache.set(id, alive);
-    return alive;
+    dmCache.set(id, true);
+    return true;
   } catch {
     return true;
   }
@@ -530,9 +781,9 @@ export function parseEpisodeServersFromRawHtml(html: string) {
   const jsRe = /(?:dailymotion\.com\/(?:video|embed)\/([a-zA-Z0-9]+)|ok\.ru\/(?:video|embed)\/(\d+)|youtube\.com\/embed\/([a-zA-Z0-9_-]+))/g;
   while ((m = jsRe.exec(html)) !== null) {
     let url = "";
-    if (m[1]) url = `https://www.dailymotion.com/embed/video/${m[1]}`;
+    if (m[1] && m[1].toLowerCase() !== "video") url = `https://www.dailymotion.com/embed/video/${m[1]}`;
     else if (m[2]) url = `https://ok.ru/videoembed/${m[2]}`;
-    else if (m[3]) url = `https://www.youtube.com/embed/${m[3]}`;
+    else if (m[3] && m[3].toLowerCase() !== "video") url = `https://www.youtube.com/embed/${m[3]}`;
     if (url && !servers.some(s => s.stream_url === url)) {
       servers.push({ label: `Server ${servers.length + 1}`, stream_url: url });
     }

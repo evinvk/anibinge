@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchHtml, parseCardsFromMarkdown } from "../_animexin";
+import { fetchHtml, parseCardsAuto } from "../_animexin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
     // Fallback: Jina markdown (may fail with rate limits)
     try {
       const html = await fetchHtml("/", { s: q });
-      const items = parseCardsFromMarkdown(html);
+      const items = parseCardsAuto(html);
       return NextResponse.json({ data: items, query: q });
     } catch {
       // Both sources failed — return empty, not error
