@@ -86,3 +86,105 @@ export async function fetchTopRated(page = 1, perPage = 30): Promise<AnimeSummar
 export async function fetchAiring(page = 1, perPage = 30): Promise<AnimeSummary[]> {
   return fetchAnilistGql(AIRING_QUERY, { page, perPage });
 }
+
+const SEASONAL_QUERY = `query($season:MediaSeason,$year:Int,$page:Int,$perPage:Int){
+  Page(page:$page,perPage:$perPage){
+    media(season:$season,seasonYear:$year,type:ANIME,countryOfOrigin:JP,isAdult:false,sort:POPULARITY_DESC){
+      ${MEDIA_FIELDS}
+    }
+  }
+}`;
+
+export async function fetchSeasonal(year: number, season: string, page = 1, perPage = 30): Promise<AnimeSummary[]> {
+  return fetchAnilistGql(SEASONAL_QUERY, { season: season.toUpperCase(), year, page, perPage });
+}
+
+const SEARCH_SORT_MAP: Record<string, string> = {
+  score: "SCORE_DESC",
+  popularity: "POPULARITY_DESC",
+  title: "TITLE_ENGLISH",
+  start_date: "START_DATE_DESC",
+};
+const SEARCH_ASC_MAP: Record<string, string> = {
+  SCORE_DESC: "SCORE",
+  POPULARITY_DESC: "POPULARITY",
+  TITLE_ENGLISH: "TITLE_ENGLISH",
+  START_DATE_DESC: "START_DATE",
+};
+const SEARCH_STATUS_MAP: Record<string, string> = {
+  airing: "RELEASING",
+  complete: "FINISHED",
+  upcoming: "NOT_YET_RELEASED",
+};
+const SEARCH_FORMAT_MAP: Record<string, string> = {
+  tv: "TV",
+  movie: "MOVIE",
+  ova: "OVA",
+  ona: "ONA",
+  special: "SPECIAL",
+};
+
+export interface SearchAnimeParams {
+  query: string;
+  page?: number;
+  perPage?: number;
+  genres?: string;
+  status?: string;
+  type?: string;
+  orderBy?: string;
+  sort?: string;
+  year?: string;
+  season?: string;
+}
+
+export async function searchAnimeClient(params: SearchAnimeParams): Promise<AnimeSummary[]> {
+  const page = params.page || 1;
+  const perPage = params.perPage || 20;
+  const q = params.query || "";
+  const useSearch = q.length > 0 && q.toLowerCase() !== "anime";
+
+  let sortVal = "SEARCH_MATCH";
+  if (params.orderBy && SEARCH_SORT_MAP[params.orderBy]) sortVal = SEARCH_SORT_MAP[params.orderBy];
+  if (params.sort === "asc" && SEARCH_ASC_MAP[sortVal]) sortVal = SEARCH_ASC_MAP[sortVal];
+  if (!useSearch && sortVal === "SEARCH_MATCH") sortVal = "POPULARITY_DESC";
+
+  const genres = params.genres ? params.genres.split(",").map((g) => g.trim()).filter(Boolean) : null;
+  const status = params.status && SEARCH_STATUS_MAP[params.status] ? SEARCH_STATUS_MAP[params.status] : null;
+  const format = params.type && SEARCH_FORMAT_MAP[params.type] ? [SEARCH_FORMAT_MAP[params.type]] : null;
+  const year = params.year && /^\d{4}$/.test(params.year) ? parseInt(params.year) : null;
+  const season = params.season && ["WINTER", "SPRING", "SUMMER", "FALL"].includes(params.season.toUpperCase())
+    ? params.season.toUpperCase()
+    : null;
+
+  // AniList returns 500/empty when these args are passed as null, so only
+  // include the ones that actually have values (mirrors the old /api/v1/search route).
+  const varDecls = ["$page:Int", "$perPage:Int", "$sort:[MediaSort]"];
+  const mediaArgs = ["type:ANIME", "countryOfOrigin:JP", "isAdult:false", "sort:$sort"];
+  const variables: Record<string, any> = { page, perPage, sort: [sortVal] };
+  if (useSearch) { varDecls.push("$search:String"); mediaArgs.unshift("search:$search"); variables.search = q; }
+  if (genres?.length) { varDecls.push("$genre_in:[String]"); mediaArgs.push("genre_in:$genre_in"); variables.genre_in = genres; }
+  if (status) { varDecls.push("$status:MediaStatus"); mediaArgs.push("status:$status"); variables.status = status; }
+  if (format?.length) { varDecls.push("$format_in:[MediaFormat]"); mediaArgs.push("format_in:$format_in"); variables.format_in = format; }
+  if (year) { varDecls.push("$seasonYear:Int"); mediaArgs.push("seasonYear:$seasonYear"); variables.seasonYear = year; }
+  if (season) { varDecls.push("$season:MediaSeason"); mediaArgs.push("season:$season"); variables.season = season; }
+
+  const query = `query(${varDecls.join(",")}){
+  Page(page:$page,perPage:$perPage){
+    media(${mediaArgs.join(",")}){
+      ${MEDIA_FIELDS}
+    }
+  }
+}`;
+
+  const resp = await fetch(ANILIST_GQL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables }),
+  });
+  if (!resp.ok) return [];
+  const data = await resp.json();
+  const media = data?.data?.Page?.media || [];
+  return media
+    .filter((m: any) => m.title?.english || m.title?.romaji)
+    .map(normalizeAnilistMedia);
+}

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { SeasonTabs } from "@/components/season-tabs";
 import type { AnimeSummary } from "@/lib/api";
+import { fetchSeasonal } from "@/lib/anilist-client";
 
 const SEASONS = ["winter", "spring", "summer", "fall"] as const;
 
@@ -32,13 +33,8 @@ export function SeasonalContent({ year: yearParam, season: seasonParam }: Props)
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/v1/seasonal/${y}/${s}?page=1`);
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(`Failed to load: ${res.status}${body.error ? ` — ${body.error}` : ""}`);
-      }
-      const json = await res.json();
-      setItems(json.data || []);
+      const results = await fetchSeasonal(y, s, 1, 30);
+      setItems(results);
     } catch (err: any) {
       setError(err.message || "Failed to load seasonal anime");
     } finally {

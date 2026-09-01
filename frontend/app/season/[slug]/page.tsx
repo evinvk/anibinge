@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CalendarDays } from "lucide-react";
-import { api } from "@/lib/api";
-import { AnimeCard, AnimeGrid } from "@/components/anime-card";
+import { SeasonGrid } from "@/components/season-grid";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import {
   SITE_URL,
@@ -58,12 +57,6 @@ export default async function SeasonPage({ params }: PageProps) {
   const label = seasonLabel(season, year);
   const seo = SEASON_PAGES.find((s) => s.slug === slug);
 
-  let items: any[] = [];
-  try {
-    const res = await api.season(year, season, 1);
-    items = (res.data || []).filter((a: any) => a?.id && a?.title);
-  } catch {}
-
   const seasonIndex = SEASON_NAMES.indexOf(season as any);
 
   const jsonld = {
@@ -73,11 +66,6 @@ export default async function SeasonPage({ params }: PageProps) {
     url: `${SITE_URL}/season/${slug}`,
     description: seo?.intro,
     isPartOf: { "@type": "WebSite", name: "Anibinge", url: SITE_URL },
-    hasPart: items.slice(0, 12).map((a: any) => ({
-      "@type": "TVSeries",
-      name: a.title_english || a.title,
-      url: `${SITE_URL}/anime/${a.id}`,
-    })),
   };
 
   return (
@@ -123,18 +111,7 @@ export default async function SeasonPage({ params }: PageProps) {
         })}
       </nav>
 
-      {items.length > 0 ? (
-        <AnimeGrid className="mt-8">
-          {items.map((a: any) => (
-            <AnimeCard key={a.id} anime={a} />
-          ))}
-        </AnimeGrid>
-      ) : (
-        <p className="mt-8 text-mist">
-          We're refreshing the lineup for this season. Check back soon or{" "}
-          <Link href="/browse" className="text-primary-400 hover:underline">browse the full catalog</Link>.
-        </p>
-      )}
+      <SeasonGrid year={year} season={season} />
     </div>
   );
 }

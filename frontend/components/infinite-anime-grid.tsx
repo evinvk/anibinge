@@ -3,14 +3,13 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { AnimeCard, AnimeCardSkeleton, AnimeGrid } from "@/components/anime-card";
 import type { AnimeSummary } from "@/lib/api";
+import { searchAnimeClient } from "@/lib/anilist-client";
 
 interface InfiniteAnimeGridProps {
   initialItems: AnimeSummary[];
   query: string;
   filters: Record<string, string>;
 }
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnimeGridProps) {
   const [items, setItems] = useState<AnimeSummary[]>(initialItems);
@@ -34,11 +33,17 @@ export function InfiniteAnimeGrid({ initialItems, query, filters }: InfiniteAnim
     setLoading(true);
     try {
       const nextPage = page + 1;
-      const qs = new URLSearchParams({ q: query, page: String(nextPage), ...filters });
-      const res = await fetch(`${API_BASE}/api/v1/search?${qs.toString()}`);
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
-      const json = await res.json();
-      const newItems: AnimeSummary[] = json.data ?? [];
+      const newItems: AnimeSummary[] = await searchAnimeClient({
+        query,
+        page: nextPage,
+        genres: filters.genres,
+        status: filters.status,
+        type: filters.type,
+        orderBy: filters.order_by,
+        sort: filters.sort,
+        year: filters.year,
+        season: filters.season,
+      });
 
       if (newItems.length === 0) {
         setHasMore(false);
