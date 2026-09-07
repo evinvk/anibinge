@@ -50,6 +50,7 @@ export async function GET(req: Request) {
         headers: { "Content-Type": "application/json", "User-Agent": UA },
         body: JSON.stringify({ query: TOP_QUERY, variables: { page, perPage: 30 } }),
         next: { revalidate: 3600 },
+        signal: AbortSignal.timeout(15000),
       });
       if (!resp.ok) {
         await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
@@ -64,7 +65,7 @@ export async function GET(req: Request) {
         await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
         continue;
       }
-      return NextResponse.json({ error: e.message }, { status: 503 });
+      return NextResponse.json({ error: "Failed to load top rated" }, { status: 503 });
     }
   }
   return NextResponse.json({ error: "Upstream error" }, { status: 502 });

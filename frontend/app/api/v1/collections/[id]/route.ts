@@ -8,8 +8,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const collection = await getCollection(id);
     if (!collection) return NextResponse.json({ detail: "Collection not found" }, { status: 404 });
     return NextResponse.json(collection, { headers: { "Cache-Control": "private, no-cache" } });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Failed to load collection" }, { status: 500 });
   }
 }
 

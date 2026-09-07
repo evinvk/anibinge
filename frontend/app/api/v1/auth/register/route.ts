@@ -14,6 +14,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (e: any) {
     const status = e.status || 500;
-    return NextResponse.json({ detail: e.message || "Registration failed" }, { status });
+    return NextResponse.json({ detail: status < 500 ? (e.message || "Registration failed") : "Registration failed" }, { status });
   }
 }

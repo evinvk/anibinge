@@ -94,6 +94,7 @@ export function BrowseFilters() {
         <select
           value={currentStatus}
           onChange={(e) => setParam("status", e.target.value)}
+          aria-label="Filter by status"
           className="rounded-full bg-surface-hi px-3 py-2 text-sm"
         >
           <option value="">Status</option>
@@ -105,6 +106,7 @@ export function BrowseFilters() {
         <select
           value={currentType}
           onChange={(e) => setParam("type", e.target.value)}
+          aria-label="Filter by format"
           className="rounded-full bg-surface-hi px-3 py-2 text-sm"
         >
           <option value="">Format</option>
@@ -116,6 +118,7 @@ export function BrowseFilters() {
         <select
           value={currentOrderBy}
           onChange={(e) => setParam("order_by", e.target.value)}
+          aria-label="Sort by"
           className="rounded-full bg-surface-hi px-3 py-2 text-sm"
         >
           <option value="">Sort by</option>
@@ -127,6 +130,7 @@ export function BrowseFilters() {
         <select
           value={currentYear}
           onChange={(e) => setParam("year", e.target.value)}
+          aria-label="Filter by year"
           className="rounded-full bg-surface-hi px-3 py-2 text-sm"
         >
           <option value="">Year</option>
@@ -138,6 +142,7 @@ export function BrowseFilters() {
         <select
           value={currentSeason}
           onChange={(e) => setParam("season", e.target.value)}
+          aria-label="Filter by season"
           className="rounded-full bg-surface-hi px-3 py-2 text-sm"
         >
           <option value="">Season</option>

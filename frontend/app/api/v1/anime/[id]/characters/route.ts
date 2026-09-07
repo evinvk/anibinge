@@ -34,6 +34,7 @@ export async function GET(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query: malQuery, variables: { ids: [id] } }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!malResp.ok) return NextResponse.json({ data: [] });
     const malData = await malResp.json();
@@ -44,6 +45,7 @@ export async function GET(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query: CHAR_QUERY, variables: { id: anilistId } }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) return NextResponse.json({ data: [] });
     const data = await resp.json();

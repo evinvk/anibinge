@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
   try {
     const result = await getRatingSummary(animeId, source, getUserId(req));
     return NextResponse.json(result, { headers: { "Cache-Control": "private, no-cache" } });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Failed to load ratings" }, { status: 500 });
   }
 }
 
@@ -35,8 +35,8 @@ export async function PUT(req: NextRequest) {
   try {
     const result = await upsertRating(userId, animeId, source, rating);
     return NextResponse.json(result);
-  } catch (e: any) {
-    return NextResponse.json({ detail: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ detail: "Failed to save rating" }, { status: 500 });
   }
 }
 
@@ -52,7 +52,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const result = await deleteRating(userId, animeId, source);
     return NextResponse.json(result);
-  } catch (e: any) {
-    return NextResponse.json({ detail: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ detail: "Failed to delete rating" }, { status: 500 });
   }
 }

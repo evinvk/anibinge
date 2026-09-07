@@ -21,6 +21,6 @@ export async function GET(req: Request) {
       headers: { "Cache-Control": "public, s-maxage=1800, stale-while-revalidate=1800" },
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Stream unavailable" }, { status: 503 });
   }
 }

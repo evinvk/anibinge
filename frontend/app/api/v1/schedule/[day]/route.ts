@@ -24,6 +24,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ day: str
 
     return NextResponse.json({ data: items, day });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load schedule" }, { status: 503 });
   }
 }

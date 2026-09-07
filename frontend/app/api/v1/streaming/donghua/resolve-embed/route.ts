@@ -44,11 +44,24 @@ export async function GET(req: Request) {
   const url = new URL(req.url).searchParams.get("url");
   if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
 
+  const decoded = decodeURIComponent(url);
+  let hostname: string;
+  try {
+    hostname = new URL(decoded.startsWith("//") ? `https:${decoded}` : decoded).hostname.toLowerCase();
+  } catch {
+    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
+  const isOkRu = hostname === "ok.ru" || hostname === "www.ok.ru";
+  const isDailymotion = hostname === "dailymotion.com" || hostname === "www.dailymotion.com" || hostname === "dai.ly";
+
+  if (!isOkRu && !isDailymotion) {
+    return NextResponse.json({ error: "Host not allowed" }, { status: 403 });
+  }
+
   let videoUrl: string | null = null;
   let platform: string = "unknown";
   let videoId: string | null = null;
-
-  const decoded = decodeURIComponent(url);
 
   if (decoded.includes("ok.ru")) {
     platform = "ok.ru";

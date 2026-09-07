@@ -6,6 +6,6 @@ export async function GET() {
     const data = await getFeatured();
     return NextResponse.json(data);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load featured news" }, { status: 503 });
   }
 }

@@ -85,6 +85,7 @@ export function SearchModal({ open, onClose }: { open: boolean; onClose: () => v
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && query.trim() && goToBrowse(query.trim())}
             placeholder="Search anime titles..."
+            aria-label="Search anime"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-mist"
           />
           <button onClick={startVoiceSearch} aria-label="Voice search" className={listening ? "text-primary-400" : "text-mist"}>

@@ -15,6 +15,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     const detail = parseDetailAuto(html, slug);
     return NextResponse.json({ data: detail });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load donghua" }, { status: 503 });
   }
 }

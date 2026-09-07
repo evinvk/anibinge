@@ -7,8 +7,11 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   if (!auth?.startsWith("Bearer ")) {
     return NextResponse.json({ detail: "Authentication required" }, { status: 401 });
   }
+  const commentIdNum = parseInt(commentId);
+  if (isNaN(commentIdNum)) return NextResponse.json({ detail: "Invalid comment ID" }, { status: 400 });
+
   try {
-    const result = await deleteComment(parseInt(commentId));
+    const result = await deleteComment(commentIdNum);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ detail: e.message }, { status: 404 });

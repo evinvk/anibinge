@@ -124,7 +124,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         fetchSubtitlesInBackground(ep);
         return true;
       }
-    } catch { }
+    } catch (e) { console.warn("[gogoanime]", e); }
     setStatusText("");
     return false;
   }, [slug, audio]);
@@ -210,7 +210,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         setStatusText("");
         return true;
       }
-    } catch { }
+    } catch (e) { console.warn("[anitsu]", e); }
     setStatusText("");
     return false;
   }, [title]);
@@ -233,7 +233,7 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
         setStatusText("");
         return true;
       }
-    } catch { }
+    } catch (e) { console.warn("[hindi]", e); }
     setStatusText("");
     return false;
   }, []);
@@ -365,12 +365,14 @@ export function GogoAnimeWatchPlayer({ slug, title, totalEps, anilistId, initial
 
   useEffect(() => {
     if (!resolvedAnilistRef.current && title) {
-      fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`)
+      const ctrl = new AbortController();
+      fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`, { signal: ctrl.signal })
         .then(r => r.json())
         .then(data => {
           if (data.anilist_id) resolvedAnilistRef.current = data.anilist_id;
         })
         .catch(() => {});
+      return () => ctrl.abort();
     }
   }, [title]);
 

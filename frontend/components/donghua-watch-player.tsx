@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Loader2, AlertTriangle, ChevronLeft, ChevronRight, Server, SkipForward, Play } from "lucide-react";
-import { api, type DonghuaStreamData, type DonghuaServer } from "@/lib/api";
+import { api, type DonghuaServer } from "@/lib/api";
 import { EpisodeComments } from "@/components/episode-comments";
 import { InjectedAdScript } from "@/components/injected-ad-script";
 import { VideoAdOverlay } from "@/components/video-ad-overlay";
@@ -52,20 +52,25 @@ export default function DonghuaWatchPage({ slug }: Props) {
   const resolvedAnilistRef = useRef<number | null>(null);
 
   useEffect(() => {
+    const ctrl = new AbortController();
     api.donghuaDetail(slug).then((r) => {
+      if (ctrl.signal.aborted) return;
       setTitle(r.data.title);
       setTotalEps(r.data.episodes || r.data.episode_list?.length || null);
     }).catch(() => {});
+    return () => ctrl.abort();
   }, [slug]);
 
   useEffect(() => {
     if (!resolvedAnilistRef.current && title) {
-      fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`)
+      const ctrl = new AbortController();
+      fetch(`${API_BASE}/api/v1/streaming/anivexa/resolve?q=${encodeURIComponent(title)}`, { signal: ctrl.signal })
         .then(r => r.json())
         .then(data => {
           if (data.anilist_id) resolvedAnilistRef.current = data.anilist_id;
         })
         .catch(() => {});
+      return () => ctrl.abort();
     }
   }, [title]);
 
@@ -96,7 +101,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
         setLoadingStream(false);
         return true;
       }
-    } catch {}
+    } catch (e) { console.warn("[hindi-stream]", e); }
     setIsHindiStream(false);
     setLoadingStream(false);
     return false;
@@ -381,6 +386,7 @@ export default function DonghuaWatchPage({ slug }: Props) {
               <iframe
                 key={resolvedUrl}
                 src={resolvedUrl}
+                title="Video player"
                 className="h-full w-full border-0"
                 allow="autoplay; fullscreen; picture-in-picture"
               />

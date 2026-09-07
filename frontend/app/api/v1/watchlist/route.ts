@@ -29,7 +29,7 @@ export async function PUT(req: NextRequest) {
     });
 
     return NextResponse.json({ user_id: user.id, entry });
-  } catch (e: any) {
-    return NextResponse.json({ detail: e.message || "Failed to update watchlist" }, { status: 500 });
+  } catch {
+    return NextResponse.json({ detail: "Failed to update watchlist" }, { status: 500 });
   }
 }

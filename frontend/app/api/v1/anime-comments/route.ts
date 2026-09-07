@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
   try {
     const comments = await getAnimeComments(animeId, source, getUserId(req));
     return NextResponse.json({ comments });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
   }
 }
 

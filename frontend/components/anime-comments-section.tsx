@@ -24,16 +24,17 @@ export function AnimeCommentsSection({ animeId, source }: { animeId: number; sou
   const [draft, setDraft] = useState("");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const load = () => {
-    fetch(`/api/v1/anime-comments?anime_id=${animeId}&source=${source}`)
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetch(`/api/v1/anime-comments?anime_id=${animeId}&source=${source}`, { signal: ctrl.signal })
       .then((r) => r.json())
       .then((json) => setComments(json.comments || []))
       .catch(() => setComments([]))
       .finally(() => setLoading(false));
-  };
-
-  useEffect(load, [animeId, source]);
+    return () => ctrl.abort();
+  }, [animeId, source, refreshKey]);
 
   const post = async () => {
     const body = draft.trim();
@@ -43,7 +44,7 @@ export function AnimeCommentsSection({ animeId, source }: { animeId: number; sou
     try {
       await api.postAnimeComment(token, animeId, source, body);
       setDraft("");
-      load();
+      setRefreshKey((k) => k + 1);
     } catch (err: any) {
       setError(err?.message || "Couldn't post your comment — try again");
     } finally {

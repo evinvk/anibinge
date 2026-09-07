@@ -10,6 +10,7 @@ async function resolveTitle(q: string): Promise<number | null> {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query, variables: { q } }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) return null;
     const data = await resp.json();

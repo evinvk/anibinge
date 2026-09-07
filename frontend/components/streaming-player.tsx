@@ -151,7 +151,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
           return true;
         }
       }
-    } catch { }
+    } catch (e) { console.warn("[anitsu-fallback]", e); }
     setStatusText("");
     return false;
   }, [animeTitle]);
@@ -174,7 +174,7 @@ export function StreamingPlayer({ animeTitle, anilistId, totalEpisodes }: Stream
         setStatusText("");
         return true;
       }
-    } catch { }
+    } catch (e) { console.warn("[hindi]", e); }
     setStatusText("");
     return false;
   }, []);

@@ -109,9 +109,9 @@ function writeToStream(stream: NodeJS.WritableStream, chunk: Uint8Array): Promis
 export async function GET(req: NextRequest) {
   try {
     return await handleDownload(req);
-  } catch (err) {
+  } catch {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: "Download failed" },
       { status: 500 }
     );
   }
@@ -168,7 +168,7 @@ async function handleDownload(req: NextRequest) {
   }
   if (!existsSync(ffmpegPath)) {
     return NextResponse.json(
-      { error: `ffmpeg binary missing at ${ffmpegPath}` },
+      { error: "ffmpeg unavailable" },
       { status: 502 }
     );
   }
@@ -235,7 +235,7 @@ async function handleDownload(req: NextRequest) {
         if (closed) return;
         closed = true;
         if (code === 0) controller.close();
-        else controller.error(new Error(`remux failed (code ${code}): ${stderrTail || "no stderr output"}`));
+        else controller.error(new Error("remux failed"));
       });
 
       const writeToStdin = async () => {

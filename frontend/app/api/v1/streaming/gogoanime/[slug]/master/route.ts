@@ -50,6 +50,6 @@ export async function GET(req: Request) {
       },
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 502 });
+    return NextResponse.json({ error: "Failed to load stream" }, { status: 502 });
   }
 }

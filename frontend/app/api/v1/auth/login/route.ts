@@ -11,6 +11,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (e: any) {
     const status = e.status || 500;
-    return NextResponse.json({ detail: e.message || "Login failed" }, { status });
+    return NextResponse.json({ detail: status < 500 ? (e.message || "Login failed") : "Login failed" }, { status });
   }
 }

@@ -50,6 +50,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query: STUDIO_QUERY, variables: { search, page } }),
       next: { revalidate: 86400 },
+      signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) throw new Error(`AniList ${resp.status}`);
     const data = await resp.json();
@@ -67,6 +68,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       },
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load studio" }, { status: 503 });
   }
 }

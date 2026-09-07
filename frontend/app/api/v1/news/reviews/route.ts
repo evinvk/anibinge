@@ -9,6 +9,6 @@ export async function GET(req: Request) {
     const data = await getReviews(animeId, page);
     return NextResponse.json(data);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load reviews" }, { status: 503 });
   }
 }

@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
         ...(referer ? { Referer: referer } : {}),
         ...(range ? { Range: range } : {}),
       },
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!resp.ok) {
@@ -197,9 +198,9 @@ export async function GET(req: NextRequest) {
         ...(resp.status === 206 ? { "Vary": "Range" } : {}),
       },
     });
-  } catch (e: any) {
+  } catch {
     return NextResponse.json(
-      { error: e.message || "Proxy failed" },
+      { error: "Proxy failed" },
       { status: 502 },
     );
   }

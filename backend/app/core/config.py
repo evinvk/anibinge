@@ -30,9 +30,15 @@ class Settings(BaseSettings):
     CACHE_TTL_LONG: int = 60 * 60 * 24     # 24 hr  – genres, studios, static lists
 
     # Auth
-    JWT_SECRET: str = "change-me-in-production"
+    JWT_SECRET: str = ""
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
+
+    @validator("JWT_SECRET")
+    def _validate_jwt_secret(cls, v: str, values: dict) -> str:
+        if values.get("ENV") == "production" and not v:
+            raise ValueError("JWT_SECRET must be set in production")
+        return v or "dev-only-secret-do-not-use"
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 

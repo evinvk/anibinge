@@ -87,6 +87,7 @@ export function HomeSearch() {
           onFocus={() => setFocused(true)}
           onKeyDown={(e) => e.key === "Enter" && query.trim() && goToBrowse(query.trim())}
           placeholder="Search anime titles..."
+          aria-label="Search anime"
           className="w-full flex-1 bg-transparent text-sm outline-none placeholder:text-mist"
         />
         <button onClick={startVoiceSearch} aria-label="Voice search" className={listening ? "text-primary-400" : "text-mist"}>

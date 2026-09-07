@@ -17,6 +17,6 @@ export async function GET(req: Request) {
     const items = parseCardsAuto(html);
     return NextResponse.json({ data: items, page });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load donghua" }, { status: 503 });
   }
 }

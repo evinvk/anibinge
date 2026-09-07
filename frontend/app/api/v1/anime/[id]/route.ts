@@ -31,6 +31,7 @@ async function fetchGraphQL(query: string, variables: Record<string, any>) {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": UA },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!resp.ok) throw new Error(`AniList ${resp.status}`);
   return resp.json();

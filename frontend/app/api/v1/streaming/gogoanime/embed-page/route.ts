@@ -1,10 +1,27 @@
 import { NextResponse } from "next/server";
+import { ssrfBlock } from "@/lib/ssrf";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+const ALLOWED_HOSTS = new Set(["gogocdn.net", "embtaku.pro", "streamani.net", "vizcloud.live", "mutixcdn.com"]);
 
 export async function GET(req: Request) {
   const url = new URL(req.url).searchParams.get("url");
   if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
+
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
+  }
+
+  const isAllowed = [...ALLOWED_HOSTS].some(h => hostname === h || hostname.endsWith("." + h));
+  if (!isAllowed) {
+    return NextResponse.json({ error: "Host not allowed" }, { status: 403 });
+  }
+
+  const blocked = ssrfBlock(url);
+  if (blocked) return blocked;
 
   try {
     const resp = await fetch(url, {
@@ -20,7 +37,7 @@ export async function GET(req: Request) {
         "Access-Control-Allow-Origin": "*",
       },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 502 });
+  } catch {
+    return NextResponse.json({ error: "Failed to fetch embed" }, { status: 502 });
   }
 }

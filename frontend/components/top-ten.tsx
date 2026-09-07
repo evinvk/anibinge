@@ -65,7 +65,7 @@ export function TopTen() {
                 {item.image ? (
                   <img
                     src={item.image}
-                    alt=""
+                    alt={item.title_english || item.title}
                     loading="lazy"
                     className="h-10 w-7 shrink-0 rounded object-cover"
                   />

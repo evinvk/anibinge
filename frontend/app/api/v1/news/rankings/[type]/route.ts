@@ -37,6 +37,6 @@ export async function GET(req: Request, { params }: { params: Promise<{ type: st
     }));
     return NextResponse.json({ data: results });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load rankings" }, { status: 503 });
   }
 }

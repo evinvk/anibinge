@@ -113,7 +113,7 @@ export function AzIndex() {
                     className="group flex items-center gap-3 rounded-lg px-2 py-1.5 transition hover:bg-white/5"
                   >
                     {m.image ? (
-                      <img src={m.image} alt="" loading="lazy" className="h-9 w-6 shrink-0 rounded object-cover" />
+                      <img src={m.image} alt={m.title_english || m.title} loading="lazy" className="h-9 w-6 shrink-0 rounded object-cover" />
                     ) : (
                       <span className="h-9 w-6 shrink-0 rounded bg-surface-hi" />
                     )}

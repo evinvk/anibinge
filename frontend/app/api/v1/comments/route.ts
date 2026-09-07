@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(result, {
       headers: { "Cache-Control": "private, no-cache", "Access-Control-Allow-Origin": "*" },
     });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Failed to load comments" }, { status: 500 });
   }
 }
 

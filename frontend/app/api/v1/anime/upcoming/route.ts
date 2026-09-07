@@ -46,6 +46,7 @@ export async function GET(req: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json", "User-Agent": UA },
       body: JSON.stringify({ query: UPCOMING_QUERY, variables: { page, perPage: 30 } }),
+      signal: AbortSignal.timeout(15000),
     });
     if (!resp.ok) return NextResponse.json({ error: "Upstream error" }, { status: 502 });
     const data = await resp.json();
@@ -53,6 +54,6 @@ export async function GET(req: Request) {
     const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
     return NextResponse.json({ data: enrichWithViews(results) });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load upcoming anime" }, { status: 503 });
   }
 }

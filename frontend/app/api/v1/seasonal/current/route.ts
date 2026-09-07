@@ -7,6 +7,7 @@ async function fetchAnilist(query: string, variables: Record<string, any>) {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": UA },
     body: JSON.stringify({ query, variables }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!resp.ok) throw new Error(`AniList ${resp.status}`);
   return resp.json();
@@ -66,6 +67,6 @@ export async function GET(req: Request) {
     const results = media.filter((m: any) => m.title?.english || m.title?.romaji).map(normalizeMedia);
     return NextResponse.json({ data: results, season: season.toLowerCase(), year });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 503 });
+    return NextResponse.json({ error: "Failed to load seasonal" }, { status: 503 });
   }
 }

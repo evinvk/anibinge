@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ssrfBlock } from "@/lib/ssrf";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
@@ -6,8 +7,11 @@ export async function GET(req: Request) {
   const url = new URL(req.url).searchParams.get("url");
   if (!url) return NextResponse.json({ error: "Missing url" }, { status: 400 });
 
+  const decodedUrl = decodeURIComponent(url);
+  const blocked = ssrfBlock(decodedUrl);
+  if (blocked) return blocked;
+
   try {
-    const decodedUrl = decodeURIComponent(url);
     const isM3u8 = decodedUrl.includes(".m3u8");
     const referer = req.headers.get("Referer") || "https://animexin.dev/";
 
@@ -65,9 +69,9 @@ export async function GET(req: Request) {
         "Access-Control-Allow-Headers": "*",
       },
     });
-  } catch (e: any) {
+  } catch {
     return NextResponse.json(
-      { error: e.message || "Proxy failed" },
+      { error: "Proxy failed" },
       { status: 502 }
     );
   }

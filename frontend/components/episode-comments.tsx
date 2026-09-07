@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import {
-  MessageCircle, Send, Trash2, AlertTriangle, Info, Loader2,
+  MessageCircle, Send, Trash2, AlertTriangle, Loader2,
   ThumbsUp, CornerDownRight, ArrowUpDown, CheckCircle2, CircleDot,
   ChevronDown, ChevronUp
 } from "lucide-react";

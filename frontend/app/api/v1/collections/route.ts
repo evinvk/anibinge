@@ -8,8 +8,8 @@ export async function GET(req: NextRequest) {
   try {
     const collections = await listCollections(auth.userId);
     return NextResponse.json({ collections });
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: "Failed to load collections" }, { status: 500 });
   }
 }
 

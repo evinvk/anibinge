@@ -19,6 +19,7 @@ export async function fetchSchedule(page = 1, perPage = 50) {
     method: "POST",
     headers: { "Content-Type": "application/json", "User-Agent": UA },
     body: JSON.stringify({ query: SCHEDULE_QUERY, variables: { page, perPage } }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!resp.ok) throw new Error(`AniList ${resp.status}`);
   return resp.json();

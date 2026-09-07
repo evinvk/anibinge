@@ -20,8 +20,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const userId = decodeToken(token).sub;
   if (!userId) return NextResponse.json({ detail: "Invalid token" }, { status: 401 });
 
+  const commentIdNum = parseInt(commentId);
+  if (isNaN(commentIdNum)) return NextResponse.json({ detail: "Invalid comment ID" }, { status: 400 });
+
   try {
-    const result = await toggleLike(parseInt(commentId), userId);
+    const result = await toggleLike(commentIdNum, userId);
     return NextResponse.json(result);
   } catch (e: any) {
     return NextResponse.json({ detail: e.message }, { status: 404 });
