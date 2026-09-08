@@ -91,7 +91,7 @@ async function fromJikan(id: number): Promise<any | null> {
   try {
     const resp = await fetch(`https://api.jikan.moe/v4/anime/${id}/full`, {
       headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return null;
     const data = await resp.json();
@@ -132,17 +132,14 @@ export async function GET(req: Request) {
 
   let result: any;
   if (source === "anilist") {
-    // Use as AniList ID directly
     result = await fromAnilist(id, false);
     if (!result) result = await fromAnilist(id, true);
+    if (!result) result = await fromJikan(id);
   } else {
-    // Try as MAL ID first
-    result = await fromAnilist(id, true);
+    result = await fromJikan(id);
+    if (!result) result = await fromAnilist(id, true);
     if (!result) result = await fromAnilist(id, false);
   }
-
-  // Fallback to Jikan
-  if (!result) result = await fromJikan(id);
 
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
