@@ -3,9 +3,8 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle, Play } from "lucide-react";
-import { api, ApiError } from "@/lib/api";
+import { api } from "@/lib/api";
 import { fetchAnimeDetailClient } from "@/lib/anilist-client";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
@@ -33,7 +32,7 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
     setLoading(true);
     setError(false);
     Promise.all([
-      fetchAnimeDetailClient(malId).then(d => d ? { data: d } : Promise.reject(new ApiError(404, "Not found"))),
+      fetchAnimeDetailClient(malId).then(d => d ? { data: d } : Promise.reject(new Error("Unavailable"))),
       api.characters(malId).catch(() => ({ data: [] })),
       api.recommendations(malId).catch(() => ({ data: [] })),
     ])
@@ -48,13 +47,9 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
           body: JSON.stringify({ id: malId }),
         }).catch(() => {});
       })
-      .catch((err) => {
-        if (err instanceof ApiError && err.status === 404) {
-          notFound();
-        } else {
-          setError(true);
-          setLoading(false);
-        }
+      .catch(() => {
+        setError(true);
+        setLoading(false);
       });
   }, [id, source, malId]);
 
