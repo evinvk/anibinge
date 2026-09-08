@@ -137,6 +137,92 @@ export interface SearchAnimeParams {
   season?: string;
 }
 
+const DETAIL_QUERY = `query($id:Int){Media(id:$id,type:ANIME){
+  id idMal title{english romaji native}
+  coverImage{large extraLarge} bannerImage
+  averageScore popularity favourites
+  genres status episodes description
+  nextAiringEpisode{episode}
+  startDate{year month day} season format
+  trailer{id site}
+  studios{edges{isMain node{name}}}
+  relations{edges{relationType node{id idMal title{english romaji native} coverImage{large} episodes format}}}
+}}`;
+
+export interface AnilistDetail {
+  mal_id: number | null;
+  anilist_id: number;
+  title: string;
+  title_english: string | null;
+  title_japanese: string | null;
+  images: { jpg: { large_image_url: string | null } };
+  trailer: { images: { maximum_image_url: string | null } } | null;
+  score: number | null;
+  popularity: number | null;
+  members: number | null;
+  genres: { mal_id: null; name: string }[];
+  synopsis: string | null;
+  studios: { name: string }[];
+  relations: { id: number; mal_id: number | null; type: string; title: string; image: string | null; episodes: number | null; format: string | null }[];
+  status: string | null;
+  episodes: number | null;
+  rating: null;
+  year: number | null;
+  season: string | null;
+  format: string | null;
+  start_date: string | null;
+}
+
+export async function fetchAnimeDetailClient(id: number): Promise<AnilistDetail | null> {
+  try {
+    const resp = await fetch(ANILIST_GQL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: DETAIL_QUERY, variables: { id } }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const m = data?.data?.Media;
+    if (!m) return null;
+    const title = m.title?.english || m.title?.romaji || m.title?.native || "";
+    return {
+      mal_id: m.idMal,
+      anilist_id: m.id,
+      title,
+      title_english: m.title?.english || null,
+      title_japanese: m.title?.native || null,
+      images: { jpg: { large_image_url: m.coverImage?.extraLarge || m.coverImage?.large || null } },
+      trailer: m.bannerImage ? { images: { maximum_image_url: m.bannerImage } } : null,
+      score: m.averageScore ? m.averageScore / 10 : null,
+      popularity: m.popularity || null,
+      members: m.favourites || null,
+      genres: (m.genres || []).map((g: string) => ({ mal_id: null, name: g })),
+      synopsis: m.description?.replace(/<br>/g, "\n").replace(/<[^>]*>/g, "") || null,
+      studios: (m.studios?.edges || []).filter((e: any) => e.isMain).map((e: any) => ({ name: e.node.name })),
+      relations: (m.relations?.edges || [])
+        .filter((e: any) => e.node?.id && (e.node.title?.english || e.node.title?.romaji))
+        .map((e: any) => ({
+          id: e.node.id,
+          mal_id: e.node.idMal,
+          type: e.relationType || "RELATED",
+          title: e.node.title?.english || e.node.title?.romaji || e.node.title?.native || "",
+          image: e.node.coverImage?.large || null,
+          episodes: e.node.episodes || null,
+          format: e.node.format || null,
+        })),
+      status: m.status || null,
+      episodes: m.episodes || (m.nextAiringEpisode ? m.nextAiringEpisode.episode - 1 : null),
+      rating: null,
+      year: m.startDate?.year || null,
+      season: m.season || null,
+      format: m.format || null,
+      start_date: m.startDate ? `${m.startDate.year}-${String(m.startDate.month || 1).padStart(2, "0")}-${String(m.startDate.day || 1).padStart(2, "0")}` : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function searchAnimeClient(params: SearchAnimeParams): Promise<AnimeSummary[]> {
   const page = params.page || 1;
   const perPage = params.perPage || 20;

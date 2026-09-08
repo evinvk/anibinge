@@ -6,6 +6,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Star, Users, TrendingUp, AlertTriangle, Play } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
+import { fetchAnimeDetailClient } from "@/lib/anilist-client";
 import { AnimeCard, AnimeGrid } from "@/components/anime-card";
 import { AddToWatchlistButton } from "@/components/add-to-watchlist-button";
 import { AddToCollection } from "@/components/add-to-collection";
@@ -32,7 +33,7 @@ export function AnimeDetailClient({ id, source = "mal" }: { id: string; source?:
     setLoading(true);
     setError(false);
     Promise.all([
-      api.detail(malId, source),
+      fetchAnimeDetailClient(malId).then(d => d ? { data: d } : Promise.reject(new ApiError(404, "Not found"))),
       api.characters(malId).catch(() => ({ data: [] })),
       api.recommendations(malId).catch(() => ({ data: [] })),
     ])
