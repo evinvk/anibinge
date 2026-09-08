@@ -9,6 +9,15 @@ export function ServiceWorkerRegister() {
     const hadController = !!navigator.serviceWorker.controller;
     let reloading = false;
 
+    const onControllerChange = () => {
+      if (hadController && !reloading) {
+        reloading = true;
+        window.location.reload();
+      }
+    };
+
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
     navigator.serviceWorker
       .register("/sw.js", { updateViaCache: "none" })
       .then((reg) => {
@@ -28,12 +37,9 @@ export function ServiceWorkerRegister() {
       })
       .catch(() => {});
 
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (hadController && !reloading) {
-        reloading = true;
-        window.location.reload();
-      }
-    });
+    return () => {
+      navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+    };
   }, []);
 
   return null;

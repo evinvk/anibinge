@@ -7,7 +7,6 @@ import { ArrowLeft, Loader2, AlertTriangle, Lock } from "lucide-react";
 import { GogoAnimeWatchPlayer } from "@/components/gogoanime-watch-player";
 import { PlayerErrorBoundary } from "@/components/player-error-boundary";
 import { EpisodeComments } from "@/components/episode-comments";
-import { MonetagPopunder } from "@/components/monetag-popunder";
 import { TopTen } from "@/components/top-ten";
 import { SequelsRelatedRow } from "@/components/sequels-related-row";
 import { ReleaseCountdown } from "@/components/release-countdown";
@@ -144,7 +143,6 @@ function WatchPageInner({ slug }: { slug: string }) {
 
   return (
     <div className="min-h-screen bg-void">
-      <MonetagPopunder />
       <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6">
         <button
           onClick={() => {

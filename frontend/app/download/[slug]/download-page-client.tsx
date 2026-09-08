@@ -5,7 +5,6 @@ import Link from "next/link";
 import { ArrowLeft, Download, Loader2, ArrowDownToLine } from "lucide-react";
 import { api } from "@/lib/api";
 import { VideoAdOverlay } from "@/components/video-ad-overlay";
-import { MonetagPopunder } from "@/components/monetag-popunder";
 
 interface DownloadPageClientProps {
   slug: string;
@@ -76,7 +75,6 @@ export default function DownloadPageClient({
 
   return (
     <div className="relative min-h-screen bg-void">
-      <MonetagPopunder />
       <VideoAdOverlay
         key="download-page-ad"
         id="monetag-download-ad"
