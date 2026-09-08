@@ -88,38 +88,47 @@ async function fromAnilist(id: number, byMal = false): Promise<any | null> {
 }
 
 async function fromJikan(id: number): Promise<any | null> {
-  try {
-    const resp = await fetch(`https://api.jikan.moe/v4/anime/${id}/full`, {
-      headers: { "User-Agent": UA },
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    const d = data?.data;
-    if (!d) return null;
-    return {
-      mal_id: d.mal_id,
-      anilist_id: null,
-      title: d.title || "",
-      title_english: d.title_english || null,
-      title_japanese: d.title_japanese || null,
-      images: d.images || {},
-      trailer: d.trailer || null,
-      score: d.score || null,
-      popularity: d.popularity || null,
-      members: d.members || null,
-      genres: (d.genres || []).map((g: any) => ({ mal_id: g.mal_id, name: g.name })),
-      synopsis: d.synopsis || null,
-      studios: (d.studios || []).map((s: any) => ({ name: s.name })),
-      status: d.status || null,
-      episodes: d.episodes || null,
-      rating: d.rating || null,
-      year: d.year || null,
-      season: d.season || null,
-      format: d.type || null,
-      start_date: d.aired?.from?.split("T")[0] || null,
-    };
-  } catch { return null; }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await fetch(`https://api.jikan.moe/v4/anime/${id}`, {
+        headers: { "User-Agent": UA },
+        signal: AbortSignal.timeout(15000),
+      });
+      if (resp.status === 429) {
+        await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const d = data?.data;
+      if (!d) return null;
+      return {
+        mal_id: d.mal_id,
+        anilist_id: null,
+        title: d.title || "",
+        title_english: d.title_english || null,
+        title_japanese: d.title_japanese || null,
+        images: d.images || {},
+        trailer: d.trailer || null,
+        score: d.score || null,
+        popularity: d.popularity || null,
+        members: d.members || null,
+        genres: (d.genres || []).map((g: any) => ({ mal_id: g.mal_id, name: g.name })),
+        synopsis: d.synopsis || null,
+        studios: (d.studios || []).map((s: any) => ({ name: s.name })),
+        status: d.status || null,
+        episodes: d.episodes || null,
+        rating: d.rating || null,
+        year: d.year || null,
+        season: d.season || null,
+        format: d.type || null,
+        start_date: d.aired?.from?.split("T")[0] || null,
+      };
+    } catch {
+      if (attempt === 0) await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  return null;
 }
 
 export async function GET(req: Request) {
