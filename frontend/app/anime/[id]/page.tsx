@@ -31,13 +31,24 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
   const { source } = await searchParams;
   const id = await resolveIfSlug(rawId);
   try {
-    const res = await fetch(`${SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`);
-    const { data } = await res.json();
-    const title = data.title_english || data.title || "Anime";
-    const desc = data.synopsis?.slice(0, 160) || `Watch ${title} online free. Stream episodes, check ratings, and track your progress.`;
-    const image = data.images?.jpg?.large_image_url || data.banner || "/og.svg";
+    const resp = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `query($id:Int){Media(id:$id,type:ANIME){title{english romaji native}coverImage{large extraLarge}bannerImage description}}`,
+        variables: { id: parseInt(id) },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) return { title: "Anime — Anibinge" };
+    const { data } = await resp.json();
+    const m = data?.Media;
+    if (!m) return { title: "Anime — Anibinge" };
+    const title = m.title?.english || m.title?.romaji || "Anime";
+    const desc = m.description?.replace(/<[^>]*>/g, "")?.slice(0, 160) || `Watch ${title} online free. Stream episodes, check ratings, and track your progress.`;
+    const image = m.coverImage?.extraLarge || m.coverImage?.large || "/og.svg";
     return {
-      title: `Watch ${title} Online â€” Episodes & Info`,
+      title: `Watch ${title} Online — Episodes & Info`,
       description: desc,
       alternates: { canonical: `${SITE_URL}/anime/${id}` },
       keywords: [title, `${title} anime`, "watch anime in hindi", "hindi dub", "english dub", "anime online"],
@@ -56,7 +67,7 @@ export async function generateMetadata({ params, searchParams }: PageProps) {
       },
     };
   } catch {
-    return { title: "Anime not found" };
+    return { title: "Anime — Anibinge" };
   }
 }
 
@@ -70,72 +81,70 @@ export default async function AnimeDetailPage({ params, searchParams }: PageProp
   let watchSlug: string | null = null;
   let episodesCount = 0;
   try {
-    const res = await fetch(`${SITE_URL}/api/v1/anime/${id}${source ? `?source=${source}` : ""}`, { cache: "no-store" });
-    const { data } = await res.json();
-    if (data) {
-      const title = data.title_english || data.title || "";
-      detailTitle = title;
-      episodesCount = Number(data.episodes) || 0;
-      const isMovie = data.format === "MOVIE" || data.format === "movie";
-      jsonld = {
-        "@context": "https://schema.org",
-        "@type": isMovie ? "Movie" : "TVSeries",
-        name: title,
-        url: `${SITE_URL}/anime/${id}`,
-        description: data.synopsis?.slice(0, 300) || undefined,
-        image: data.images?.jpg?.large_image_url || data.banner || undefined,
-        genre: (data.genres || []).map((g: any) => g.name || g) || undefined,
-        datePublished: data.start_date || undefined,
-        inLanguage: data.audio === "dub" ? "en" : "ja",
-        ...(data.episodes && !isMovie ? { numberOfEpisodes: data.episodes } : {}),
-        ...(data.score ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: data.score,
-            bestRating: 10,
-            ratingCount: 1,
-          },
-        } : {}),
-      };
+    const resp = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `query($id:Int){Media(id:$id,type:ANIME){title{english romaji native}coverImage{large}description episodes format status startDate{year month day}genres}}`,
+        variables: { id: parseInt(id) },
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (resp.ok) {
+      const { data } = await resp.json();
+      const m = data?.Media;
+      if (m) {
+        const title = m.title?.english || m.title?.romaji || "";
+        detailTitle = title;
+        episodesCount = Number(m.episodes) || 0;
+        const isMovie = m.format === "MOVIE";
+        jsonld = {
+          "@context": "https://schema.org",
+          "@type": isMovie ? "Movie" : "TVSeries",
+          name: title,
+          url: `${SITE_URL}/anime/${id}`,
+          description: m.description?.replace(/<[^>]*>/g, "")?.slice(0, 300) || undefined,
+          image: m.coverImage?.large || undefined,
+          genre: (m.genres || []) || undefined,
+          datePublished: m.startDate ? `${m.startDate.year}-${String(m.startDate.month || 1).padStart(2, "0")}-${String(m.startDate.day || 1).padStart(2, "0")}` : undefined,
+          ...(m.episodes && !isMovie ? { numberOfEpisodes: m.episodes } : {}),
+        };
 
-      // Resolve the gogoanime watch slug server-side so the episode list
-      // below is crawlable (client-side resolution is invisible to Google).
-      // The search endpoint misses the main series for big titles, so check
-      // the latest catalog first (reliable slug<->title source), then search.
-      try {
-        const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
-        const target = norm(title);
-        let found: string | null = null;
-        for (const p of [1, 2, 3]) {
-          if (found) break;
-          const latestRes = await fetch(
-            `${SITE_URL}/api/v1/streaming/gogoanime/latest?page=${p}`,
-            { signal: AbortSignal.timeout(8000) }
-          );
-          const latestData = await latestRes.json();
-          for (const a of latestData?.data ?? []) {
-            const t = norm(a.title_english || a.title || "");
-            if (t === target || (a.slug && norm(a.slug) === target)) {
-              found = a.slug;
-              break;
+        try {
+          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "");
+          const target = norm(title);
+          let found: string | null = null;
+          for (const p of [1, 2, 3]) {
+            if (found) break;
+            const latestRes = await fetch(
+              `${SITE_URL}/api/v1/streaming/gogoanime/latest?page=${p}`,
+              { signal: AbortSignal.timeout(8000) }
+            );
+            const latestData = await latestRes.json();
+            for (const a of latestData?.data ?? []) {
+              const t = norm(a.title_english || a.title || "");
+              if (t === target || (a.slug && norm(a.slug) === target)) {
+                found = a.slug;
+                break;
+              }
             }
           }
-        }
-        if (!found) {
-          const searchRes = await fetch(
-            `${SITE_URL}/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(title)}`,
-            { signal: AbortSignal.timeout(10000) }
-          );
-          const searchData = await searchRes.json();
-          const items: any[] = searchData?.data ?? [];
-          const match =
-            items.find((a: any) => a.title && norm(a.title) === target) ||
-            items.find((a: any) => a.title_english && norm(a.title_english) === target) ||
-            (episodesCount === 1 ? items[0] : null);
-          if (match?.slug) found = match.slug;
-        }
-        watchSlug = found;
-      } catch {}
+          if (!found) {
+            const searchRes = await fetch(
+              `${SITE_URL}/api/v1/streaming/gogoanime/search?q=${encodeURIComponent(title)}`,
+              { signal: AbortSignal.timeout(10000) }
+            );
+            const searchData = await searchRes.json();
+            const items: any[] = searchData?.data ?? [];
+            const match =
+              items.find((a: any) => a.title && norm(a.title) === target) ||
+              items.find((a: any) => a.title_english && norm(a.title_english) === target) ||
+              (episodesCount === 1 ? items[0] : null);
+            if (match?.slug) found = match.slug;
+          }
+          watchSlug = found;
+        } catch {}
+      }
     }
   } catch {}
 
